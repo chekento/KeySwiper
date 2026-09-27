@@ -6,10 +6,13 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
+import android.widget.ScrollView
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import cloud.kosch.keyswiper.clipboard.ClipboardEntry
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.prediction.PredictionKind
 import cloud.kosch.keyswiper.prediction.PredictionSuggestion
@@ -36,6 +39,12 @@ class KeyboardRootView(
         fun onTranslate()
         fun onVoice()
         fun onClipboard()
+        fun onClipboardInsert(id: String)
+        fun onClipboardSearch(query: String)
+        fun onClipboardTogglePin(id: String)
+        fun onClipboardDelete(id: String)
+        fun onClipboardClearUnpinned()
+        fun onClipboardExpiryChanged(minutes: Long)
         fun onEmoji(value: String)
         fun onHandwritingRequested()
         fun onHandwritingRecognize(
@@ -871,60 +880,297 @@ class KeyboardRootView(
     }
 
     fun showClipboardPanel(
-        items: List<String>
+        items: List<ClipboardEntry>,
+        query: String = "",
+        expiryMinutes: Long = 60L
     ) {
         val panel =
             LinearLayout(context).apply {
                 orientation = VERTICAL
                 setPadding(
-                    dp(8),
-                    dp(8),
-                    dp(8),
-                    dp(8)
+                    dp(6),
+                    dp(5),
+                    dp(6),
+                    dp(5)
                 )
             }
 
+        val searchRow =
+            LinearLayout(context).apply {
+                orientation = HORIZONTAL
+            }
+
+        val search =
+            EditText(context).apply {
+                setText(query)
+                hint = "Search clipboard"
+                maxLines = 1
+            }
+
+        searchRow.addView(
+            search,
+            LayoutParams(
+                0,
+                dp(48),
+                3f
+            )
+        )
+
+        searchRow.addView(
+            Button(context).apply {
+                text = "Search"
+                isAllCaps = false
+                setOnClickListener {
+                    callbacks
+                        ?.onClipboardSearch(
+                            search.text
+                                .toString()
+                        )
+                }
+            },
+            LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        panel.addView(searchRow)
+
+        val controls =
+            LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+        fun expiryButton(
+            label: String,
+            minutes: Long
+        ) {
+            controls.addView(
+                Button(context).apply {
+                    text =
+                        if (
+                            expiryMinutes ==
+                            minutes
+                        ) {
+                            "✓ $label"
+                        } else {
+                            label
+                        }
+                    isAllCaps = false
+                    setOnClickListener {
+                        callbacks
+                            ?.onClipboardExpiryChanged(
+                                minutes
+                            )
+                    }
+                },
+                LayoutParams(
+                    0,
+                    dp(44),
+                    1f
+                )
+            )
+        }
+
+        expiryButton(
+            "10m",
+            10L
+        )
+        expiryButton(
+            "1h",
+            60L
+        )
+        expiryButton(
+            "1d",
+            1440L
+        )
+
+        controls.addView(
+            Button(context).apply {
+                text = "Clear"
+                isAllCaps = false
+                setOnClickListener {
+                    callbacks
+                        ?.onClipboardClearUnpinned()
+                }
+            },
+            LayoutParams(
+                0,
+                dp(44),
+                1f
+            )
+        )
+
+        panel.addView(controls)
+
+        val list =
+            LinearLayout(context).apply {
+                orientation = VERTICAL
+            }
+
         if (items.isEmpty()) {
-            panel.addView(
+            list.addView(
                 TextView(context).apply {
                     text =
-                        "Clipboard is empty for this KeySwiper session."
+                        if (query.isBlank()) {
+                            "Clipboard is empty."
+                        } else {
+                            "No clipboard item matches this search."
+                        }
+
                     setTextColor(
                         Color.WHITE
                     )
                     setPadding(
                         dp(8),
-                        dp(12),
+                        dp(14),
                         dp(8),
-                        dp(12)
+                        dp(14)
                     )
                 }
             )
         } else {
             items
-                .take(8)
-                .forEach { item ->
-                    panel.addView(
-                        Button(context).apply {
+                .take(20)
+                .forEach { entry ->
+                    val item =
+                        LinearLayout(context).apply {
+                            orientation = VERTICAL
+                            setPadding(
+                                dp(3),
+                                dp(3),
+                                dp(3),
+                                dp(5)
+                            )
+                        }
+
+                    item.addView(
+                        TextView(context).apply {
                             text =
-                                item
-                                    .replace(
-                                        "\n",
-                                        " "
+                                buildString {
+                                    append(
+                                        if (
+                                            entry.pinned
+                                        ) {
+                                            "📌 "
+                                        } else {
+                                            ""
+                                        }
                                     )
-                                    .take(90)
+                                    append(
+                                        entry.category.label
+                                    )
+                                    append(" · ")
+                                    append(
+                                        entry.text
+                                            .replace(
+                                                "\n",
+                                                " "
+                                            )
+                                            .take(110)
+                                    )
+                                }
+
+                            setTextColor(
+                                Color.WHITE
+                            )
+                            textSize = 13f
+                            maxLines = 2
+                            setPadding(
+                                dp(5),
+                                dp(2),
+                                dp(5),
+                                dp(2)
+                            )
+                        }
+                    )
+
+                    val actions =
+                        LinearLayout(context).apply {
+                            orientation = HORIZONTAL
+                        }
+
+                    actions.addView(
+                        Button(context).apply {
+                            text = "Paste"
                             isAllCaps = false
                             setOnClickListener {
                                 callbacks
-                                    ?.onEmoji(
-                                        item
+                                    ?.onClipboardInsert(
+                                        entry.id
                                     )
                                 showKeyboard()
                             }
-                        }
+                        },
+                        LayoutParams(
+                            0,
+                            dp(42),
+                            2f
+                        )
                     )
+
+                    actions.addView(
+                        Button(context).apply {
+                            text =
+                                if (
+                                    entry.pinned
+                                ) {
+                                    "Unpin"
+                                } else {
+                                    "Pin"
+                                }
+                            isAllCaps = false
+                            setOnClickListener {
+                                callbacks
+                                    ?.onClipboardTogglePin(
+                                        entry.id
+                                    )
+                            }
+                        },
+                        LayoutParams(
+                            0,
+                            dp(42),
+                            1f
+                        )
+                    )
+
+                    actions.addView(
+                        Button(context).apply {
+                            text = "Delete"
+                            isAllCaps = false
+                            setOnClickListener {
+                                callbacks
+                                    ?.onClipboardDelete(
+                                        entry.id
+                                    )
+                            }
+                        },
+                        LayoutParams(
+                            0,
+                            dp(42),
+                            1f
+                        )
+                    )
+
+                    item.addView(actions)
+                    list.addView(item)
                 }
         }
+
+        val scroll =
+            ScrollView(context).apply {
+                addView(list)
+            }
+
+        panel.addView(
+            scroll,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                dp(190)
+            )
+        )
 
         swapContent(panel)
     }

@@ -156,13 +156,17 @@ Samsung remote Air Actions remain a device/foreground-specific optional adapter 
 - configurable target language
 - fails closed rather than silently uploading text when a local pair is unavailable
 
-### 📋 Clipboard
+### 📋 Smart Clipboard 2.0
 
-- in-session clipboard history
-- explicit clipboard panel
-- tap to insert
+- local categories: Link, Email, Phone, Address, Code and Text
+- search across clipboard text and categories
+- Pin / Unpin / Delete per entry
+- 10 min / 1 h / 1 day expiry presets for temporary history
+- Clear removes temporary items while preserving pins
+- only explicitly pinned entries persist in private app storage
+- normal clipboard history remains ephemeral
+- up to 40 local entries
 - hidden in sensitive fields
-- no persistent clipboard database yet
 
 ### 😀 Emoji
 
@@ -276,6 +280,7 @@ Clipboard / Emoji ───────────┤
 ## Documentation
 
 - [Daily Input Controls](docs/DAILY_INPUT.md)
+- [Smart Clipboard](docs/SMART_CLIPBOARD.md)
 - [Swipe Engine](docs/SWIPE_ENGINE.md)
 - [Prediction Engine](docs/PREDICTION_ENGINE.md)
 - [Code Switching](docs/CODE_SWITCHING.md)
@@ -294,7 +299,6 @@ Next milestones:
 
 - more handwriting edit gestures: select, range select, insert, join/split and preview
 - multilingual translation-target wheel
-- smart clipboard categorization, expiry and search
 - Voice Editing commands
 - optional Google Cloud Translation gateway
 - one-hand thumb geometry adaptation

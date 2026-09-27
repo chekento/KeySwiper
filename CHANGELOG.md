@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.12.0-alpha12 — 2026-09-28
+
+Smart Clipboard 2.0:
+
+- clipboard history upgraded from plain strings to structured entries
+- automatic local categories: Link, Email, Phone, Address, Code and Text
+- clipboard search added directly inside the keyboard
+- search matches both clipboard text and category names
+- clipboard items can be pinned or unpinned individually
+- only explicitly pinned clipboard entries persist across KeySwiper process restarts
+- pinned entries are stored in KeySwiper private app storage
+- normal unpinned clipboard history remains ephemeral
+- unpinned entries receive configurable expiration instead of living for the full process lifetime
+- quick expiry presets added: 10 minutes, 1 hour and 1 day
+- default clipboard expiry is persisted locally
+- Clear removes only unpinned entries and preserves pinned data
+- individual clipboard items can be deleted explicitly
+- pinned items sort above temporary history
+- duplicate clipboard captures are deduplicated through a stable SHA-256-derived local ID
+- clipboard capture now uses the real application Context when coercing clipboard text
+- history increased to up to 40 entries while retaining pinned entries preferentially
+- clipboard text is locally capped at 12,000 characters per entry
+- clipboard insertion refreshes language hints and prediction context
+- clipboard remains inaccessible from KeySwiper in sensitive/password fields
+- new unit tests cover Link, Email, Phone, Address, Code and Text classification
+- version advanced to 0.12.0-alpha12 / build 12
+
 ## 0.11.0-alpha11 — 2026-09-28
 
 Daily typing usability + translation target picker:

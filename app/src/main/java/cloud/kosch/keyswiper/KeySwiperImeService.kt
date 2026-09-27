@@ -78,6 +78,7 @@ class KeySwiperImeService : InputMethodService() {
     private var predictionInputMode = PredictionInputMode.GENERAL
     private var predictionGeneration = 0L
     private var currentPredictions: List<PredictionSuggestion> = emptyList()
+    private var clipboardQuery: String = ""
 
     private var lastSwipeWord: String? = null
     private var lastSwipeCandidates: List<String> = emptyList()
@@ -121,6 +122,9 @@ class KeySwiperImeService : InputMethodService() {
         neuralPredictionBackend = LiteRtLmPredictionBackend(neuralModelManager)
 
         clipboardController = ClipboardController(this)
+        clipboardController.setDefaultExpiryMinutes(
+            Prefs.clipboardExpiryMinutes(this)
+        )
         voiceController = VoiceInputController(this)
         stylusActionStore = StylusActionStore(this)
         clipboardController.start()
@@ -650,7 +654,89 @@ class KeySwiperImeService : InputMethodService() {
                 return
             }
 
-            root?.showClipboardPanel(clipboardController.items())
+            clipboardQuery = ""
+            showClipboardPanel()
+        }
+
+        override fun onClipboardInsert(
+            id: String
+        ) {
+            if (sensitiveField) return
+
+            val value =
+                clipboardController.textFor(id)
+                    ?: return
+
+            currentInputConnection
+                ?.commitText(
+                    value,
+                    1
+                )
+
+            clearSwipeState()
+            refreshLanguageHints(
+                textBeforeCursor()
+            )
+            refreshPredictionBar()
+        }
+
+        override fun onClipboardSearch(
+            query: String
+        ) {
+            if (sensitiveField) return
+
+            clipboardQuery =
+                query.trim()
+
+            showClipboardPanel()
+        }
+
+        override fun onClipboardTogglePin(
+            id: String
+        ) {
+            if (sensitiveField) return
+
+            clipboardController
+                .togglePin(id)
+
+            showClipboardPanel()
+        }
+
+        override fun onClipboardDelete(
+            id: String
+        ) {
+            if (sensitiveField) return
+
+            clipboardController
+                .delete(id)
+
+            showClipboardPanel()
+        }
+
+        override fun onClipboardClearUnpinned() {
+            if (sensitiveField) return
+
+            clipboardController
+                .clearUnpinned()
+
+            showClipboardPanel()
+        }
+
+        override fun onClipboardExpiryChanged(
+            minutes: Long
+        ) {
+            if (sensitiveField) return
+
+            Prefs.setClipboardExpiryMinutes(
+                this@KeySwiperImeService,
+                minutes
+            )
+            clipboardController
+                .setDefaultExpiryMinutes(
+                    minutes
+                )
+
+            showClipboardPanel()
         }
 
         override fun onEmoji(value: String) {
@@ -1336,6 +1422,26 @@ class KeySwiperImeService : InputMethodService() {
         connectionlessHandwriting = false
         connectionlessRecognizedText.setLength(0)
         finishConnectionlessStylusHandwriting(result)
+    }
+
+    private fun showClipboardPanel() {
+        if (sensitiveField) {
+            root?.clearSuggestions()
+            return
+        }
+
+        root?.showClipboardPanel(
+            items =
+                clipboardController.items(
+                    clipboardQuery
+                ),
+            query =
+                clipboardQuery,
+            expiryMinutes =
+                Prefs.clipboardExpiryMinutes(
+                    this
+                )
+        )
     }
 
     private fun currentContextSnapshot() =

@@ -387,6 +387,19 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
+            text = "Smart Clipboard"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Clipboard entries are categorized and searchable locally. Temporary entries expire after the preset selected inside the keyboard clipboard panel; only entries you explicitly pin are persisted."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
             text = "Direct stylus handwriting"
             textSize = 20f
             setTextColor(Color.rgb(22, 24, 30))

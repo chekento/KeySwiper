@@ -11,6 +11,7 @@ object Prefs {
     private const val HANDWRITING_LANGUAGE = "handwriting_language"
     private const val SEMANTIC_DEPTH = "semantic_prediction_depth"
     private const val KEYBOARD_LAYOUT = "keyboard_layout"
+    private const val CLIPBOARD_EXPIRY_MINUTES = "clipboard_expiry_minutes"
 
     fun targetLanguage(context: Context): String =
         context.getSharedPreferences(
@@ -234,6 +235,43 @@ object Prefs {
             .putString(
                 KEYBOARD_LAYOUT,
                 profile.id
+            )
+            .apply()
+    }
+
+    fun clipboardExpiryMinutes(
+        context: Context
+    ): Long =
+        context
+            .getSharedPreferences(
+                FILE,
+                Context.MODE_PRIVATE
+            )
+            .getLong(
+                CLIPBOARD_EXPIRY_MINUTES,
+                60L
+            )
+            .coerceIn(
+                10L,
+                1440L
+            )
+
+    fun setClipboardExpiryMinutes(
+        context: Context,
+        minutes: Long
+    ) {
+        context
+            .getSharedPreferences(
+                FILE,
+                Context.MODE_PRIVATE
+            )
+            .edit()
+            .putLong(
+                CLIPBOARD_EXPIRY_MINUTES,
+                minutes.coerceIn(
+                    10L,
+                    1440L
+                )
             )
             .apply()
     }
