@@ -11,7 +11,7 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
         val normalized = words
             .map { normalize(it) }
             .filter { it.isNotBlank() }
-            .takeLast(4)
+            .takeLast(5)
 
         if (normalized.size < 2) return
 
@@ -22,6 +22,12 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
         if (normalized.size >= 3) {
             val previous2 = normalized[normalized.lastIndex - 2]
             increment("t|$previous2|$previous|$next")
+        }
+
+        if (normalized.size >= 4) {
+            val previous3 = normalized[normalized.lastIndex - 3]
+            val previous2 = normalized[normalized.lastIndex - 2]
+            increment("q|$previous3|$previous2|$previous|$next")
         }
 
         increment("u|$next")
@@ -39,11 +45,11 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
         var history = contextWords
             .map { normalize(it) }
             .filter { it.isNotBlank() }
-            .takeLast(3)
+            .takeLast(4)
 
         for (word in chosenWords) {
             learnTransition(history + word)
-            history = (history + word).takeLast(3)
+            history = (history + word).takeLast(4)
             increment("chosen|$word", 2)
         }
     }
@@ -55,6 +61,7 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
         val normalized = contextWords.map { normalize(it) }.filter { it.isNotBlank() }
         val previous = normalized.lastOrNull().orEmpty()
         val previous2 = normalized.dropLast(1).lastOrNull().orEmpty()
+        val previous3 = normalized.dropLast(2).lastOrNull().orEmpty()
 
         var score = preferences.getInt("u|$word", 0).coerceAtMost(12)
         score += preferences.getInt("chosen|$word", 0).coerceAtMost(18)
@@ -62,28 +69,53 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
         if (previous.isNotBlank()) {
             score += preferences.getInt("b|$previous|$word", 0).coerceAtMost(30) * 2
         }
+
         if (previous2.isNotBlank() && previous.isNotBlank()) {
-            score += preferences.getInt("t|$previous2|$previous|$word", 0).coerceAtMost(30) * 4
+            score += preferences.getInt(
+                "t|$previous2|$previous|$word",
+                0
+            ).coerceAtMost(30) * 4
         }
 
-        return score.coerceAtMost(180)
+        if (previous3.isNotBlank() && previous2.isNotBlank() && previous.isNotBlank()) {
+            score += preferences.getInt(
+                "q|$previous3|$previous2|$previous|$word",
+                0
+            ).coerceAtMost(30) * 7
+        }
+
+        return score.coerceAtMost(260)
     }
 
-    override fun learnedFollowers(contextWords: List<String>, limit: Int): List<Pair<String, Int>> {
+    override fun learnedFollowers(
+        contextWords: List<String>,
+        limit: Int
+    ): List<Pair<String, Int>> {
         val normalized = contextWords.map { normalize(it) }.filter { it.isNotBlank() }
         val previous = normalized.lastOrNull().orEmpty()
         val previous2 = normalized.dropLast(1).lastOrNull().orEmpty()
+        val previous3 = normalized.dropLast(2).lastOrNull().orEmpty()
+
         if (previous.isBlank()) return emptyList()
 
         val results = mutableMapOf<String, Int>()
 
         preferences.all.forEach { (key, value) ->
             val count = value as? Int ?: return@forEach
+
             when {
-                previous2.isNotBlank() && key.startsWith("t|$previous2|$previous|") -> {
+                previous3.isNotBlank() &&
+                    key.startsWith("q|$previous3|$previous2|$previous|") -> {
+                    val candidate = key.substringAfterLast('|')
+                    results[candidate] = maxOf(results[candidate] ?: 0, count * 9)
+                }
+
+                previous2.isNotBlank() &&
+                    key.startsWith("t|$previous2|$previous|") -> {
                     val candidate = key.substringAfterLast('|')
                     results[candidate] = maxOf(results[candidate] ?: 0, count * 5)
                 }
+
                 key.startsWith("b|$previous|") -> {
                     val candidate = key.substringAfterLast('|')
                     results[candidate] = maxOf(results[candidate] ?: 0, count * 3)
@@ -107,12 +139,12 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
     }
 
     private fun pruneIfNeeded() {
-        if (preferences.all.size <= 2500) return
+        if (preferences.all.size <= 4000) return
 
         val removable = preferences.all
             .mapNotNull { (key, value) -> (value as? Int)?.let { key to it } }
             .sortedBy { it.second }
-            .take(350)
+            .take(600)
 
         val editor = preferences.edit()
         removable.forEach { editor.remove(it.first) }

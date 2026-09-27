@@ -1,52 +1,91 @@
 # Prediction Engine
 
-## Goal
+## Architecture
 
-KeySwiper's prediction strip is a permanent intelligent layer between the toolbar and the keyboard.
+KeySwiper prediction is intentionally split into latency layers.
 
-It is designed for two latency classes:
+### 1. Instant layer
 
-1. **Instant local prediction** — must react on every character without network latency.
-2. **High-intelligence refinement** — can later use a compatible local model or explicit cloud provider without blocking normal typing.
+The instant layer is called after normal typing events and must stay responsive without waiting for network or model startup.
 
-## v0.4 local prediction stack
-
-The current engine combines:
+It currently provides:
 
 - partial-word completion;
-- next-word transitions;
-- static multilingual language packs;
-- Google ML Kit language identification as a context signal;
-- local personal unigram / bigram / trigram counts;
-- learned followers from the user's own confirmed text;
-- curated sentence-continuation patterns;
-- explicit suggestion-selection reinforcement.
+- next-word suggestions;
+- language-aware vocabulary;
+- local personal 2/3/4-gram learning;
+- selected-suggestion reinforcement;
+- short curated phrase continuations.
 
-The strip shows up to six ranked chips. Longer sentence continuations use an arrow prefix so they are visually distinguishable from single-word predictions.
+### 2. Semantic layer
 
-## Dynamic modes
+The semantic layer performs local beam search over multiple possible word sequences. It can plan between 2 and 6 words ahead and merges:
 
-The same strip has two states:
+- personal learned followers;
+- multilingual transition graphs;
+- input-mode priors;
+- per-step ranking priors;
+- language hints.
 
-- **Prediction mode:** word completion, next word and sentence continuation.
-- **Swipe correction mode:** immediately after a swipe, the top swipe candidates temporarily occupy the strip.
+By default the semantic depth is 5 words. It can be changed in Settings.
 
-Typing, spacing or selecting a prediction returns the strip to normal prediction mode.
+### Hybrid ranking
 
-## Personal learning
+The visible strip normally keeps:
 
-Prediction learning is stored locally. It learns short transitions instead of storing complete messages as one history document. The store is bounded and periodically prunes low-frequency entries.
+- up to four fast single-word/completion suggestions;
+- up to two longer semantic sentence continuations.
 
-Sensitive fields and Android no-personalized-learning fields do not expose surrounding text to the prediction engine and do not update personal prediction data.
+This prevents multi-word predictions from crowding out useful one-tap next-word choices.
 
-## GenAI strategy
+## Input context modes
 
-Google's ML Kit Prompt API is powered by Gemini Nano through AICore and is attractive for on-device generation. However, current AICore documentation restricts GenAI inference when an app is not the foreground application. An Android IME runs as an input method while another application owns the foreground, so KeySwiper does not make Gemini Nano a required always-on predictor.
+KeySwiper classifies the current Android editor locally using `EditorInfo`:
 
-Future high-intelligence providers should therefore be additive:
+- General
+- Message
+- Email
+- Search
+- Code
 
-- a compact custom on-device language model delivered with LiteRT / model delivery;
-- a device-specific provider where IME-compatible inference is verified;
-- an explicit secure cloud provider through a gateway, never with a service-account key embedded in the APK.
+The mode changes ranking priors. It does not upload the app name or typed text.
 
-The local prediction strip remains usable even when all GenAI providers are unavailable.
+## Personal language memory
+
+The local memory stores derived word-transition counts. v0.5 adds four-word context, allowing a known three-word prefix to influence the next token more strongly than a generic bigram.
+
+The memory is bounded and prunes low-frequency entries.
+
+Sensitive/password and no-personalized-learning fields bypass prediction context and learning.
+
+## Neural provider architecture
+
+`NeuralPredictionBackend` is now a stable integration boundary for a future downloaded local language model.
+
+The keyboard does not require a neural model to function.
+
+Preferred future path:
+
+1. download a compatible `.litertlm` model separately from the APK;
+2. validate storage, device memory and accelerator support;
+3. initialize LiteRT-LM only when the device can support it;
+4. ask the neural provider for a small number of semantic continuations;
+5. merge neural suggestions with the instant and beam-search results;
+6. fall back instantly when the model is absent, busy or too slow.
+
+This avoids shipping a very large language model inside every APK.
+
+## Gemini Nano / AICore
+
+Gemini Nano remains useful for explicit foreground GenAI features, but KeySwiper does not depend on it for always-on prediction because current AICore GenAI inference is restricted to the top foreground application. An IME normally serves another foreground app.
+
+## Future work
+
+- downloadable LiteRT-LM model manager;
+- model-size tiers;
+- neural reranking of swipe candidates;
+- cross-language code-switching model;
+- punctuation prediction;
+- named-entity and contact-aware suggestions with explicit permission;
+- domain profiles such as developer, business, gaming and creative writing;
+- confidence calibration from real correction outcomes.

@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -38,7 +39,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Adaptive multimodal Android keyboard — swipe, prediction, stylus, voice, clipboard, emoji and multilingual input."
+            text = "Adaptive multimodal Android keyboard — swipe, hybrid prediction, stylus, voice, clipboard, emoji and multilingual input."
             textSize = 16f
             setPadding(0, dp(8), 0, dp(22))
         })
@@ -115,8 +116,29 @@ class SettingsActivity : Activity() {
             )
         )
 
+        content.addView(TextView(this).apply {
+            text = "Semantic prediction depth (2–6 words)"
+            textSize = 14f
+            setPadding(0, dp(18), 0, dp(6))
+        })
+
+        val semanticDepth = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(Prefs.semanticPredictionDepth(this@SettingsActivity).toString())
+            hint = "5"
+            maxLines = 1
+        }
+
+        content.addView(
+            semanticDepth,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
         content.addView(Button(this).apply {
-            text = "Save language settings"
+            text = "Save language & prediction settings"
             setOnClickListener {
                 Prefs.setTargetLanguage(
                     this@SettingsActivity,
@@ -126,14 +148,33 @@ class SettingsActivity : Activity() {
                     this@SettingsActivity,
                     handwritingLanguage.text.toString()
                 )
+                Prefs.setSemanticPredictionDepth(
+                    this@SettingsActivity,
+                    semanticDepth.text.toString().toIntOrNull() ?: 5
+                )
+                semanticDepth.setText(
+                    Prefs.semanticPredictionDepth(this@SettingsActivity).toString()
+                )
                 text = "Saved ✓"
             }
         })
 
         content.addView(TextView(this).apply {
-            text = "Prediction v1 combines word completion, next-word prediction, local bigrams/trigrams, sentence continuations, Google ML Kit language hints and personal local learning."
+            text = "Prediction v2 combines instant completion, next-word prediction, local 2/3/4-gram learning and a semantic beam-search layer that can plan several words ahead."
             textSize = 14f
             setPadding(0, dp(24), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Input context is classified locally as General, Message, Email, Search or Code so ranking can adapt without sending app content anywhere."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "A neural-provider interface is prepared for future downloaded LiteRT-LM models. The keyboard does not depend on that model and remains fully usable without it."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
         })
 
         content.addView(Button(this).apply {

@@ -7,6 +7,7 @@ object Prefs {
     private const val FILE = "keyswiper_prefs"
     private const val TARGET_LANGUAGE = "target_language"
     private const val HANDWRITING_LANGUAGE = "handwriting_language"
+    private const val SEMANTIC_DEPTH = "semantic_prediction_depth"
 
     fun targetLanguage(context: Context): String =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -28,5 +29,15 @@ object Prefs {
     fun setHandwritingLanguage(context: Context, value: String) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putString(HANDWRITING_LANGUAGE, value.trim()).apply()
+    }
+
+    fun semanticPredictionDepth(context: Context): Int =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getInt(SEMANTIC_DEPTH, 5)
+            .coerceIn(2, 6)
+
+    fun setSemanticPredictionDepth(context: Context, value: Int) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putInt(SEMANTIC_DEPTH, value.coerceIn(2, 6)).apply()
     }
 }

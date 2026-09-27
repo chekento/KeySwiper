@@ -14,6 +14,11 @@ import cloud.kosch.keyswiper.input.SwipeLearningStore
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.prediction.ContextPredictionEngine
+import cloud.kosch.keyswiper.prediction.HybridPredictionEngine
+import cloud.kosch.keyswiper.prediction.LocalBeamSemanticProvider
+import cloud.kosch.keyswiper.prediction.PredictionContext
+import cloud.kosch.keyswiper.prediction.PredictionContextClassifier
+import cloud.kosch.keyswiper.prediction.PredictionInputMode
 import cloud.kosch.keyswiper.prediction.PredictionLearningStore
 import cloud.kosch.keyswiper.prediction.PredictionSuggestion
 import cloud.kosch.keyswiper.security.SecurityPolicy
@@ -32,13 +37,14 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var swipeLearningStore: SwipeLearningStore
     private lateinit var motorProfileStore: MotorProfileStore
     private lateinit var predictionLearningStore: PredictionLearningStore
-    private lateinit var predictionEngine: ContextPredictionEngine
+    private lateinit var predictionEngine: HybridPredictionEngine
     private lateinit var clipboardController: ClipboardController
     private lateinit var voiceController: VoiceInputController
 
     private var root: KeyboardRootView? = null
     private var sensitiveField = false
     private var languageHints: List<String> = emptyList()
+    private var predictionInputMode = PredictionInputMode.GENERAL
 
     private var lastSwipeWord: String? = null
     private var lastSwipeCandidates: List<String> = emptyList()
@@ -51,7 +57,14 @@ class KeySwiperImeService : InputMethodService() {
         swipeLearningStore = SwipeLearningStore(this)
         motorProfileStore = MotorProfileStore(this)
         predictionLearningStore = PredictionLearningStore(this)
-        predictionEngine = ContextPredictionEngine(predictionLearningStore)
+
+        val instantPrediction = ContextPredictionEngine(predictionLearningStore)
+        val semanticPrediction = LocalBeamSemanticProvider(predictionLearningStore)
+        predictionEngine = HybridPredictionEngine(
+            instant = instantPrediction,
+            semantic = semanticPrediction
+        )
+
         clipboardController = ClipboardController(this)
         voiceController = VoiceInputController(this)
         clipboardController.start()
@@ -68,6 +81,7 @@ class KeySwiperImeService : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         sensitiveField = SecurityPolicy.isSensitive(attribute)
+        predictionInputMode = PredictionContextClassifier.classify(attribute)
         languageHints = emptyList()
         clearSwipeState()
     }
@@ -75,6 +89,7 @@ class KeySwiperImeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         sensitiveField = SecurityPolicy.isSensitive(info)
+        predictionInputMode = PredictionContextClassifier.classify(info)
         refreshPrivacyState()
 
         if (sensitiveField) {
@@ -90,6 +105,7 @@ class KeySwiperImeService : InputMethodService() {
         super.onFinishInput()
         voiceController.stop()
         languageHints = emptyList()
+        predictionInputMode = PredictionInputMode.GENERAL
         clearSwipeState()
         root?.clearSuggestions()
         root?.setStatus(null)
@@ -142,7 +158,7 @@ class KeySwiperImeService : InputMethodService() {
             lastSwipeTrace = trace
 
             root?.setSwipeCandidates(values)
-            refreshLanguageHints((before + " " + word).takeLast(500))
+            refreshLanguageHints((before + " " + word).takeLast(700))
         }
 
         override fun onBackspace() {
@@ -164,7 +180,7 @@ class KeySwiperImeService : InputMethodService() {
 
             val before = textBeforeCursor()
             if (!sensitiveField) {
-                predictionLearningStore.learnTransition(extractWords(before).takeLast(4))
+                predictionLearningStore.learnTransition(extractWords(before).takeLast(5))
             }
 
             refreshLanguageHints(before)
@@ -191,7 +207,7 @@ class KeySwiperImeService : InputMethodService() {
 
             val connection = currentInputConnection ?: return
             val before = textBeforeCursor()
-            val contextWords = extractWords(before).takeLast(4)
+            val contextWords = extractWords(before).takeLast(5)
 
             if (suggestion.replacesCurrentToken) {
                 val length = currentToken(before).length
@@ -260,7 +276,7 @@ class KeySwiperImeService : InputMethodService() {
 
                     val before = textBeforeCursor()
                     predictionLearningStore.learnTransition(
-                        extractWords(before).takeLast(4)
+                        extractWords(before).takeLast(5)
                     )
                     refreshLanguageHints(before)
                     refreshPredictionBar()
@@ -327,7 +343,7 @@ class KeySwiperImeService : InputMethodService() {
 
                     val updated = textBeforeCursor()
                     predictionLearningStore.learnTransition(
-                        extractWords(updated).takeLast(4)
+                        extractWords(updated).takeLast(5)
                     )
                     refreshLanguageHints(updated)
                     refreshPredictionBar()
@@ -386,7 +402,7 @@ class KeySwiperImeService : InputMethodService() {
 
             val updated = textBeforeCursor()
             predictionLearningStore.learnTransition(
-                extractWords(updated).takeLast(4)
+                extractWords(updated).takeLast(5)
             )
         }
 
@@ -401,13 +417,19 @@ class KeySwiperImeService : InputMethodService() {
             return
         }
 
-        val before = textBeforeCursor()
-        val predictions = predictionEngine.predict(
-            beforeCursor = before,
+        val context = PredictionContext(
+            beforeCursor = textBeforeCursor(),
             languageHints = languageHints,
-            maxSuggestions = 6
+            inputMode = predictionInputMode,
+            maxSemanticTokens = Prefs.semanticPredictionDepth(this)
         )
-        root?.setPredictions(predictions)
+
+        root?.setPredictions(
+            predictionEngine.predict(
+                context = context,
+                maxSuggestions = 6
+            )
+        )
     }
 
     private fun refreshLanguageHints(text: String) {
@@ -423,7 +445,7 @@ class KeySwiperImeService : InputMethodService() {
 
     private fun textBeforeCursor(): String =
         currentInputConnection
-            ?.getTextBeforeCursor(500, 0)
+            ?.getTextBeforeCursor(700, 0)
             ?.toString()
             .orEmpty()
 
@@ -434,7 +456,7 @@ class KeySwiperImeService : InputMethodService() {
 
     private fun extractWords(text: String): List<String> =
         Regex("[\\p{L}\\p{N}'-]+")
-            .findAll(text.takeLast(500))
+            .findAll(text.takeLast(700))
             .map { it.value.lowercase() }
             .toList()
 

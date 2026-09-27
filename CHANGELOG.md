@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0-alpha05 — 2026-09-27
+
+Hybrid semantic prediction:
+
+- new two-layer prediction architecture: instant local suggestions plus semantic multi-word prediction
+- local semantic beam search can plan 2–6 words ahead
+- semantic prediction depth is configurable in Settings, default 5 words
+- local personal prediction learning expanded from bigrams/trigrams to 2/3/4-gram context
+- longer personal context receives progressively higher ranking weight
+- semantic beam search mixes learned personal followers with language transition graphs
+- candidate beams are scored by rank prior, personal context and input-mode relevance
+- prediction input context is classified locally as General, Message, Email, Search or Code using Android EditorInfo
+- mode-aware ranking can favor message, email, search or code vocabulary without uploading app content
+- hybrid engine keeps up to four fast word suggestions plus up to two longer semantic continuations
+- neural prediction backend contract added for future downloadable model providers
+- LiteRT-LM selected as the preferred future local neural path rather than making Gemini Nano/AICore mandatory for the IME
+- new beam-search unit tests cover multi-word continuation, partial-token suppression and hybrid word/sentence output
+- version advanced to 0.5.0-alpha05 / build 5
+
 ## 0.4.0-alpha04 — 2026-09-27
 
 Intelligent word and sentence prediction:

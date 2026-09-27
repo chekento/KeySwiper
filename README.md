@@ -27,8 +27,10 @@ The first implementation focuses on a buildable architecture with:
 - custom QWERTY keyboard view with tap + swipe path capture
 - adaptive Swipe v3 ranking with geometric path scoring and local correction learning
 - intelligent word completion, next-word and sentence prediction strip
+- hybrid instant + semantic beam-search prediction up to 2–6 words ahead
 - Google ML Kit auto-language hints plus per-user motor offsets for swipe ranking
-- personal local bigram/trigram prediction learning
+- personal local 2/3/4-gram prediction learning
+- local General / Message / Email / Search / Code context modes
 - suggestion/candidate strip
 - clipboard panel
 - emoji panel
@@ -80,13 +82,14 @@ gradle :app:assembleDebug
 
 The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
 
-See [Swipe Engine](docs/SWIPE_ENGINE.md) for the current adaptive-decoder design and [Prediction Engine](docs/PREDICTION_ENGINE.md) for word/sentence prediction.
+See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_ENGINE.md) and [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md).
 
 ## Roadmap
 
 Next milestones:
 
-- multilingual dictionaries and next-word prediction
+- downloadable LiteRT-LM neural prediction provider
+- larger multilingual dictionaries and code-switching prediction
 - richer S Pen button / Air Action support on compatible Samsung devices
 - direct Android stylus-handwriting IME session support
 - editable gesture mappings

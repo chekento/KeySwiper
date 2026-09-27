@@ -10,8 +10,8 @@ android {
         applicationId = "cloud.kosch.keyswiper"
         minSdk = 23
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0-alpha04"
+        versionCode = 5
+        versionName = "0.5.0-alpha05"
     }
 
     compileOptions {
