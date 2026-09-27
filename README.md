@@ -63,7 +63,7 @@ Keyboard software handles unusually sensitive data. KeySwiper therefore follows 
 Requirements:
 
 - JDK 17
-- Android SDK 37
+- Android SDK 36
 - Gradle 9.6+
 - Android Gradle Plugin 9.4
 
@@ -73,7 +73,7 @@ From the repository root:
 gradle :app:assembleDebug
 ```
 
-The GitHub Actions workflow also builds and uploads the debug APK as a workflow artifact.
+The GitHub Actions workflow runs unit tests, builds the debug APK and uploads it as the `KeySwiper-debug` workflow artifact.
 
 ## Roadmap
 
