@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.0-alpha07 — 2026-09-27
+
+Multilingual language lanes, larger dictionaries and personal vocabulary:
+
+- embedded German, English, Italian, French and Spanish core language packs expanded substantially
+- prediction no longer assumes one active language for the entire sentence
+- new code-switch resolver keeps up to three language lanes active in parallel
+- language-lane scoring combines Google ML Kit hints, recent token vocabulary, token recency, distinctive diacritics, partial-word prefix matches and technical vocabulary
+- mixed-language technical writing deliberately keeps German and English lanes alive together
+- instant word completion ranks candidates across all active language lanes
+- next-word prediction uses language-pack transition maps weighted by lane confidence
+- sentence prediction uses the same code-switch lanes as instant prediction
+- swipe decoding now draws its lexicon from the shared multilingual language packs
+- swipe language ranking uses the active code-switch lanes instead of raw language hints alone
+- accented and umlaut words are converted to an internal swipe form for geometry while committing the correctly spelled original word
+- local personal vocabulary learns confirmed typed words and can influence completions and next-word ranking
+- manually remembered words can be pinned from Settings with an optional language tag
+- Settings can forget individual personal words or reset the complete personal vocabulary
+- explicit swipe corrections pin the corrected word into the local vocabulary
+- prediction selections feed chosen words into the personal vocabulary
+- personal vocabulary remains local and is never updated in sensitive/password fields
+- new tests cover German/English mixed-language lanes, distinctive-character language promotion, shared technical vocabulary and mixed-language prediction
+- version advanced to 0.7.0-alpha07 / build 7
+
 ## 0.6.0-alpha06 — 2026-09-27
 
 Surrounding Context Intelligence + LiteRT-LM model manager:

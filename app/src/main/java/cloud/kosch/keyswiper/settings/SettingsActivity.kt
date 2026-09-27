@@ -18,6 +18,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeLearningStore
+import cloud.kosch.keyswiper.language.UserVocabularyStore
 import cloud.kosch.keyswiper.prediction.NeuralModelManager
 import cloud.kosch.keyswiper.prediction.NeuralModelStatus
 import cloud.kosch.keyswiper.prediction.PredictionLearningStore
@@ -186,7 +187,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Prediction v3 combines instant completion, local 2/3/4-gram learning, contextual beam search and an optional LiteRT-LM neural reranker."
+            text = "Prediction v4 combines larger multilingual language packs, three simultaneous code-switch lanes, personal vocabulary, instant completion, local 2/3/4-gram learning, contextual beam search and optional LiteRT-LM neural refinement."
             textSize = 14f
             setPadding(0, dp(6), 0, dp(8))
         })
@@ -257,6 +258,76 @@ class SettingsActivity : Activity() {
             text = "Neural models are optional and stored only inside KeySwiper's private app storage. The keyboard remains fully functional without one."
             textSize = 13f
             setPadding(0, dp(6), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Personal vocabulary & code-switching"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "German, English, Italian, French and Spanish can stay active in parallel. Frequently confirmed words are learned locally and can be explicitly pinned below."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        val personalWord = EditText(this).apply {
+            hint = "Word or name to remember"
+            maxLines = 1
+        }
+        content.addView(
+            personalWord,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val personalLanguage = EditText(this).apply {
+            hint = "Optional language tag: de, en, it, fr, es"
+            maxLines = 1
+        }
+        content.addView(
+            personalLanguage,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        content.addView(Button(this).apply {
+            text = "Remember word"
+            setOnClickListener {
+                val word = personalWord.text.toString()
+                if (word.isNotBlank()) {
+                    UserVocabularyStore(this@SettingsActivity).rememberWord(
+                        word,
+                        personalLanguage.text.toString().trim().takeIf { it.isNotBlank() }
+                    )
+                    text = "Remembered ✓"
+                }
+            }
+        })
+
+        content.addView(Button(this).apply {
+            text = "Forget word"
+            setOnClickListener {
+                val word = personalWord.text.toString()
+                if (word.isNotBlank()) {
+                    UserVocabularyStore(this@SettingsActivity).forgetWord(word)
+                    text = "Forgot local word ✓"
+                }
+            }
+        })
+
+        content.addView(Button(this).apply {
+            text = "Reset personal vocabulary"
+            setOnClickListener {
+                UserVocabularyStore(this@SettingsActivity).reset()
+                text = "Personal vocabulary reset ✓"
+            }
         })
 
         content.addView(TextView(this).apply {

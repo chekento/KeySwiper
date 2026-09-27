@@ -1,7 +1,13 @@
 package cloud.kosch.keyswiper.prediction
 
+import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
+import cloud.kosch.keyswiper.language.LanguageLane
+import cloud.kosch.keyswiper.language.LanguagePackRegistry
+import cloud.kosch.keyswiper.language.UserVocabularyLookup
+
 class ContextPredictionEngine(
-    private val learningStore: PredictionMemory
+    private val learningStore: PredictionMemory,
+    private val userVocabulary: UserVocabularyLookup? = null
 ) {
 
     private data class Phrase(
@@ -13,75 +19,6 @@ class ContextPredictionEngine(
     private data class ScoredSuggestion(
         val suggestion: PredictionSuggestion,
         val score: Int
-    )
-
-    private val languageWords = mapOf(
-        "de" to listOf(
-            "aber","alle","also","auch","auf","aus","bei","bin","bitte","danke","das","dein","deine",
-            "den","der","die","doch","ein","eine","einen","einer","es","für","gut","habe","haben","hallo",
-            "heute","hier","ich","ist","ja","jetzt","kann","können","machen","man","mehr","mein","meine",
-            "mit","morgen","möchte","muss","nach","nicht","noch","oder","sehr","so","später","super","und",
-            "uns","von","was","weiter","wenn","wie","wir","wird","würde","zu","zum"
-        ),
-        "en" to listOf(
-            "about","also","and","are","because","can","could","do","for","from","good","great","have","hello",
-            "here","how","i","if","is","it","later","like","make","more","need","now","of","on","or","please",
-            "really","so","that","the","then","there","this","today","tomorrow","very","want","we","what",
-            "when","with","would","yes","you","your"
-        ),
-        "it" to listOf(
-            "anche","bene","buongiorno","ciao","come","con","domani","e","fare","grazie","ho","io","ma","molto",
-            "non","oggi","ora","per","perché","più","posso","questo","se","si","sono","tu","un","una","voglio"
-        ),
-        "fr" to listOf(
-            "alors","aussi","avec","bien","bonjour","ce","comme","demain","et","faire","je","maintenant","mais",
-            "merci","non","nous","oui","parce","pas","plus","pour","peux","quand","que","très","tu","un","une",
-            "vous","veux"
-        ),
-        "es" to listOf(
-            "ahora","bien","como","con","cuando","de","gracias","hola","hoy","mañana","más","muy","no","para",
-            "pero","porque","puedo","que","quiero","si","sí","también","un","una","y","yo"
-        )
-    )
-
-    private val transitions = mapOf(
-        "de" to mapOf(
-            "ich" to listOf("möchte","kann","habe","bin","würde","muss"),
-            "wir" to listOf("können","haben","sollten","machen","brauchen"),
-            "das" to listOf("ist","wäre","kann","sollte","funktioniert"),
-            "es" to listOf("ist","gibt","wäre","kann","soll"),
-            "bitte" to listOf("weiter","prüfen","machen","noch","auch"),
-            "sehr" to listOf("gut","gerne","schön","wichtig"),
-            "nicht" to listOf("nur","mehr","ganz","so"),
-            "wie" to listOf("kann","sieht","geht","wäre")
-        ),
-        "en" to mapOf(
-            "i" to listOf("want","would","can","have","need","think"),
-            "we" to listOf("can","should","need","have","want"),
-            "this" to listOf("is","would","can","looks","works"),
-            "it" to listOf("is","would","can","looks","works"),
-            "please" to listOf("continue","check","make","add","also"),
-            "very" to listOf("good","important","useful","nice"),
-            "not" to listOf("only","yet","really","just")
-        ),
-        "it" to mapOf(
-            "io" to listOf("voglio","posso","ho","sono"),
-            "noi" to listOf("possiamo","vogliamo","abbiamo"),
-            "questo" to listOf("è","può","sarebbe"),
-            "molto" to listOf("bene","importante","utile")
-        ),
-        "fr" to mapOf(
-            "je" to listOf("veux","peux","suis","pense"),
-            "nous" to listOf("pouvons","devons","avons"),
-            "ce" to listOf("est","serait","peut"),
-            "très" to listOf("bien","important","utile")
-        ),
-        "es" to mapOf(
-            "yo" to listOf("quiero","puedo","tengo","soy"),
-            "nosotros" to listOf("podemos","queremos","tenemos"),
-            "esto" to listOf("es","puede","sería"),
-            "muy" to listOf("bien","importante","útil")
-        )
     )
 
     private val phraseBank = listOf(
@@ -107,104 +44,263 @@ class ContextPredictionEngine(
     ): List<PredictionSuggestion> {
         val partial = currentToken(beforeCursor)
         val completedWords = completedWords(beforeCursor)
-        val languages = preferredLanguages(languageHints)
-        val contextWords = completedWords.takeLast(4)
+        val contextWords = completedWords.takeLast(5)
+
+        val lanes = CodeSwitchLanguageResolver.resolve(
+            contextText = beforeCursor,
+            detectedLanguages = languageHints,
+            currentToken = partial,
+            maxLanes = 3
+        )
+
         val scored = mutableMapOf<String, ScoredSuggestion>()
 
         if (partial.isNotBlank()) {
-            for (language in languages) {
-                languageWords[language].orEmpty()
-                    .filter {
-                        it.startsWith(partial, ignoreCase = true) &&
-                            !it.equals(partial, ignoreCase = true)
-                    }
-                    .forEachIndexed { index, candidate ->
-                        add(
-                            scored,
-                            PredictionSuggestion(
-                                display = candidate,
-                                commitText = candidate,
-                                kind = PredictionKind.COMPLETION,
-                                replacesCurrentToken = true,
-                                confidence = (0.94f - index * 0.02f).coerceAtLeast(0.45f)
-                            ),
-                            900 - index * 12 + learningStore.boost(contextWords, candidate)
-                        )
-                    }
-            }
+            addCompletions(
+                scored = scored,
+                partial = partial,
+                contextWords = contextWords,
+                lanes = lanes
+            )
         } else {
-            learningStore.learnedFollowers(contextWords).forEach { (candidate, learnedScore) ->
-                add(
-                    scored,
-                    PredictionSuggestion(
-                        display = candidate,
-                        commitText = candidate,
-                        kind = PredictionKind.NEXT_WORD,
-                        confidence = 0.91f
-                    ),
-                    1080 + learnedScore
-                )
-            }
+            addNextWords(
+                scored = scored,
+                contextWords = contextWords,
+                lanes = lanes
+            )
 
-            val last = contextWords.lastOrNull()?.lowercase().orEmpty()
-            for (language in languages) {
-                transitions[language]?.get(last).orEmpty()
-                    .forEachIndexed { index, candidate ->
-                        add(
-                            scored,
-                            PredictionSuggestion(
-                                display = candidate,
-                                commitText = candidate,
-                                kind = PredictionKind.NEXT_WORD,
-                                confidence = (0.90f - index * 0.04f).coerceAtLeast(0.50f)
-                            ),
-                            920 - index * 18 + learningStore.boost(contextWords, candidate)
-                        )
-                    }
-            }
-
-            phraseSuggestions(contextWords, languages).forEachIndexed { index, phrase ->
-                add(
-                    scored,
-                    PredictionSuggestion(
-                        display = "→ $phrase",
-                        commitText = phrase,
-                        kind = PredictionKind.SENTENCE,
-                        confidence = (0.88f - index * 0.05f).coerceAtLeast(0.50f)
-                    ),
-                    990 - index * 22 + learningStore.boost(contextWords, phrase)
-                )
-            }
+            addSentenceContinuations(
+                scored = scored,
+                contextWords = contextWords,
+                lanes = lanes
+            )
         }
 
         if (scored.size < maxSuggestions) {
-            for (language in languages) {
-                languageWords[language].orEmpty().take(18).forEachIndexed { index, candidate ->
-                    if (partial.isBlank() || candidate.startsWith(partial, ignoreCase = true)) {
-                        add(
-                            scored,
-                            PredictionSuggestion(
-                                display = candidate,
-                                commitText = candidate,
-                                kind = if (partial.isBlank()) {
-                                    PredictionKind.NEXT_WORD
-                                } else {
-                                    PredictionKind.COMPLETION
-                                },
-                                replacesCurrentToken = partial.isNotBlank(),
-                                confidence = 0.40f
-                            ),
-                            250 - index + learningStore.boost(contextWords, candidate)
-                        )
-                    }
-                }
-            }
+            addFallbacks(
+                scored = scored,
+                partial = partial,
+                contextWords = contextWords,
+                lanes = lanes
+            )
         }
 
         return scored.values
             .sortedByDescending { it.score }
             .map { it.suggestion }
             .take(maxSuggestions)
+    }
+
+    private fun addCompletions(
+        scored: MutableMap<String, ScoredSuggestion>,
+        partial: String,
+        contextWords: List<String>,
+        lanes: List<LanguageLane>
+    ) {
+        userVocabulary
+            ?.prefixMatches(partial, lanes, 8)
+            .orEmpty()
+            .forEach { (candidate, personalScore) ->
+                add(
+                    scored,
+                    PredictionSuggestion(
+                        display = candidate,
+                        commitText = candidate,
+                        kind = PredictionKind.COMPLETION,
+                        replacesCurrentToken = true,
+                        confidence = 0.96f
+                    ),
+                    1160 + personalScore
+                )
+            }
+
+        lanes.forEach { lane ->
+            val pack = LanguagePackRegistry.get(lane.tag)
+                ?: return@forEach
+
+            pack.prefixMatches(partial, 20)
+                .forEachIndexed { index, candidate ->
+                    val technicalBoost =
+                        if (candidate in pack.technicalTerms) 35 else 0
+
+                    add(
+                        scored,
+                        PredictionSuggestion(
+                            display = candidate,
+                            commitText = candidate,
+                            kind = PredictionKind.COMPLETION,
+                            replacesCurrentToken = true,
+                            confidence = (
+                                0.94f -
+                                    index * 0.015f +
+                                    lane.score * 0.03f
+                                ).coerceIn(0.45f, 0.98f)
+                        ),
+                        900 +
+                            (lane.score * 180f).toInt() -
+                            index * 9 +
+                            technicalBoost +
+                            learningStore.boost(contextWords, candidate)
+                    )
+                }
+        }
+    }
+
+    private fun addNextWords(
+        scored: MutableMap<String, ScoredSuggestion>,
+        contextWords: List<String>,
+        lanes: List<LanguageLane>
+    ) {
+        learningStore.learnedFollowers(contextWords, limit = 12)
+            .forEach { (candidate, learnedScore) ->
+                add(
+                    scored,
+                    PredictionSuggestion(
+                        display = candidate,
+                        commitText = candidate,
+                        kind = PredictionKind.NEXT_WORD,
+                        confidence = 0.94f
+                    ),
+                    1220 + learnedScore
+                )
+            }
+
+        val last = contextWords.lastOrNull().orEmpty()
+
+        lanes.forEach { lane ->
+            val pack = LanguagePackRegistry.get(lane.tag)
+                ?: return@forEach
+
+            pack.commonNext[last].orEmpty()
+                .forEachIndexed { index, candidate ->
+                    add(
+                        scored,
+                        PredictionSuggestion(
+                            display = candidate,
+                            commitText = candidate,
+                            kind = PredictionKind.NEXT_WORD,
+                            confidence = (
+                                0.90f -
+                                    index * 0.035f +
+                                    lane.score * 0.035f
+                                ).coerceIn(0.50f, 0.97f)
+                        ),
+                        950 +
+                            (lane.score * 210f).toInt() -
+                            index * 16 +
+                            learningStore.boost(contextWords, candidate)
+                    )
+                }
+        }
+
+        userVocabulary
+            ?.frequentWords(lanes, 8)
+            .orEmpty()
+            .forEach { (candidate, personalScore) ->
+                add(
+                    scored,
+                    PredictionSuggestion(
+                        display = candidate,
+                        commitText = candidate,
+                        kind = PredictionKind.NEXT_WORD,
+                        confidence = 0.68f
+                    ),
+                    460 + personalScore +
+                        learningStore.boost(contextWords, candidate)
+                )
+            }
+    }
+
+    private fun addSentenceContinuations(
+        scored: MutableMap<String, ScoredSuggestion>,
+        contextWords: List<String>,
+        lanes: List<LanguageLane>
+    ) {
+        val activeTags = lanes.map { it.tag }.toSet()
+        val normalizedContext = contextWords.map { it.lowercase() }
+
+        phraseBank.asSequence()
+            .filter { phrase ->
+                phrase.languages.any { it in activeTags }
+            }
+            .filter { phrase ->
+                normalizedContext.takeLast(phrase.prefix.size) ==
+                    phrase.prefix
+            }
+            .take(4)
+            .forEachIndexed { index, phrase ->
+                val languageWeight = lanes
+                    .filter { it.tag in phrase.languages }
+                    .maxOfOrNull { it.score }
+                    ?: 0.4f
+
+                add(
+                    scored,
+                    PredictionSuggestion(
+                        display = "→ ${phrase.completion}",
+                        commitText = phrase.completion,
+                        kind = PredictionKind.SENTENCE,
+                        confidence = (
+                            0.88f +
+                                languageWeight * 0.04f -
+                                index * 0.05f
+                            ).coerceIn(0.50f, 0.95f)
+                    ),
+                    990 +
+                        (languageWeight * 120f).toInt() -
+                        index * 22 +
+                        learningStore.boost(
+                            contextWords,
+                            phrase.completion
+                        )
+                )
+            }
+    }
+
+    private fun addFallbacks(
+        scored: MutableMap<String, ScoredSuggestion>,
+        partial: String,
+        contextWords: List<String>,
+        lanes: List<LanguageLane>
+    ) {
+        lanes.forEach { lane ->
+            val pack = LanguagePackRegistry.get(lane.tag)
+                ?: return@forEach
+
+            val candidates = if (partial.isBlank()) {
+                pack.words
+                    .asSequence()
+                    .filter { it.length in 2..12 }
+                    .sorted()
+                    .take(22)
+                    .toList()
+            } else {
+                pack.prefixMatches(partial, 22)
+            }
+
+            candidates.forEachIndexed { index, candidate ->
+                add(
+                    scored,
+                    PredictionSuggestion(
+                        display = candidate,
+                        commitText = candidate,
+                        kind = if (partial.isBlank()) {
+                            PredictionKind.NEXT_WORD
+                        } else {
+                            PredictionKind.COMPLETION
+                        },
+                        replacesCurrentToken = partial.isNotBlank(),
+                        confidence = (
+                            0.38f + lane.score * 0.08f
+                            ).coerceAtMost(0.55f)
+                    ),
+                    250 +
+                        (lane.score * 100f).toInt() -
+                        index +
+                        learningStore.boost(contextWords, candidate)
+                )
+            }
+        }
     }
 
     private fun add(
@@ -214,48 +310,44 @@ class ContextPredictionEngine(
     ) {
         val key = suggestion.commitText.lowercase()
         val existing = map[key]
+
         if (existing == null || score > existing.score) {
-            map[key] = ScoredSuggestion(suggestion, score)
+            map[key] = ScoredSuggestion(
+                suggestion = suggestion,
+                score = score
+            )
         }
     }
 
-    private fun phraseSuggestions(
-        contextWords: List<String>,
-        languages: List<String>
-    ): List<String> {
-        val normalizedContext = contextWords.map { it.lowercase() }
-
-        return phraseBank.asSequence()
-            .filter { phrase -> phrase.languages.any { it in languages } }
-            .filter { phrase ->
-                normalizedContext.takeLast(phrase.prefix.size) == phrase.prefix
-            }
-            .map { it.completion }
-            .distinct()
-            .take(4)
-            .toList()
-    }
-
-    private fun preferredLanguages(hints: List<String>): List<String> {
-        val normalized = hints
-            .map { it.substringBefore('-').lowercase() }
-            .filter { it in languageWords.keys }
-            .distinct()
-        return (normalized + listOf("de","en","it","fr","es")).distinct()
-    }
-
     private fun currentToken(text: String): String {
-        val tail = text.takeLast(240)
-        if (tail.isEmpty() || tail.last().isWhitespace()) return ""
-        return tail.takeLastWhile { it.isLetterOrDigit() || it == '\'' || it == '-' }.lowercase()
+        val tail = text.takeLast(280)
+
+        if (
+            tail.isEmpty() ||
+            tail.last().isWhitespace()
+        ) {
+            return ""
+        }
+
+        return tail
+            .takeLastWhile {
+                it.isLetterOrDigit() ||
+                    it == '\'' ||
+                    it == '-'
+            }
+            .lowercase()
     }
 
     private fun completedWords(text: String): List<String> {
         val partial = currentToken(text)
-        val effective = if (partial.isNotBlank()) text.dropLast(partial.length) else text
+        val effective = if (partial.isNotBlank()) {
+            text.dropLast(partial.length)
+        } else {
+            text
+        }
 
         return Regex("[\\p{L}\\p{N}'-]+")
-            .findAll(effective.takeLast(500))
+            .findAll(effective.takeLast(700))
             .map { it.value.lowercase() }
             .toList()
     }

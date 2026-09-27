@@ -128,7 +128,14 @@ class LocalBeamSemanticProvider(
         val history = extractWords(contextSource).takeLast(5)
         if (history.isEmpty()) return emptyList()
 
-        val languages = preferredLanguages(context.languageHints)
+        val languages = CodeSwitchLanguageResolver.resolve(
+            contextText = snapshot.currentParagraph.ifBlank {
+                context.beforeCursor
+            },
+            detectedLanguages = context.languageHints,
+            currentToken = "",
+            maxLanes = 3
+        ).map { it.tag }
         val depth = context.maxSemanticTokens.coerceIn(2, 6)
         val afterWords = extractWords(snapshot.currentSentenceAfter).take(4)
         val topics = snapshot.topicTerms.map { it.lowercase() }.toSet()

@@ -89,3 +89,12 @@ Gemini Nano remains useful for explicit foreground GenAI features, but KeySwiper
 - named-entity and contact-aware suggestions with explicit permission;
 - domain profiles such as developer, business, gaming and creative writing;
 - confidence calibration from real correction outcomes.
+
+
+## v0.7 multilingual lanes
+
+The instant layer now queries up to three simultaneous language lanes rather than selecting one global language.
+
+The same lane order is shared with swipe recognition. Personal vocabulary sits above the embedded packs and can introduce user-specific words without rebuilding the application.
+
+See [Code Switching](CODE_SWITCHING.md).

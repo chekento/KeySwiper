@@ -12,7 +12,9 @@ import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeDecoder
 import cloud.kosch.keyswiper.input.SwipeLearningStore
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import cloud.kosch.keyswiper.language.TranslationEngine
+import cloud.kosch.keyswiper.language.UserVocabularyStore
 import cloud.kosch.keyswiper.prediction.ContextPredictionEngine
 import cloud.kosch.keyswiper.prediction.HybridPredictionEngine
 import cloud.kosch.keyswiper.prediction.LiteRtLmPredictionBackend
@@ -41,6 +43,7 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var swipeLearningStore: SwipeLearningStore
     private lateinit var motorProfileStore: MotorProfileStore
     private lateinit var predictionLearningStore: PredictionLearningStore
+    private lateinit var userVocabularyStore: UserVocabularyStore
     private lateinit var predictionEngine: HybridPredictionEngine
     private lateinit var neuralModelManager: NeuralModelManager
     private lateinit var neuralPredictionBackend: LiteRtLmPredictionBackend
@@ -65,8 +68,12 @@ class KeySwiperImeService : InputMethodService() {
         swipeLearningStore = SwipeLearningStore(this)
         motorProfileStore = MotorProfileStore(this)
         predictionLearningStore = PredictionLearningStore(this)
+        userVocabularyStore = UserVocabularyStore(this)
 
-        val instantPrediction = ContextPredictionEngine(predictionLearningStore)
+        val instantPrediction = ContextPredictionEngine(
+            predictionLearningStore,
+            userVocabularyStore
+        )
         val semanticPrediction = LocalBeamSemanticProvider(predictionLearningStore)
         predictionEngine = HybridPredictionEngine(
             instant = instantPrediction,
@@ -149,10 +156,17 @@ class KeySwiperImeService : InputMethodService() {
             val signature = swipeDecoder.signature(trace)
             val previousWord = previousWord(before)
 
+            val activeLanguageLanes = CodeSwitchLanguageResolver.resolve(
+                contextText = before,
+                detectedLanguages = languageHints,
+                currentToken = "",
+                maxLanes = 3
+            )
+
             val values = swipeDecoder.decode(
                 trace = trace,
                 context = before,
-                preferredLanguages = languageHints,
+                preferredLanguages = activeLanguageLanes.map { it.tag },
                 personalizationBoost = { sig, previous, candidate ->
                     if (sensitiveField) 0
                     else swipeLearningStore.boost(sig, previous, candidate)
@@ -201,9 +215,16 @@ class KeySwiperImeService : InputMethodService() {
 
             val before = textBeforeCursor()
             if (!sensitiveField) {
+                val words = extractWords(before)
                 predictionLearningStore.learnTransition(
-                    extractWords(before).takeLast(5)
+                    words.takeLast(5)
                 )
+                words.lastOrNull()?.let { committedWord ->
+                    userVocabularyStore.observeWord(
+                        committedWord,
+                        languageHints
+                    )
+                }
             }
 
             refreshLanguageHints(before)
@@ -253,6 +274,12 @@ class KeySwiperImeService : InputMethodService() {
                 contextWords,
                 suggestion.commitText
             )
+            extractWords(suggestion.commitText).forEach { chosenWord ->
+                userVocabularyStore.observeWord(
+                    chosenWord,
+                    languageHints
+                )
+            }
 
             clearSwipeState()
 
@@ -455,6 +482,10 @@ class KeySwiperImeService : InputMethodService() {
 
             predictionLearningStore.learnTransition(
                 extractWords(textBeforeCursor()).takeLast(5)
+            )
+            userVocabularyStore.rememberWord(
+                value,
+                languageHints.firstOrNull()
             )
         }
 

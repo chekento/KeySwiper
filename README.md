@@ -33,6 +33,8 @@ The first implementation focuses on a buildable architecture with:
 - Google ML Kit auto-language hints plus per-user motor offsets for swipe ranking
 - personal local 2/3/4-gram prediction learning
 - local General / Message / Email / Search / Code context modes
+- three simultaneous language lanes for real code-switching
+- larger DE/EN/IT/FR/ES core language packs plus local personal vocabulary
 - local neural model manager with SHA-256 verification
 - suggestion/candidate strip
 - clipboard panel
@@ -85,13 +87,12 @@ gradle :app:assembleDebug
 
 The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
 
-See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_ENGINE.md), [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md), [Neural Model Manager](docs/NEURAL_MODEL_MANAGER.md) and [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md).
+See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_ENGINE.md), [Code Switching](docs/CODE_SWITCHING.md), [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md), [Neural Model Manager](docs/NEURAL_MODEL_MANAGER.md) and [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md).
 
 ## Roadmap
 
 Next milestones:
 
-- larger multilingual dictionaries and code-switching prediction
 - richer S Pen button / Air Action support on compatible Samsung devices
 - direct Android stylus-handwriting IME session support
 - editable gesture mappings
