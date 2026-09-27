@@ -84,6 +84,8 @@ This lets suggestions fit the current thought and avoid blindly duplicating text
 ### ✍️ Direct Android stylus handwriting
 
 - native IME stylus-handwriting support
+- Android 15+ connectionless handwriting for delegated/search-style flows
+- scratch-out handwriting deletion through Android DeleteGesture when supported
 - system handwriting window
 - transparent live ink overlay
 - local ML Kit Digital Ink recognition
@@ -278,7 +280,7 @@ Clipboard / Emoji ───────────┤
 
 Next milestones:
 
-- connectionless Android handwriting sessions + handwriting edit gestures
+- more handwriting edit gestures: select, range select, insert, join/split and preview
 - multilingual translation-target wheel
 - smart clipboard categorization, expiry and search
 - Voice Editing commands

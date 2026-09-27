@@ -343,13 +343,13 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "On compatible Android 14+ text fields, KeySwiper can now act as the system stylus-handwriting IME: write directly over the target app, recognize locally with ML Kit Digital Ink, and commit the result into the focused field."
+            text = "On compatible Android 14+ text fields, KeySwiper acts as the system stylus-handwriting IME: write directly over the target app, recognize locally with ML Kit Digital Ink, and commit the result into the focused field. Android 15+ connectionless handwriting is also supported for delegated/search-style input flows."
             textSize = 14f
             setPadding(0, dp(4), 0, dp(8))
         })
 
         content.addView(TextView(this).apply {
-            text = "The configured handwriting language above is used for both the in-keyboard handwriting pad and direct system handwriting. Sensitive/password fields never start a KeySwiper handwriting session."
+            text = "The configured handwriting language above is used for the in-keyboard pad, direct system handwriting and connectionless handwriting. A horizontal scratch-out zigzag can delete words in editors that advertise Android DeleteGesture support. Sensitive/password fields never start a KeySwiper handwriting session."
             textSize = 13f
             setPadding(0, dp(2), 0, dp(8))
         })

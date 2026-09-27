@@ -13,8 +13,8 @@ class SystemHandwritingInkView(context: Context) : View(context) {
 
     var onStrokeFinished: (() -> Unit)? = null
 
-    private var inkBuilder: Ink.Builder = Ink.builder()
     private var strokeBuilder: Ink.Stroke.Builder? = null
+    private val strokes = mutableListOf<Ink.Stroke>()
     private val paths = mutableListOf<Path>()
     private var activePath: Path? = null
 
@@ -92,9 +92,7 @@ class SystemHandwritingInkView(context: Context) : View(context) {
                 strokeBuilder?.addPoint(Ink.Point.create(x, y, t))
                 activePath?.lineTo(x, y)
 
-                strokeBuilder?.build()?.let {
-                    inkBuilder.addStroke(it)
-                }
+                strokeBuilder?.build()?.let { strokes.add(it) }
                 activePath?.let { paths.add(it) }
 
                 strokeBuilder = null
@@ -116,17 +114,30 @@ class SystemHandwritingInkView(context: Context) : View(context) {
     }
 
     fun hasInk(): Boolean =
-        paths.isNotEmpty() || strokeBuilder != null
+        strokes.isNotEmpty() || strokeBuilder != null
+
+    fun discardLastStroke(): Boolean {
+        if (strokes.isEmpty()) return false
+
+        strokes.removeAt(strokes.lastIndex)
+        if (paths.isNotEmpty()) {
+            paths.removeAt(paths.lastIndex)
+        }
+        invalidate()
+        return true
+    }
 
     fun drainInk(): Ink {
-        val result = inkBuilder.build()
+        val builder = Ink.builder()
+        strokes.forEach { builder.addStroke(it) }
+        val result = builder.build()
         clearInk()
         return result
     }
 
     fun clearInk() {
-        inkBuilder = Ink.builder()
         strokeBuilder = null
+        strokes.clear()
         paths.clear()
         activePath = null
         invalidate()

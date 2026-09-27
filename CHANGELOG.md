@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.0-alpha10 — 2026-09-28
+
+Connectionless handwriting + Android handwriting gestures v1:
+
+- Android 15+ connectionless stylus handwriting sessions implemented
+- connectionless handwriting supports delegated/search-style input flows without requiring an active InputConnection
+- recognized connectionless handwriting is accumulated locally and returned through finishConnectionlessStylusHandwriting
+- connectionless sessions reuse the same local ML Kit Digital Ink model and transparent ink window
+- password input types are rejected before a connectionless handwriting session starts
+- connectionless recognition is idle-delayed so multi-stroke and short multi-word input can complete before delivery
+- newer strokes cancel a pending connectionless finish operation
+- regular handwriting remains independent and still commits directly through InputConnection
+- first native handwriting edit gesture implemented: horizontal scratch-out / zigzag deletion
+- scratch-out recognition uses screen-coordinate stroke geometry, direction reversals, aspect ratio and path-length checks
+- scratch-out is translated into Android's official DeleteGesture rather than directly editing text
+- KeySwiper checks the current EditorInfo gesture capability before consuming the scratch stroke
+- unsupported editors keep the stroke as ordinary handwriting instead of losing user input
+- delete gesture uses word granularity and the editor decides which text intersects the gesture rectangle
+- handwriting ink storage was refactored to retain individual strokes so a recognized edit gesture can discard only its own ink
+- new unit tests cover scratch-out detection and rejection of normal handwriting strokes
+- version advanced to 0.10.0-alpha10 / build 10
+
 ## 0.9.0-alpha09 — 2026-09-28
 
 Direct Android stylus handwriting + KeySwiper app identity:

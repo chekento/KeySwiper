@@ -11,10 +11,15 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.CursorAnchorInfo
+import android.view.inputmethod.DeleteGesture
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.HandwritingGesture
 import cloud.kosch.keyswiper.clipboard.ClipboardController
 import cloud.kosch.keyswiper.handwriting.DigitalInkEngine
 import cloud.kosch.keyswiper.handwriting.HandwritingCommitFormatter
+import cloud.kosch.keyswiper.handwriting.ScratchDeleteGestureClassifier
+import cloud.kosch.keyswiper.handwriting.StylusScreenPoint
 import cloud.kosch.keyswiper.handwriting.SystemHandwritingInkView
 import cloud.kosch.keyswiper.input.KeyOffset
 import cloud.kosch.keyswiper.input.MotorProfileStore
@@ -87,6 +92,12 @@ class KeySwiperImeService : InputMethodService() {
     private val systemHandwritingRecognitionRunnable = Runnable {
         recognizeSystemHandwritingBatch()
     }
+    private var connectionlessHandwriting = false
+    private val connectionlessRecognizedText = StringBuilder()
+    private val handwritingGesturePoints = mutableListOf<StylusScreenPoint>()
+    private val finishConnectionlessHandwritingRunnable = Runnable {
+        finishConnectionlessHandwritingIfReady()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -120,7 +131,7 @@ class KeySwiperImeService : InputMethodService() {
 
         if (
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            sensitiveField
+            (sensitiveField && !connectionlessHandwriting)
         ) {
             return
         }
@@ -131,7 +142,7 @@ class KeySwiperImeService : InputMethodService() {
     override fun onStartStylusHandwriting(): Boolean {
         if (
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            sensitiveField
+            (sensitiveField && !connectionlessHandwriting)
         ) {
             return false
         }
@@ -141,6 +152,9 @@ class KeySwiperImeService : InputMethodService() {
 
         systemHandwritingGeneration++
         systemHandwritingRecognitionInFlight = false
+        connectionlessHandwriting = false
+        connectionlessRecognizedText.setLength(0)
+        handwritingGesturePoints.clear()
 
         val view = SystemHandwritingInkView(this).also {
             it.onStrokeFinished = {
@@ -164,6 +178,46 @@ class KeySwiperImeService : InputMethodService() {
         return true
     }
 
+
+    override fun onStartConnectionlessStylusHandwriting(
+        inputType: Int,
+        cursorAnchorInfo: CursorAnchorInfo?
+    ): Boolean {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM ||
+            SecurityPolicy.isSensitiveInputType(inputType)
+        ) {
+            return false
+        }
+
+        val handwritingWindow = getStylusHandwritingWindow()
+            ?: return false
+
+        systemHandwritingGeneration++
+        systemHandwritingRecognitionInFlight = false
+        connectionlessHandwriting = true
+        connectionlessRecognizedText.setLength(0)
+        handwritingGesturePoints.clear()
+
+        val view = SystemHandwritingInkView(this).also {
+            it.onStrokeFinished = {
+                scheduleSystemHandwritingRecognition()
+            }
+        }
+
+        systemHandwritingView = view
+        handwritingWindow.setBackgroundDrawable(
+            ColorDrawable(Color.TRANSPARENT)
+        )
+        handwritingWindow.setContentView(view)
+        setStylusHandwritingSessionTimeout(
+            Duration.ofSeconds(6)
+        )
+
+        prepareSystemHandwritingModel()
+        return true
+    }
+
     override fun onStylusHandwritingMotionEvent(
         motionEvent: MotionEvent
     ) {
@@ -175,6 +229,11 @@ class KeySwiperImeService : InputMethodService() {
             motionEvent.actionMasked == MotionEvent.ACTION_DOWN &&
             motionEvent.pointerCount > 0
         ) {
+            mainHandler.removeCallbacks(
+                finishConnectionlessHandwritingRunnable
+            )
+            handwritingGesturePoints.clear()
+
             if (
                 (motionEvent.buttonState and
                     MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
@@ -194,8 +253,18 @@ class KeySwiperImeService : InputMethodService() {
             }
         }
 
+        trackHandwritingGesture(motionEvent)
+
         systemHandwritingView
             ?.consumeStylusEvent(motionEvent)
+
+        if (motionEvent.actionMasked == MotionEvent.ACTION_UP) {
+            if (tryPerformScratchDeleteGesture()) {
+                mainHandler.removeCallbacks(
+                    systemHandwritingRecognitionRunnable
+                )
+            }
+        }
     }
 
     override fun onFinishStylusHandwriting() {
@@ -204,6 +273,12 @@ class KeySwiperImeService : InputMethodService() {
             systemHandwritingRecognitionRunnable
         )
         systemHandwritingRecognitionInFlight = false
+        connectionlessHandwriting = false
+        connectionlessRecognizedText.setLength(0)
+        handwritingGesturePoints.clear()
+        mainHandler.removeCallbacks(
+            finishConnectionlessHandwritingRunnable
+        )
         systemHandwritingView?.clearInk()
         systemHandwritingView = null
         super.onFinishStylusHandwriting()
@@ -248,6 +323,9 @@ class KeySwiperImeService : InputMethodService() {
         systemHandwritingGeneration++
         systemHandwritingModelReady = false
         systemHandwritingRecognitionInFlight = false
+        connectionlessHandwriting = false
+        connectionlessRecognizedText.setLength(0)
+        handwritingGesturePoints.clear()
         systemHandwritingView?.clearInk()
         systemHandwritingView = null
         stylusClickInterpreter.clear()
@@ -806,7 +884,7 @@ class KeySwiperImeService : InputMethodService() {
     private fun prepareSystemHandwritingModel() {
         if (
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            sensitiveField
+            (sensitiveField && !connectionlessHandwriting)
         ) {
             systemHandwritingModelReady = false
             return
@@ -849,7 +927,7 @@ class KeySwiperImeService : InputMethodService() {
     private fun scheduleSystemHandwritingRecognition() {
         if (
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            sensitiveField
+            (sensitiveField && !connectionlessHandwriting)
         ) {
             return
         }
@@ -866,7 +944,7 @@ class KeySwiperImeService : InputMethodService() {
     private fun recognizeSystemHandwritingBatch() {
         if (
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            sensitiveField ||
+            (sensitiveField && !connectionlessHandwriting) ||
             systemHandwritingRecognitionInFlight
         ) {
             return
@@ -897,10 +975,14 @@ class KeySwiperImeService : InputMethodService() {
             .toFloat()
             .coerceAtLeast(1f)
 
-        val before = currentInputConnection
-            ?.getTextBeforeCursor(200, 0)
-            ?.toString()
-            .orEmpty()
+        val before = if (connectionlessHandwriting) {
+            ""
+        } else {
+            currentInputConnection
+                ?.getTextBeforeCursor(200, 0)
+                ?.toString()
+                .orEmpty()
+        }
 
         systemHandwritingRecognitionInFlight = true
 
@@ -929,41 +1011,69 @@ class KeySwiperImeService : InputMethodService() {
                             .formatRecognition(best)
 
                     if (committed.isNotBlank()) {
-                        currentInputConnection
-                            ?.commitText(
-                                committed,
-                                1
+                        if (connectionlessHandwriting) {
+                            if (connectionlessRecognizedText.isNotEmpty()) {
+                                connectionlessRecognizedText.append(' ')
+                            }
+                            connectionlessRecognizedText.append(
+                                best.trim()
                             )
 
-                        if (!sensitiveField) {
-                            val words =
-                                extractWords(
-                                    textBeforeCursor()
+                            extractWords(best).forEach {
+                                userVocabularyStore.observeWord(
+                                    it,
+                                    languageHints
+                                )
+                            }
+
+                            mainHandler.removeCallbacks(
+                                finishConnectionlessHandwritingRunnable
+                            )
+                            mainHandler.postDelayed(
+                                finishConnectionlessHandwritingRunnable,
+                                950L
+                            )
+                        } else {
+                            currentInputConnection
+                                ?.commitText(
+                                    committed,
+                                    1
                                 )
 
-                            predictionLearningStore
-                                .learnTransition(
-                                    words.takeLast(5)
-                                )
+                            if (!sensitiveField) {
+                                val words =
+                                    extractWords(
+                                        textBeforeCursor()
+                                    )
 
-                            extractWords(best)
-                                .forEach {
-                                    userVocabularyStore
-                                        .observeWord(
-                                            it,
-                                            languageHints
-                                        )
-                                }
+                                predictionLearningStore
+                                    .learnTransition(
+                                        words.takeLast(5)
+                                    )
+
+                                extractWords(best)
+                                    .forEach {
+                                        userVocabularyStore
+                                            .observeWord(
+                                                it,
+                                                languageHints
+                                            )
+                                    }
+                            }
+
+                            refreshLanguageHints(
+                                textBeforeCursor()
+                            )
+                            refreshPredictionBar()
                         }
-
-                        refreshLanguageHints(
-                            textBeforeCursor()
-                        )
-                        refreshPredictionBar()
                     }
 
                     root?.setStatus(
-                        "Stylus handwriting recognized locally."
+                        if (connectionlessHandwriting) {
+                            "Connectionless handwriting recognized locally."
+                        } else {
+                            "Stylus handwriting recognized locally."
+                        }
                     )
                 }.onFailure {
                     root?.setStatus(
@@ -980,6 +1090,162 @@ class KeySwiperImeService : InputMethodService() {
                 }
             }
         }
+    }
+
+
+    private fun trackHandwritingGesture(
+        event: MotionEvent
+    ) {
+        if (
+            connectionlessHandwriting ||
+            event.pointerCount == 0 ||
+            event.getToolType(0) != MotionEvent.TOOL_TYPE_STYLUS
+        ) {
+            return
+        }
+
+        val offsetX = event.rawX - event.x
+        val offsetY = event.rawY - event.y
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                handwritingGesturePoints.clear()
+                handwritingGesturePoints.add(
+                    StylusScreenPoint(
+                        event.rawX,
+                        event.rawY,
+                        event.eventTime
+                    )
+                )
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                for (i in 0 until event.historySize) {
+                    handwritingGesturePoints.add(
+                        StylusScreenPoint(
+                            event.getHistoricalX(i) + offsetX,
+                            event.getHistoricalY(i) + offsetY,
+                            event.getHistoricalEventTime(i)
+                        )
+                    )
+                }
+
+                handwritingGesturePoints.add(
+                    StylusScreenPoint(
+                        event.rawX,
+                        event.rawY,
+                        event.eventTime
+                    )
+                )
+            }
+
+            MotionEvent.ACTION_UP -> {
+                handwritingGesturePoints.add(
+                    StylusScreenPoint(
+                        event.rawX,
+                        event.rawY,
+                        event.eventTime
+                    )
+                )
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                handwritingGesturePoints.clear()
+            }
+        }
+    }
+
+    private fun tryPerformScratchDeleteGesture(): Boolean {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            connectionlessHandwriting ||
+            sensitiveField
+        ) {
+            handwritingGesturePoints.clear()
+            return false
+        }
+
+        val scratch = ScratchDeleteGestureClassifier.classify(
+            points = handwritingGesturePoints.toList(),
+            density = resources.displayMetrics.density
+        )
+
+        handwritingGesturePoints.clear()
+
+        if (scratch == null) {
+            return false
+        }
+
+        val supportsDelete = currentInputEditorInfo
+            ?.supportedHandwritingGestures
+            ?.contains(DeleteGesture::class.java) == true
+
+        if (!supportsDelete) {
+            return false
+        }
+
+        val connection = currentInputConnection ?: return false
+
+        systemHandwritingView?.discardLastStroke()
+
+        val gesture = DeleteGesture.Builder()
+            .setDeletionArea(scratch.bounds)
+            .setGranularity(
+                HandwritingGesture.GRANULARITY_WORD
+            )
+            .build()
+
+        connection.performHandwritingGesture(
+            gesture,
+            mainExecutor
+        ) { result ->
+            root?.setStatus(
+                when (result) {
+                    android.view.inputmethod.InputConnection
+                        .HANDWRITING_GESTURE_RESULT_SUCCESS ->
+                        "Scratch-out gesture deleted text."
+
+                    android.view.inputmethod.InputConnection
+                        .HANDWRITING_GESTURE_RESULT_UNSUPPORTED ->
+                        "This editor does not support scratch-out deletion."
+
+                    else ->
+                        "Scratch-out gesture was not applied."
+                }
+            )
+
+            if (
+                result == android.view.inputmethod.InputConnection
+                    .HANDWRITING_GESTURE_RESULT_SUCCESS
+            ) {
+                refreshPredictionBar()
+            }
+        }
+
+        return true
+    }
+
+    private fun finishConnectionlessHandwritingIfReady() {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM ||
+            !connectionlessHandwriting ||
+            systemHandwritingRecognitionInFlight ||
+            systemHandwritingView?.hasInk() == true
+        ) {
+            return
+        }
+
+        val result = connectionlessRecognizedText
+            .toString()
+            .trim()
+
+        if (result.isBlank()) {
+            return
+        }
+
+        connectionlessHandwriting = false
+        connectionlessRecognizedText.setLength(0)
+        finishConnectionlessStylusHandwriting(result)
     }
 
     private fun currentContextSnapshot() =
