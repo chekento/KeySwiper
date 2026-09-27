@@ -49,6 +49,8 @@ import cloud.kosch.keyswiper.stylus.StylusClickInterpreter
 import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardRootView
+import cloud.kosch.keyswiper.voice.VoiceEditCommand
+import cloud.kosch.keyswiper.voice.VoiceEditCommandParser
 import cloud.kosch.keyswiper.voice.VoiceInputController
 import java.time.Duration
 import java.util.Locale
@@ -624,25 +626,96 @@ class KeySwiperImeService : InputMethodService() {
 
         override fun onVoice() {
             if (sensitiveField) {
-                root?.setStatus("Voice input is disabled in sensitive fields.")
+                root?.setStatus(
+                    "Voice input is disabled in sensitive fields."
+                )
                 return
             }
 
             voiceController.toggle(
-                languageTag = Locale.getDefault().toLanguageTag(),
-                onPartial = { root?.setStatus(it) },
+                languageTag =
+                    languageHints.firstOrNull()
+                        ?: Locale.getDefault()
+                            .toLanguageTag(),
+                onPartial = {
+                    root?.setStatus(it)
+                },
                 onFinal = {
-                    currentInputConnection?.commitText(it + " ", 1)
+                    currentInputConnection
+                        ?.commitText(
+                            it + " ",
+                            1
+                        )
                     root?.setStatus(null)
 
-                    val before = textBeforeCursor()
-                    predictionLearningStore.learnTransition(
-                        extractWords(before).takeLast(5)
+                    val before =
+                        textBeforeCursor()
+
+                    predictionLearningStore
+                        .learnTransition(
+                            extractWords(before)
+                                .takeLast(5)
+                        )
+
+                    extractWords(it)
+                        .forEach { word ->
+                            userVocabularyStore
+                                .observeWord(
+                                    word,
+                                    languageHints
+                                )
+                        }
+
+                    refreshLanguageHints(
+                        before
                     )
-                    refreshLanguageHints(before)
                     refreshPredictionBar()
                 },
-                onError = { root?.setStatus(it) }
+                onError = {
+                    root?.setStatus(it)
+                }
+            )
+        }
+
+        override fun onVoiceCommand() {
+            if (sensitiveField) {
+                root?.setStatus(
+                    "Voice editing is disabled in sensitive fields."
+                )
+                return
+            }
+
+            root?.setStatus(
+                "Voice command mode…"
+            )
+
+            voiceController.toggle(
+                languageTag =
+                    Locale.getDefault()
+                        .toLanguageTag(),
+                onPartial = {
+                    root?.setStatus(
+                        "Command: " + it
+                    )
+                },
+                onFinal = { spoken ->
+                    val command =
+                        VoiceEditCommandParser
+                            .parse(spoken)
+
+                    if (command == null) {
+                        root?.setStatus(
+                            "Voice command not recognized: " + spoken
+                        )
+                    } else {
+                        executeVoiceEditCommand(
+                            command
+                        )
+                    }
+                },
+                onError = {
+                    root?.setStatus(it)
+                }
             )
         }
 
@@ -826,6 +899,362 @@ class KeySwiperImeService : InputMethodService() {
                     StylusTrigger.SECONDARY_SINGLE
                 )
             )
+        }
+    }
+
+    private fun executeVoiceEditCommand(
+        command: VoiceEditCommand
+    ) {
+        if (sensitiveField) {
+            root?.setStatus(
+                "Voice editing is disabled in sensitive fields."
+            )
+            return
+        }
+
+        when (command) {
+            VoiceEditCommand.DeleteLastWord -> {
+                val changed =
+                    deleteLastWordBeforeCursor()
+
+                root?.setStatus(
+                    if (changed) {
+                        "Deleted last word."
+                    } else {
+                        "No word to delete."
+                    }
+                )
+            }
+
+            VoiceEditCommand.DeleteLastSentence -> {
+                val changed =
+                    deleteLastSentenceBeforeCursor()
+
+                root?.setStatus(
+                    if (changed) {
+                        "Deleted last sentence."
+                    } else {
+                        "No sentence to delete."
+                    }
+                )
+            }
+
+            VoiceEditCommand.NewLine -> {
+                currentInputConnection
+                    ?.commitText(
+                        "\n",
+                        1
+                    )
+                root?.setStatus(
+                    "Inserted new line."
+                )
+            }
+
+            VoiceEditCommand.SelectAll -> {
+                performEditorContextAction(
+                    android.R.id.selectAll,
+                    "Selected all text."
+                )
+            }
+
+            VoiceEditCommand.Copy -> {
+                performEditorContextAction(
+                    android.R.id.copy,
+                    "Copied selection."
+                )
+            }
+
+            VoiceEditCommand.Cut -> {
+                performEditorContextAction(
+                    android.R.id.cut,
+                    "Cut selection."
+                )
+            }
+
+            VoiceEditCommand.Paste -> {
+                performEditorContextAction(
+                    android.R.id.paste,
+                    "Pasted clipboard."
+                )
+            }
+
+            VoiceEditCommand.UndoLastSwipe -> {
+                if (lastSwipeWord != null) {
+                    callbacks.onBackspace()
+                    root?.setStatus(
+                        "Undid last swipe."
+                    )
+                } else {
+                    root?.setStatus(
+                        "No recent swipe word to undo."
+                    )
+                }
+            }
+
+            is VoiceEditCommand.Replace -> {
+                val changed =
+                    replaceBeforeCursor(
+                        oldText =
+                            command.oldText,
+                        newText =
+                            command.newText
+                    )
+
+                root?.setStatus(
+                    if (changed) {
+                        "Replaced '" +
+                            command.oldText +
+                            "' with '" +
+                            command.newText +
+                            "'."
+                    } else {
+                        "Could not find '" +
+                            command.oldText +
+                            "' before the cursor."
+                    }
+                )
+            }
+
+            is VoiceEditCommand.TranslateSelection -> {
+                translateSelectedTextTo(
+                    command.targetLanguageTag
+                )
+                return
+            }
+        }
+
+        clearSwipeState()
+        val before =
+            textBeforeCursor()
+        refreshLanguageHints(before)
+        refreshPredictionBar()
+    }
+
+    private fun deleteLastWordBeforeCursor(): Boolean {
+        val connection =
+            currentInputConnection
+                ?: return false
+
+        val before =
+            connection
+                .getTextBeforeCursor(
+                    1600,
+                    0
+                )
+                ?.toString()
+                .orEmpty()
+
+        val match =
+            Regex(
+                """[\p{L}\p{N}'-]+\s*$"""
+            )
+                .find(before)
+                ?: return false
+
+        val count =
+            before.length -
+                match.range.first
+
+        return connection
+            .deleteSurroundingText(
+                count,
+                0
+            )
+    }
+
+    private fun deleteLastSentenceBeforeCursor(): Boolean {
+        val connection =
+            currentInputConnection
+                ?: return false
+
+        val before =
+            connection
+                .getTextBeforeCursor(
+                    2000,
+                    0
+                )
+                ?.toString()
+                .orEmpty()
+
+        if (before.isBlank()) {
+            return false
+        }
+
+        val trimmed =
+            before.trimEnd()
+
+        val searchFrom =
+            (trimmed.length - 2)
+                .coerceAtLeast(0)
+
+        val boundary =
+            maxOf(
+                trimmed.lastIndexOf(
+                    '.',
+                    startIndex = searchFrom
+                ),
+                trimmed.lastIndexOf(
+                    '!',
+                    startIndex = searchFrom
+                ),
+                trimmed.lastIndexOf(
+                    '?',
+                    startIndex = searchFrom
+                ),
+                trimmed.lastIndexOf(
+                    '\n',
+                    startIndex = searchFrom
+                )
+            )
+
+        val start =
+            (boundary + 1)
+                .coerceAtLeast(0)
+
+        val count =
+            before.length -
+                start
+
+        if (count <= 0) {
+            return false
+        }
+
+        return connection
+            .deleteSurroundingText(
+                count,
+                0
+            )
+    }
+
+    private fun replaceBeforeCursor(
+        oldText: String,
+        newText: String
+    ): Boolean {
+        val connection =
+            currentInputConnection
+                ?: return false
+
+        val before =
+            connection
+                .getTextBeforeCursor(
+                    2000,
+                    0
+                )
+                ?.toString()
+                .orEmpty()
+
+        val match =
+            Regex(
+                Regex.escape(
+                    oldText
+                ),
+                RegexOption.IGNORE_CASE
+            )
+                .findAll(before)
+                .lastOrNull()
+                ?: return false
+
+        val suffix =
+            before.substring(
+                match.range.last + 1
+            )
+
+        val deleteCount =
+            before.length -
+                match.range.first
+
+        if (
+            !connection
+                .deleteSurroundingText(
+                    deleteCount,
+                    0
+                )
+        ) {
+            return false
+        }
+
+        connection.commitText(
+            newText + suffix,
+            1
+        )
+
+        return true
+    }
+
+    private fun performEditorContextAction(
+        actionId: Int,
+        successMessage: String
+    ) {
+        val handled =
+            currentInputConnection
+                ?.performContextMenuAction(
+                    actionId
+                )
+                ?: false
+
+        root?.setStatus(
+            if (handled) {
+                successMessage
+            } else {
+                "This editor did not accept the voice editing action."
+            }
+        )
+    }
+
+    private fun translateSelectedTextTo(
+        targetLanguageTag: String
+    ) {
+        val selected =
+            currentInputConnection
+                ?.getSelectedText(0)
+                ?.toString()
+                .orEmpty()
+
+        if (selected.isBlank()) {
+            root?.setStatus(
+                "Select text before using the translate voice command."
+            )
+            return
+        }
+
+        Prefs.setTargetLanguage(
+            this,
+            targetLanguageTag
+        )
+
+        root?.setStatus(
+            "Voice command: translating → " +
+                targetLanguageTag.uppercase() +
+                "…"
+        )
+
+        translationEngine.translate(
+            selected,
+            targetLanguageTag
+        ) { result ->
+            result.onSuccess { translated ->
+                currentInputConnection
+                    ?.commitText(
+                        translated,
+                        1
+                    )
+
+                root?.showKeyboard()
+                root?.setStatus(
+                    "Voice command translated selection → " +
+                        targetLanguageTag.uppercase() +
+                        "."
+                )
+                refreshLanguageHints(
+                    translated
+                )
+                refreshPredictionBar()
+            }.onFailure {
+                root?.setStatus(
+                    it.message
+                        ?: "Voice translation command failed."
+                )
+            }
         }
     }
 

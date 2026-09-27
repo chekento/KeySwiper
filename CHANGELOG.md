@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.13.0-alpha13 — 2026-09-28
+
+Voice Editing v1:
+
+- short tap on the microphone remains normal Voice2Text dictation
+- long-press on the microphone now starts a dedicated Voice Editing command mode
+- command mode never inserts unrecognized speech as normal text
+- German and English voice commands supported in the first command set
+- delete-last-word commands supported
+- delete-last-sentence commands supported
+- new-line / line-break commands supported
+- select-all, copy, cut and paste voice commands mapped to Android editor context actions
+- replace command supports patterns such as “Ersetze Peter durch Markus” and “replace Peter with Markus”
+- replace operates on the most recent matching text before the cursor and preserves following text before the cursor
+- undo-last-swipe voice command added
+- selected text can be translated by voice command, including “Übersetze ins Englische” / “translate to German”
+- common German and English language names are mapped to translation language tags
+- translation voice commands continue to use the existing explicit ML Kit translation path
+- normal dictation now feeds confirmed words into the local personal vocabulary
+- normal dictation prefers the current detected language hint before falling back to the device locale
+- voice editing remains completely disabled in sensitive/password fields
+- long-press microphone handling consumes the long-click so normal dictation is not triggered afterward
+- obsolete unused AndroidX import removed from VoiceInputController
+- parser unit tests cover German/English editing commands, replacements, translation targets and unknown speech
+- version advanced to 0.13.0-alpha13 / build 13
+
 ## 0.12.0-alpha12 — 2026-09-28
 
 Smart Clipboard 2.0:

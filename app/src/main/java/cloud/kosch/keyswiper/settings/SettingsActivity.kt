@@ -387,6 +387,19 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
+            text = "Voice Editing"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Tap 🎙 for normal dictation. Long-press 🎙 for local command mode: delete word/sentence, new line, select/copy/cut/paste, replace X with Y, translate selected text or undo the last swipe."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
             text = "Smart Clipboard"
             textSize = 20f
             setTextColor(Color.rgb(22, 24, 30))

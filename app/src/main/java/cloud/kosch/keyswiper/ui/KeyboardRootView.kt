@@ -38,6 +38,7 @@ class KeyboardRootView(
         )
         fun onTranslate()
         fun onVoice()
+        fun onVoiceCommand()
         fun onClipboard()
         fun onClipboardInsert(id: String)
         fun onClipboardSearch(query: String)
@@ -229,7 +230,8 @@ class KeyboardRootView(
 
         fun tool(
             label: String,
-            action: () -> Unit
+            action: () -> Unit,
+            longAction: (() -> Unit)? = null
         ): Button =
             Button(context).apply {
                 text = label
@@ -245,6 +247,13 @@ class KeyboardRootView(
                 setOnClickListener {
                     action()
                 }
+
+                if (longAction != null) {
+                    setOnLongClickListener {
+                        longAction()
+                        true
+                    }
+                }
             }
 
         listOf(
@@ -255,9 +264,15 @@ class KeyboardRootView(
                 callbacks
                     ?.onTranslationPanelRequested()
             },
-            tool("🎙") {
-                callbacks?.onVoice()
-            },
+            tool(
+                "🎙",
+                action = {
+                    callbacks?.onVoice()
+                },
+                longAction = {
+                    callbacks?.onVoiceCommand()
+                }
+            ),
             tool("📋") {
                 callbacks?.onClipboard()
             },

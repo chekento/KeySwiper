@@ -139,13 +139,21 @@ Default mapping:
 
 Samsung remote Air Actions remain a device/foreground-specific optional adapter rather than a dependency for system-wide IME behavior.
 
-### 🎙 Voice2Text
+### 🎙 Voice2Text + Voice Editing
 
+- short tap 🎙 for normal dictation
+- long-press 🎙 for deterministic Voice Editing commands
 - Android SpeechRecognizer integration
 - prefers the on-device recognizer when available
 - partial recognition status
-- final text commit into the active app
-- prediction refresh after dictation
+- dictation feeds prediction and personal vocabulary
+- delete last word / delete last sentence
+- new line
+- select all / copy / cut / paste
+- replace X with Y
+- translate selected text to a named language
+- undo last swipe
+- unknown voice commands are not inserted as text
 - disabled in sensitive fields
 
 ### 🌐 Translation
@@ -281,6 +289,7 @@ Clipboard / Emoji ───────────┤
 
 - [Daily Input Controls](docs/DAILY_INPUT.md)
 - [Smart Clipboard](docs/SMART_CLIPBOARD.md)
+- [Voice Editing](docs/VOICE_EDITING.md)
 - [Swipe Engine](docs/SWIPE_ENGINE.md)
 - [Prediction Engine](docs/PREDICTION_ENGINE.md)
 - [Code Switching](docs/CODE_SWITCHING.md)
@@ -299,7 +308,6 @@ Next milestones:
 
 - more handwriting edit gestures: select, range select, insert, join/split and preview
 - multilingual translation-target wheel
-- Voice Editing commands
 - optional Google Cloud Translation gateway
 - one-hand thumb geometry adaptation
 - autocorrect timeline / undo-redo

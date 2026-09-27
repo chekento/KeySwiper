@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import androidx.core.content.ContextCompat
 import java.util.Locale
 
 class VoiceInputController(private val context: Context) {
