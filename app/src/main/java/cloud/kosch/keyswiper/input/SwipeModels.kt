@@ -8,16 +8,24 @@ data class SwipePoint(
 
 data class SwipeTrace(
     val points: List<SwipePoint>,
-    val touchedKeys: List<Char>
+    val touchedKeys: List<Char>,
+    val layoutId: String = "en-qwerty"
 ) {
     val durationMs: Long
-        get() = if (points.size < 2) 0L else (points.last().timeMs - points.first().timeMs).coerceAtLeast(0L)
+        get() = if (points.size < 2) {
+            0L
+        } else {
+            (points.last().timeMs - points.first().timeMs)
+                .coerceAtLeast(0L)
+        }
 
     fun normalizedKeys(): List<Char> =
-        touchedKeys.map { it.lowercaseChar() }.fold(mutableListOf()) { acc, c ->
-            if (acc.lastOrNull() != c) acc.add(c)
-            acc
-        }
+        touchedKeys
+            .map { it.lowercaseChar() }
+            .fold(mutableListOf()) { acc, c ->
+                if (acc.lastOrNull() != c) acc.add(c)
+                acc
+            }
 }
 
 data class KeyOffset(

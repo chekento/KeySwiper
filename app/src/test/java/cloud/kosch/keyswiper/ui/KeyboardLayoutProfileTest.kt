@@ -1,0 +1,75 @@
+package cloud.kosch.keyswiper.ui
+
+import cloud.kosch.keyswiper.input.KeyboardGeometry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class KeyboardLayoutProfileTest {
+
+    @Test
+    fun germanLayoutIsQwertz() {
+        val german =
+            KeyboardLayoutProfiles.byId(
+                "de-qwertz"
+            )
+
+        assertEquals(
+            "qwertzuiop",
+            german.letterRows.first()
+        )
+        assertEquals(
+            listOf('ä', 'ö', 'ü', 'ß'),
+            german.accentKeys
+        )
+    }
+
+    @Test
+    fun qwertzGeometryMovesZToTopRow() {
+        val germanZ =
+            KeyboardGeometry.center(
+                'z',
+                "de-qwertz"
+            ) ?: error("German z missing")
+
+        val englishZ =
+            KeyboardGeometry.center(
+                'z',
+                "en-qwerty"
+            ) ?: error("English z missing")
+
+        assertTrue(
+            germanZ.second <
+                englishZ.second
+        )
+    }
+
+    @Test
+    fun frenchLayoutIsAzerty() {
+        assertEquals(
+            "azertyuiop",
+            KeyboardLayoutProfiles
+                .byId("fr-azerty")
+                .letterRows
+                .first()
+        )
+    }
+
+    @Test
+    fun symbolPageHasNumbersAndPunctuation() {
+        val symbols =
+            KeyboardLayoutProfiles
+                .symbolRows
+                .joinToString("")
+
+        assertTrue(
+            symbols.contains("1234567890")
+        )
+        assertTrue(
+            symbols.contains("?")
+        )
+        assertTrue(
+            symbols.contains("@")
+        )
+    }
+}

@@ -441,12 +441,44 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onEnter() {
-            currentInputConnection?.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)
-            )
-            currentInputConnection?.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)
-            )
+            val action =
+                currentInputEditorInfo
+                    ?.imeOptions
+                    ?.and(
+                        EditorInfo.IME_MASK_ACTION
+                    )
+                    ?: EditorInfo.IME_ACTION_NONE
+
+            val handled =
+                if (
+                    action != EditorInfo.IME_ACTION_NONE &&
+                    action != EditorInfo.IME_ACTION_UNSPECIFIED
+                ) {
+                    currentInputConnection
+                        ?.performEditorAction(
+                            action
+                        )
+                        ?: false
+                } else {
+                    false
+                }
+
+            if (!handled) {
+                currentInputConnection
+                    ?.sendKeyEvent(
+                        KeyEvent(
+                            KeyEvent.ACTION_DOWN,
+                            KeyEvent.KEYCODE_ENTER
+                        )
+                    )
+                currentInputConnection
+                    ?.sendKeyEvent(
+                        KeyEvent(
+                            KeyEvent.ACTION_UP,
+                            KeyEvent.KEYCODE_ENTER
+                        )
+                    )
+            }
 
             clearSwipeState()
             refreshPredictionBar()
@@ -497,6 +529,58 @@ class KeySwiperImeService : InputMethodService() {
             refreshPredictionBar()
         }
 
+        override fun onTranslationPanelRequested() {
+            if (sensitiveField) {
+                root?.setStatus(
+                    "Translation is disabled in sensitive fields."
+                )
+                return
+            }
+
+            root?.showTranslationPanel(
+                currentTarget =
+                    Prefs.targetLanguage(
+                        this@KeySwiperImeService
+                    ),
+                recentTargets =
+                    Prefs.translationTargetHistory(
+                        this@KeySwiperImeService
+                    ),
+                detectedLanguages =
+                    languageHints
+            )
+        }
+
+        override fun onTranslationTargetSelected(
+            languageTag: String
+        ) {
+            if (sensitiveField) return
+
+            Prefs.setTargetLanguage(
+                this@KeySwiperImeService,
+                languageTag
+            )
+
+            val target =
+                Prefs.targetLanguage(
+                    this@KeySwiperImeService
+                )
+
+            root?.showTranslationPanel(
+                currentTarget = target,
+                recentTargets =
+                    Prefs.translationTargetHistory(
+                        this@KeySwiperImeService
+                    ),
+                detectedLanguages =
+                    languageHints
+            )
+
+            root?.setStatus(
+                "Translation target: ${target.uppercase()}"
+            )
+        }
+
         override fun onTranslate() {
             if (sensitiveField) {
                 root?.setStatus("Translation is disabled in sensitive fields.")
@@ -509,7 +593,10 @@ class KeySwiperImeService : InputMethodService() {
                 .orEmpty()
 
             if (selected.isBlank()) {
-                root?.setStatus("Select text first, then tap 🌐 to translate.")
+                onTranslationPanelRequested()
+                root?.setStatus(
+                    "Select text, choose a target language, then translate."
+                )
                 return
             }
 
@@ -519,7 +606,10 @@ class KeySwiperImeService : InputMethodService() {
             translationEngine.translate(selected, target) { result ->
                 result.onSuccess { translated ->
                     currentInputConnection?.commitText(translated, 1)
-                    root?.setStatus("Translated locally with Google ML Kit.")
+                    root?.showKeyboard()
+                    root?.setStatus(
+                        "Translated locally → ${target.uppercase()}."
+                    )
                     refreshLanguageHints(translated)
                     refreshPredictionBar()
                 }.onFailure {

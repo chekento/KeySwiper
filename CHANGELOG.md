@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.11.0-alpha11 — 2026-09-28
+
+Daily typing usability + translation target picker:
+
+- keyboard layout system added with German QWERTZ, English QWERTY, French AZERTY, Italian QWERTY and Spanish QWERTY
+- keyboard defaults to a layout matching the device language where possible
+- active keyboard layout can be selected in Settings
+- active layout can also be cycled directly from the compact language key below the letter rows
+- German layout includes direct ä, ö, ü and ß keys
+- French, Italian and Spanish layouts expose their most useful accented characters in a compact language row
+- English layout keeps a compact case-control key
+- dedicated ?123 number/symbol page added with ABC return key
+- swipe decoding is disabled on the symbol page to prevent accidental word gestures
+- SwipeTrace now records the physical layout ID
+- geometric swipe scoring now resolves ideal key centers against the active QWERTZ/QWERTY/AZERTY layout
+- personal motor-offset learning now uses the active physical keyboard layout
+- translation target picker added directly to the keyboard toolbar
+- translation picker shows current target, recent targets, detected source-language hints and common quick targets
+- recently selected translation targets are persisted locally and ranked first
+- tapping 🌐 with no selection now opens the target picker instead of only showing an error
+- translation remains explicit and applies only to selected text
+- Android editor actions are now respected by the Enter key: Search, Send, Go, Done, Next etc. use performEditorAction when available
+- normal Enter remains the fallback when the target editor exposes no action
+- new unit tests cover QWERTZ/AZERTY profiles, layout-aware geometry and the symbol page
+- version advanced to 0.11.0-alpha11 / build 11
+
 ## 0.10.0-alpha10 — 2026-09-28
 
 Connectionless handwriting + Android handwriting gestures v1:

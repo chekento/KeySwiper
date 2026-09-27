@@ -27,6 +27,7 @@ import cloud.kosch.keyswiper.prediction.PredictionLearningStore
 import cloud.kosch.keyswiper.stylus.StylusAction
 import cloud.kosch.keyswiper.stylus.StylusActionStore
 import cloud.kosch.keyswiper.stylus.StylusTrigger
+import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
 
 class SettingsActivity : Activity() {
 
@@ -90,7 +91,47 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Translation target (BCP-47 / ISO language tag)"
+            text = "Keyboard layout"
+            textSize = 14f
+            setPadding(0, dp(24), 0, dp(6))
+        })
+
+        val layoutProfiles = KeyboardLayoutProfiles.all
+        val keyboardLayout = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@SettingsActivity,
+                android.R.layout.simple_spinner_item,
+                layoutProfiles.map { it.label }
+            ).apply {
+                setDropDownViewResource(
+                    android.R.layout.simple_spinner_dropdown_item
+                )
+            }
+
+            val currentId =
+                Prefs.keyboardLayoutId(
+                    this@SettingsActivity
+                )
+
+            setSelection(
+                layoutProfiles
+                    .indexOfFirst {
+                        it.id == currentId
+                    }
+                    .coerceAtLeast(0)
+            )
+        }
+
+        content.addView(
+            keyboardLayout,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        content.addView(TextView(this).apply {
+            text = "Default translation target (can also be changed directly from 🌐 in the keyboard)"
             textSize = 14f
             setPadding(0, dp(24), 0, dp(6))
         })
@@ -157,6 +198,16 @@ class SettingsActivity : Activity() {
         content.addView(Button(this).apply {
             text = "Save language & prediction settings"
             setOnClickListener {
+                Prefs.setKeyboardLayoutId(
+                    this@SettingsActivity,
+                    layoutProfiles[
+                        keyboardLayout.selectedItemPosition
+                            .coerceIn(
+                                0,
+                                layoutProfiles.lastIndex
+                            )
+                    ].id
+                )
                 Prefs.setTargetLanguage(
                     this@SettingsActivity,
                     targetLanguage.text.toString()

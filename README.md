@@ -26,6 +26,17 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 ## Current feature set
 
+### ⌨️ Daily typing layouts
+
+- German QWERTZ, English QWERTY, French AZERTY, Italian and Spanish QWERTY
+- direct umlaut/accent row for DE/FR/IT/ES
+- in-keyboard language/layout cycling
+- dedicated ?123 numbers and symbols page
+- layout-aware geometric swipe recognition
+- Android Search/Send/Go/Done/Next editor actions
+- 🌐 translation target picker with recent languages and source-language hints
+
+
 ### 🧠 Intelligent word & sentence prediction
 
 - dedicated prediction strip between toolbar and keyboard
@@ -264,6 +275,7 @@ Clipboard / Emoji ───────────┤
 
 ## Documentation
 
+- [Daily Input Controls](docs/DAILY_INPUT.md)
 - [Swipe Engine](docs/SWIPE_ENGINE.md)
 - [Prediction Engine](docs/PREDICTION_ENGINE.md)
 - [Code Switching](docs/CODE_SWITCHING.md)
