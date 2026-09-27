@@ -26,6 +26,17 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 ## Current feature set
 
+### 🛠 Daily-driver hardening
+
+- editor-aware Text / Email / URL / Number keyboard modes
+- direct @ for email and / for URL fields
+- numeric fields open on numbers/symbols and suppress word prediction
+- grapheme-aware Backspace for emoji/combining characters
+- selected text is deleted correctly before normal Backspace
+- cursor/selection movement refreshes contextual predictions
+- sentence-start auto capitalization
+- stale auxiliary panels close when a new field receives focus
+
 ### ⌨️ Daily typing layouts
 
 - German QWERTZ, English QWERTY, French AZERTY, Italian and Spanish QWERTY
@@ -287,6 +298,7 @@ Clipboard / Emoji ───────────┤
 
 ## Documentation
 
+- [Daily-driver Hardening](docs/HARDENING.md)
 - [Daily Input Controls](docs/DAILY_INPUT.md)
 - [Smart Clipboard](docs/SMART_CLIPBOARD.md)
 - [Voice Editing](docs/VOICE_EDITING.md)

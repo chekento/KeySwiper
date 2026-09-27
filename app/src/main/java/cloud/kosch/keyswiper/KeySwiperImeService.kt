@@ -26,6 +26,7 @@ import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeDecoder
 import cloud.kosch.keyswiper.input.SwipeLearningStore
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.input.TextBoundaryUtils
 import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.language.UserVocabularyStore
@@ -48,6 +49,8 @@ import cloud.kosch.keyswiper.stylus.StylusActionStore
 import cloud.kosch.keyswiper.stylus.StylusClickInterpreter
 import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.HandwritingPadView
+import cloud.kosch.keyswiper.ui.KeyboardEditorMode
+import cloud.kosch.keyswiper.ui.KeyboardEditorModeResolver
 import cloud.kosch.keyswiper.ui.KeyboardRootView
 import cloud.kosch.keyswiper.voice.VoiceEditCommand
 import cloud.kosch.keyswiper.voice.VoiceEditCommandParser
@@ -81,6 +84,19 @@ class KeySwiperImeService : InputMethodService() {
     private var predictionGeneration = 0L
     private var currentPredictions: List<PredictionSuggestion> = emptyList()
     private var clipboardQuery: String = ""
+
+    private val selectionRefreshRunnable =
+        Runnable {
+            if (!sensitiveField) {
+                val before =
+                    textBeforeCursor()
+                refreshLanguageHints(
+                    before
+                )
+                refreshPredictionBar()
+                updateAutoShift()
+            }
+        }
 
     private var lastSwipeWord: String? = null
     private var lastSwipeCandidates: List<String> = emptyList()
@@ -310,16 +326,65 @@ class KeySwiperImeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         sensitiveField = SecurityPolicy.isSensitive(info)
-        predictionInputMode = PredictionContextClassifier.classify(info)
+        predictionInputMode =
+            PredictionContextClassifier.classify(
+                info
+            )
+
+        root?.setEditorMode(
+            KeyboardEditorModeResolver
+                .fromInputType(
+                    info?.inputType ?: 0
+                )
+        )
+        root?.showKeyboard()
+        clipboardQuery = ""
+
         refreshPrivacyState()
 
         if (sensitiveField) {
             predictionGeneration++
+            currentPredictions =
+                emptyList()
             root?.clearSuggestions()
+            root?.setAutoShift(false)
         } else {
-            val snapshot = currentContextSnapshot()
-            refreshLanguageHints(snapshot.beforeCursor)
+            val snapshot =
+                currentContextSnapshot()
+            refreshLanguageHints(
+                snapshot.beforeCursor
+            )
             refreshPredictionBar()
+            updateAutoShift()
+        }
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            candidatesStart,
+            candidatesEnd
+        )
+
+        mainHandler.removeCallbacks(
+            selectionRefreshRunnable
+        )
+
+        if (!sensitiveField) {
+            mainHandler.postDelayed(
+                selectionRefreshRunnable,
+                90L
+            )
         }
     }
 
@@ -363,6 +428,7 @@ class KeySwiperImeService : InputMethodService() {
             currentInputConnection?.commitText(value.toString(), 1)
             clearSwipeState()
             refreshPredictionBar()
+            updateAutoShift()
         }
 
         override fun onSwipe(trace: SwipeTrace) {
@@ -409,19 +475,66 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onBackspace() {
-            val swipeWord = lastSwipeWord
+            val connection =
+                currentInputConnection
+                    ?: return
 
-            if (swipeWord != null) {
-                currentInputConnection?.deleteSurroundingText(
-                    swipeWord.length + 1,
-                    0
-                )
-                clearSwipeState()
-            } else {
-                currentInputConnection?.deleteSurroundingText(1, 0)
+            val selected =
+                connection
+                    .getSelectedText(0)
+                    ?.toString()
+                    .orEmpty()
+
+            when {
+                selected.isNotEmpty() -> {
+                    connection.commitText(
+                        "",
+                        1
+                    )
+                    clearSwipeState()
+                }
+
+                lastSwipeWord != null -> {
+                    val swipeWord =
+                        lastSwipeWord
+                            ?: return
+
+                    connection
+                        .deleteSurroundingText(
+                            swipeWord.length + 1,
+                            0
+                        )
+                    clearSwipeState()
+                }
+
+                else -> {
+                    val before =
+                        connection
+                            .getTextBeforeCursor(
+                                64,
+                                0
+                            )
+                            ?.toString()
+                            .orEmpty()
+
+                    val count =
+                        TextBoundaryUtils
+                            .lastGraphemeUtf16Length(
+                                before
+                            )
+
+                    if (count > 0) {
+                        connection
+                            .deleteSurroundingText(
+                                count,
+                                0
+                            )
+                    }
+                }
             }
 
             refreshPredictionBar()
+            updateAutoShift()
         }
 
         override fun onSpace() {
@@ -444,6 +557,7 @@ class KeySwiperImeService : InputMethodService() {
 
             refreshLanguageHints(before)
             refreshPredictionBar()
+            updateAutoShift()
         }
 
         override fun onEnter() {
@@ -488,6 +602,7 @@ class KeySwiperImeService : InputMethodService() {
 
             clearSwipeState()
             refreshPredictionBar()
+            updateAutoShift()
         }
 
         override fun onCandidate(value: String) {
@@ -533,6 +648,7 @@ class KeySwiperImeService : InputMethodService() {
             val updated = textBeforeCursor()
             refreshLanguageHints(updated)
             refreshPredictionBar()
+            updateAutoShift()
         }
 
         override fun onTranslationPanelRequested() {
@@ -1436,6 +1552,22 @@ class KeySwiperImeService : InputMethodService() {
         val requestGeneration = predictionGeneration
 
         if (sensitiveField) {
+            currentPredictions =
+                emptyList()
+            root?.clearSuggestions()
+            return
+        }
+
+        if (
+            !KeyboardEditorModeResolver
+                .allowsWordPrediction(
+                    currentInputEditorInfo
+                        ?.inputType
+                        ?: 0
+                )
+        ) {
+            currentPredictions =
+                emptyList()
             root?.clearSuggestions()
             return
         }
@@ -1896,6 +2028,48 @@ class KeySwiperImeService : InputMethodService() {
             ?.getTextBeforeCursor(1600, 0)
             ?.toString()
             .orEmpty()
+
+    private fun updateAutoShift() {
+        val inputType =
+            currentInputEditorInfo
+                ?.inputType
+                ?: 0
+
+        val mode =
+            KeyboardEditorModeResolver
+                .fromInputType(
+                    inputType
+                )
+
+        if (
+            mode !=
+            KeyboardEditorMode.TEXT
+        ) {
+            root?.setAutoShift(
+                false
+            )
+            return
+        }
+
+        val before =
+            textBeforeCursor()
+        val trimmed =
+            before.trimEnd()
+
+        val shouldShift =
+            trimmed.isEmpty() ||
+                trimmed.lastOrNull() in
+                setOf(
+                    '.',
+                    '!',
+                    '?',
+                    '\n'
+                )
+
+        root?.setAutoShift(
+            shouldShift
+        )
+    }
 
     private fun currentToken(text: String): String =
         text.takeLastWhile {

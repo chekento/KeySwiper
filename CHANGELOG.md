@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.14.0-alpha14 — 2026-09-28
+
+Daily-driver hardening:
+
+- keyboard now classifies focused editors as Text, Email, URL or Number/Phone
+- number and phone editors open directly on the numeric/symbol surface
+- email editors expose a direct @ key in the bottom row
+- URL editors expose a direct / key in the bottom row
+- numeric/phone editors suppress word and sentence predictions
+- focused-editor changes always return KeySwiper from Clipboard/Emoji/Translation panels to the main keyboard
+- temporary clipboard search state is reset when a new input field starts
+- Backspace now deletes an active text selection before considering swipe undo
+- normal Backspace is grapheme-aware instead of blindly deleting one UTF-16 code unit
+- surrogate-pair emoji deletion no longer leaves half a character
+- combining-character sequences are deleted as one text unit where Java/Android BreakIterator exposes the grapheme boundary
+- external cursor/selection movement triggers a debounced prediction/context refresh
+- context refresh after cursor movement also updates automatic sentence capitalization
+- sentence-start auto-shift added for normal text editors
+- auto-shift is disabled for Email, URL and Number/Phone editors
+- new input fields close stale auxiliary keyboard panels
+- new unit tests cover emoji/combining-character backspace boundaries and editor-mode classification
+- Android lint added to CI before APK assembly so release builds now require tests + lint + compile success
+- version advanced to 0.14.0-alpha14 / build 14
+
 ## 0.13.0-alpha13 — 2026-09-28
 
 Voice Editing v1:

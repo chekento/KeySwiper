@@ -81,6 +81,8 @@ class KeyboardRootView(
 
     private var shifted = false
     private var symbolMode = false
+    private var editorMode =
+        KeyboardEditorMode.TEXT
     private var layoutProfile =
         KeyboardLayoutProfiles.byId(
             Prefs.keyboardLayoutId(context)
@@ -479,13 +481,23 @@ class KeyboardRootView(
         }
 
         if (symbolMode) {
-            key(
-                "ABC",
-                1.1f
+            if (
+                editorMode ==
+                KeyboardEditorMode.NUMBER
             ) {
-                symbolMode = false
-                shifted = false
-                rebuildKeyboardPanel()
+                key(
+                    "123",
+                    1.1f
+                ) {}
+            } else {
+                key(
+                    "ABC",
+                    1.1f
+                ) {
+                    symbolMode = false
+                    shifted = false
+                    rebuildKeyboardPanel()
+                }
             }
         } else {
             key(
@@ -507,19 +519,91 @@ class KeyboardRootView(
             }
         }
 
-        key(
-            "space",
-            3.2f
-        ) {
-            callbacks?.onSpace()
-        }
+        when (editorMode) {
+            KeyboardEditorMode.EMAIL -> {
+                key(
+                    "@",
+                    0.8f
+                ) {
+                    callbacks
+                        ?.onCharacter('@')
+                }
 
-        key(
-            ".",
-            0.75f
-        ) {
-            callbacks
-                ?.onCharacter('.')
+                key(
+                    "space",
+                    2.2f
+                ) {
+                    callbacks?.onSpace()
+                }
+
+                key(
+                    ".",
+                    0.7f
+                ) {
+                    callbacks
+                        ?.onCharacter('.')
+                }
+            }
+
+            KeyboardEditorMode.URL -> {
+                key(
+                    "/",
+                    0.8f
+                ) {
+                    callbacks
+                        ?.onCharacter('/')
+                }
+
+                key(
+                    "space",
+                    2.1f
+                ) {
+                    callbacks?.onSpace()
+                }
+
+                key(
+                    ".",
+                    0.7f
+                ) {
+                    callbacks
+                        ?.onCharacter('.')
+                }
+            }
+
+            KeyboardEditorMode.NUMBER -> {
+                key(
+                    "-",
+                    0.9f
+                ) {
+                    callbacks
+                        ?.onCharacter('-')
+                }
+
+                key(
+                    ".",
+                    0.9f
+                ) {
+                    callbacks
+                        ?.onCharacter('.')
+                }
+            }
+
+            KeyboardEditorMode.TEXT -> {
+                key(
+                    "space",
+                    3.2f
+                ) {
+                    callbacks?.onSpace()
+                }
+
+                key(
+                    ".",
+                    0.75f
+                ) {
+                    callbacks
+                        ?.onCharacter('.')
+                }
+            }
         }
 
         key(
@@ -569,6 +653,38 @@ class KeyboardRootView(
         setStatus(
             "Layout: ${next.label}"
         )
+    }
+
+    fun setEditorMode(
+        mode: KeyboardEditorMode
+    ) {
+        editorMode = mode
+        symbolMode =
+            mode ==
+                KeyboardEditorMode.NUMBER
+
+        if (
+            mode !=
+            KeyboardEditorMode.TEXT
+        ) {
+            shifted = false
+        }
+
+        rebuildKeyboardPanel()
+    }
+
+    fun setAutoShift(
+        enabled: Boolean
+    ) {
+        val next =
+            enabled &&
+                editorMode ==
+                KeyboardEditorMode.TEXT &&
+                !symbolMode
+
+        shifted = next
+        keyboardSurface.shifted =
+            next
     }
 
     fun setStatus(
@@ -703,7 +819,9 @@ class KeyboardRootView(
     }
 
     fun showKeyboard() {
-        symbolMode = false
+        symbolMode =
+            editorMode ==
+                KeyboardEditorMode.NUMBER
         shifted = false
         rebuildKeyboardPanel()
         content.removeAllViews()
