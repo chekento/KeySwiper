@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0-alpha04 — 2026-09-27
+
+Intelligent word and sentence prediction:
+
+- new dedicated prediction strip placed exactly between the toolbar and keyboard
+- prediction strip dynamically switches between normal prediction and swipe-correction candidates
+- local word completion while a token is being typed
+- next-word prediction from language-specific context maps
+- local bigram and trigram learning from confirmed text
+- personal learned followers outrank generic suggestions over time
+- sentence-continuation suggestions appear as longer arrow-prefixed chips
+- prediction ranking uses Google ML Kit language hints from surrounding text
+- German, English, Italian, French and Spanish starter prediction packs
+- personal transition memory can learn additional vocabulary independent of starter language packs
+- selecting a prediction teaches the local transition model
+- sensitive/password fields disable prediction context and prediction learning
+- dedicated Settings reset for word/sentence prediction memory
+- prediction engine unit tests cover word completion, next-word prediction and sentence continuation
+- Gemini Nano Prompt API evaluated but not used as always-on IME predictor because current AICore foreground restrictions can block inference from an IME service
+- version advanced to 0.4.0-alpha04 / build 4
+
 ## 0.3.0-alpha03 — 2026-09-27
 
 Geometric adaptive swipe engine:

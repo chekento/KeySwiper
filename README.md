@@ -26,7 +26,9 @@ The first implementation focuses on a buildable architecture with:
 - Android `InputMethodService`
 - custom QWERTY keyboard view with tap + swipe path capture
 - adaptive Swipe v3 ranking with geometric path scoring and local correction learning
+- intelligent word completion, next-word and sentence prediction strip
 - Google ML Kit auto-language hints plus per-user motor offsets for swipe ranking
+- personal local bigram/trigram prediction learning
 - suggestion/candidate strip
 - clipboard panel
 - emoji panel
@@ -78,7 +80,7 @@ gradle :app:assembleDebug
 
 The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
 
-See [Swipe Engine](docs/SWIPE_ENGINE.md) for the current adaptive-decoder design.
+See [Swipe Engine](docs/SWIPE_ENGINE.md) for the current adaptive-decoder design and [Prediction Engine](docs/PREDICTION_ENGINE.md) for word/sentence prediction.
 
 ## Roadmap
 

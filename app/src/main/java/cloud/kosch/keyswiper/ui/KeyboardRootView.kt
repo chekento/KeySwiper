@@ -11,6 +11,8 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.prediction.PredictionKind
+import cloud.kosch.keyswiper.prediction.PredictionSuggestion
 
 class KeyboardRootView(context: Context) : LinearLayout(context) {
     interface Callbacks {
@@ -20,6 +22,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
         fun onSpace()
         fun onEnter()
         fun onCandidate(value: String)
+        fun onPrediction(suggestion: PredictionSuggestion)
         fun onTranslate()
         fun onVoice()
         fun onClipboard()
@@ -37,7 +40,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
     private fun dp(value: Int) = (value * density).toInt()
 
     private val status = TextView(context)
-    private val candidates = LinearLayout(context)
+    private val suggestions = LinearLayout(context)
     private val content = FrameLayout(context)
     private val keyboardPanel = LinearLayout(context)
     private val keyboardSurface = KeyboardSurface(context)
@@ -55,16 +58,20 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
         }
         addView(status, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
-        val candidateScroll = HorizontalScrollView(context).apply {
+        // Toolbar stays above the intelligent suggestion strip.
+        addView(buildToolbar(), LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
+
+        val suggestionScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
-            addView(candidates.apply {
+            setBackgroundColor(Color.rgb(24, 27, 34))
+            addView(suggestions.apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(4), dp(2), dp(4), dp(2))
             })
         }
-        addView(candidateScroll, LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
-        addView(buildToolbar(), LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
+        // This is deliberately placed between toolbar and keyboard.
+        addView(suggestionScroll, LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
 
         keyboardPanel.orientation = VERTICAL
         keyboardSurface.listener = object : KeyboardSurface.Listener {
@@ -107,6 +114,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
             tool("✍") { callbacks?.onHandwritingRequested() },
             tool("⚙") { callbacks?.onSettings() }
         ).forEach { row.addView(it, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)) }
+
         return row
     }
 
@@ -145,16 +153,54 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
         status.visibility = if (message.isNullOrBlank()) GONE else VISIBLE
     }
 
-    fun setCandidates(values: List<String>) {
-        candidates.removeAllViews()
-        values.take(5).forEach { value ->
-            candidates.addView(Button(context).apply {
+    fun setPredictions(values: List<PredictionSuggestion>) {
+        suggestions.removeAllViews()
+
+        values.take(6).forEach { suggestion ->
+            suggestions.addView(Button(context).apply {
+                text = suggestion.display
+                isAllCaps = false
+                minWidth = when (suggestion.kind) {
+                    PredictionKind.SENTENCE -> dp(170)
+                    else -> dp(72)
+                }
+                maxLines = 1
+                textSize = if (suggestion.kind == PredictionKind.SENTENCE) 13f else 15f
+                alpha = (0.72f + suggestion.confidence.coerceIn(0f, 1f) * 0.28f)
+                setOnClickListener { callbacks?.onPrediction(suggestion) }
+            }, LinearLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT,
+                LayoutParams.MATCH_PARENT
+            ))
+        }
+    }
+
+    fun setSwipeCandidates(values: List<String>) {
+        suggestions.removeAllViews()
+
+        values.take(6).forEachIndexed { index, value ->
+            val suggestion = PredictionSuggestion(
+                display = value,
+                commitText = value,
+                kind = PredictionKind.SWIPE_CORRECTION,
+                confidence = (0.96f - index * 0.10f).coerceAtLeast(0.45f)
+            )
+
+            suggestions.addView(Button(context).apply {
                 text = value
                 isAllCaps = false
-                minWidth = dp(68)
+                minWidth = dp(72)
+                alpha = 0.75f + suggestion.confidence * 0.25f
                 setOnClickListener { callbacks?.onCandidate(value) }
-            }, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
+            }, LinearLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT,
+                LayoutParams.MATCH_PARENT
+            ))
         }
+    }
+
+    fun clearSuggestions() {
+        suggestions.removeAllViews()
     }
 
     fun showKeyboard() {
@@ -195,6 +241,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
             orientation = VERTICAL
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
+
         val groups = listOf(
             listOf("😀", "😄", "😂", "🥹", "😍", "🥰", "😘", "😎"),
             listOf("❤️", "❤️‍🔥", "💕", "✨", "🔥", "👍", "🙌", "🙏"),
@@ -213,6 +260,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
             }
             panel.addView(row)
         }
+
         panel.addView(Button(context).apply {
             text = "Back to keyboard"
             setOnClickListener { showKeyboard() }
@@ -225,6 +273,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
             orientation = VERTICAL
             setPadding(dp(5), dp(5), dp(5), dp(5))
         }
+
         val pad = HandwritingPadView(context).apply {
             onStylusPrimaryButton = { callbacks?.onStylusPrimary() }
         }

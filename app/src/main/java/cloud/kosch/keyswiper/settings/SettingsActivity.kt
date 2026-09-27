@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeLearningStore
+import cloud.kosch.keyswiper.prediction.PredictionLearningStore
 
 class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,16 +36,20 @@ class SettingsActivity : Activity() {
             textSize = 30f
             setTextColor(Color.rgb(22, 24, 30))
         })
+
         content.addView(TextView(this).apply {
-            text = "Adaptive multimodal Android keyboard — swipe, stylus, voice, clipboard, emoji and multilingual input."
+            text = "Adaptive multimodal Android keyboard — swipe, prediction, stylus, voice, clipboard, emoji and multilingual input."
             textSize = 16f
             setPadding(0, dp(8), 0, dp(22))
         })
 
         content.addView(Button(this).apply {
             text = "1. Enable KeySwiper"
-            setOnClickListener { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
+            setOnClickListener {
+                startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+            }
         })
+
         content.addView(Button(this).apply {
             text = "2. Choose KeySwiper"
             setOnClickListener {
@@ -52,10 +57,21 @@ class SettingsActivity : Activity() {
                     .showInputMethodPicker()
             }
         })
+
         content.addView(Button(this).apply {
-            text = if (hasMicPermission()) "Microphone permission granted" else "Grant microphone permission"
+            text = if (hasMicPermission()) {
+                "Microphone permission granted"
+            } else {
+                "Grant microphone permission"
+            }
+
             setOnClickListener {
-                if (!hasMicPermission()) requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 70)
+                if (!hasMicPermission()) {
+                    requestPermissions(
+                        arrayOf(Manifest.permission.RECORD_AUDIO),
+                        70
+                    )
+                }
             }
         })
 
@@ -64,42 +80,74 @@ class SettingsActivity : Activity() {
             textSize = 14f
             setPadding(0, dp(24), 0, dp(6))
         })
+
         val targetLanguage = EditText(this).apply {
             setText(Prefs.targetLanguage(this@SettingsActivity))
             hint = "de, en, it, fr, es …"
             maxLines = 1
         }
-        content.addView(targetLanguage, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+
+        content.addView(
+            targetLanguage,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         content.addView(TextView(this).apply {
             text = "Handwriting model language"
             textSize = 14f
             setPadding(0, dp(18), 0, dp(6))
         })
+
         val handwritingLanguage = EditText(this).apply {
             setText(Prefs.handwritingLanguage(this@SettingsActivity))
             hint = "de-DE, en-US, ja-JP …"
             maxLines = 1
         }
-        content.addView(handwritingLanguage, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+
+        content.addView(
+            handwritingLanguage,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         content.addView(Button(this).apply {
             text = "Save language settings"
             setOnClickListener {
-                Prefs.setTargetLanguage(this@SettingsActivity, targetLanguage.text.toString())
-                Prefs.setHandwritingLanguage(this@SettingsActivity, handwritingLanguage.text.toString())
+                Prefs.setTargetLanguage(
+                    this@SettingsActivity,
+                    targetLanguage.text.toString()
+                )
+                Prefs.setHandwritingLanguage(
+                    this@SettingsActivity,
+                    handwritingLanguage.text.toString()
+                )
                 text = "Saved ✓"
             }
         })
 
         content.addView(TextView(this).apply {
-            text = "Swipe v3 uses Google ML Kit language identification plus swipe geometry, speed, direction and a local per-key motor profile."
+            text = "Prediction v1 combines word completion, next-word prediction, local bigrams/trigrams, sentence continuations, Google ML Kit language hints and personal local learning."
             textSize = 14f
             setPadding(0, dp(24), 0, dp(8))
+        })
+
+        content.addView(Button(this).apply {
+            text = "Reset word & sentence prediction learning"
+            setOnClickListener {
+                PredictionLearningStore(this@SettingsActivity).reset()
+                text = "Prediction learning reset ✓"
+            }
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Swipe v3 uses path geometry, speed, direction and a local per-key motor profile."
+            textSize = 14f
+            setPadding(0, dp(20), 0, dp(8))
         })
 
         content.addView(Button(this).apply {
@@ -112,12 +160,16 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Privacy default: normal typing is local. Voice, clipboard and translation actions are explicit. Learning and transformation tools are disabled for sensitive/password fields."
+            text = "Privacy default: prediction context and learning are disabled in sensitive/password fields. Personal prediction and swipe models stay local."
             textSize = 14f
             setPadding(0, dp(24), 0, 0)
         })
 
-        setContentView(ScrollView(this).apply { addView(content) })
+        setContentView(
+            ScrollView(this).apply {
+                addView(content)
+            }
+        )
     }
 
     private fun hasMicPermission(): Boolean =
