@@ -1,5 +1,6 @@
 package cloud.kosch.keyswiper.prediction
 
+import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import kotlin.math.ln
 
 class LocalBeamSemanticProvider(

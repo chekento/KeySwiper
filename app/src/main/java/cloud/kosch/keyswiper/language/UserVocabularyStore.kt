@@ -59,7 +59,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
     override fun prefixMatches(
         prefix: String,
         lanes: List<LanguageLane>,
-        limit: Int = 8
+        limit: Int
     ): List<Pair<String, Int>> {
         val normalized = normalize(prefix)
         if (normalized.isBlank()) return emptyList()
@@ -88,7 +88,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
 
     override fun frequentWords(
         lanes: List<LanguageLane>,
-        limit: Int = 10
+        limit: Int
     ): List<Pair<String, Int>> {
         val laneScores = lanes.associate { it.tag to it.score }
 
