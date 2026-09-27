@@ -42,7 +42,15 @@ jobs:
         run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Android lint
-        run: gradle :app:lintDebug --stacktrace
+        shell: bash
+        run: |
+          if ! gradle :app:lintDebug --stacktrace; then
+            echo "===== FULL LINT REPORT ====="
+            if [ -f app/build/reports/lint-results-debug.txt ]; then
+              cat app/build/reports/lint-results-debug.txt
+            fi
+            exit 1
+          fi
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace

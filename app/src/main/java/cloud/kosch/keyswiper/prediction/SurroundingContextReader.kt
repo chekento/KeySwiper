@@ -1,5 +1,6 @@
 package cloud.kosch.keyswiper.prediction
 
+import android.annotation.TargetApi
 import android.os.Build
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -34,6 +35,7 @@ class SurroundingContextReader {
         val after: String
     )
 
+    @TargetApi(31)
     private fun readModern(
         connection: InputConnection,
         editorInfo: EditorInfo?
