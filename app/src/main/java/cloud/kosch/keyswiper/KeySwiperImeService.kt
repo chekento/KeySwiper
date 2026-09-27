@@ -2,14 +2,20 @@ package cloud.kosch.keyswiper
 
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
+import android.graphics.drawable.ColorDrawable
+import android.graphics.Color
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import cloud.kosch.keyswiper.clipboard.ClipboardController
 import cloud.kosch.keyswiper.handwriting.DigitalInkEngine
+import cloud.kosch.keyswiper.handwriting.HandwritingCommitFormatter
+import cloud.kosch.keyswiper.handwriting.SystemHandwritingInkView
 import cloud.kosch.keyswiper.input.KeyOffset
 import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeDecoder
@@ -39,6 +45,7 @@ import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardRootView
 import cloud.kosch.keyswiper.voice.VoiceInputController
+import java.time.Duration
 import java.util.Locale
 
 class KeySwiperImeService : InputMethodService() {
@@ -73,6 +80,14 @@ class KeySwiperImeService : InputMethodService() {
     private var lastSwipeContextWord: String = ""
     private var lastSwipeTrace: SwipeTrace? = null
 
+    private var systemHandwritingView: SystemHandwritingInkView? = null
+    private var systemHandwritingModelReady = false
+    private var systemHandwritingRecognitionInFlight = false
+    private var systemHandwritingGeneration = 0L
+    private val systemHandwritingRecognitionRunnable = Runnable {
+        recognizeSystemHandwritingBatch()
+    }
+
     override fun onCreate() {
         super.onCreate()
 
@@ -98,6 +113,100 @@ class KeySwiperImeService : InputMethodService() {
         voiceController = VoiceInputController(this)
         stylusActionStore = StylusActionStore(this)
         clipboardController.start()
+    }
+
+    override fun onPrepareStylusHandwriting() {
+        super.onPrepareStylusHandwriting()
+
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            sensitiveField
+        ) {
+            return
+        }
+
+        prepareSystemHandwritingModel()
+    }
+
+    override fun onStartStylusHandwriting(): Boolean {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            sensitiveField
+        ) {
+            return false
+        }
+
+        val handwritingWindow = getStylusHandwritingWindow()
+            ?: return false
+
+        systemHandwritingGeneration++
+        systemHandwritingRecognitionInFlight = false
+
+        val view = SystemHandwritingInkView(this).also {
+            it.onStrokeFinished = {
+                scheduleSystemHandwritingRecognition()
+            }
+        }
+
+        systemHandwritingView = view
+        handwritingWindow.setBackgroundDrawable(
+            ColorDrawable(Color.TRANSPARENT)
+        )
+        handwritingWindow.setContentView(view)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            setStylusHandwritingSessionTimeout(
+                Duration.ofSeconds(7)
+            )
+        }
+
+        prepareSystemHandwritingModel()
+        return true
+    }
+
+    override fun onStylusHandwritingMotionEvent(
+        motionEvent: MotionEvent
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+
+        if (
+            motionEvent.actionMasked == MotionEvent.ACTION_DOWN &&
+            motionEvent.pointerCount > 0
+        ) {
+            if (
+                (motionEvent.buttonState and
+                    MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
+            ) {
+                handlePrimaryStylusPress()
+            }
+
+            if (
+                (motionEvent.buttonState and
+                    MotionEvent.BUTTON_STYLUS_SECONDARY) != 0
+            ) {
+                executeStylusAction(
+                    stylusActionStore.actionFor(
+                        StylusTrigger.SECONDARY_SINGLE
+                    )
+                )
+            }
+        }
+
+        systemHandwritingView
+            ?.consumeStylusEvent(motionEvent)
+    }
+
+    override fun onFinishStylusHandwriting() {
+        systemHandwritingGeneration++
+        mainHandler.removeCallbacks(
+            systemHandwritingRecognitionRunnable
+        )
+        systemHandwritingRecognitionInFlight = false
+        systemHandwritingView?.clearInk()
+        systemHandwritingView = null
+        super.onFinishStylusHandwriting()
     }
 
     override fun onCreateInputView(): View =
@@ -136,6 +245,11 @@ class KeySwiperImeService : InputMethodService() {
     override fun onFinishInput() {
         super.onFinishInput()
         predictionGeneration++
+        systemHandwritingGeneration++
+        systemHandwritingModelReady = false
+        systemHandwritingRecognitionInFlight = false
+        systemHandwritingView?.clearInk()
+        systemHandwritingView = null
         stylusClickInterpreter.clear()
         mainHandler.removeCallbacksAndMessages(null)
         voiceController.stop()
@@ -684,6 +798,185 @@ class KeySwiperImeService : InputMethodService() {
                         currentPredictions = merged
                         root?.setPredictions(merged)
                     }
+                }
+            }
+        }
+    }
+
+    private fun prepareSystemHandwritingModel() {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            sensitiveField
+        ) {
+            systemHandwritingModelReady = false
+            return
+        }
+
+        val language =
+            Prefs.handwritingLanguage(this)
+
+        if (digitalInkEngine.isReadyFor(language)) {
+            systemHandwritingModelReady = true
+
+            if (systemHandwritingView?.hasInk() == true) {
+                scheduleSystemHandwritingRecognition()
+            }
+            return
+        }
+
+        digitalInkEngine.prepare(language) { result ->
+            mainHandler.post {
+                systemHandwritingModelReady =
+                    result.isSuccess
+
+                result.onSuccess {
+                    if (
+                        systemHandwritingView
+                            ?.hasInk() == true
+                    ) {
+                        scheduleSystemHandwritingRecognition()
+                    }
+                }.onFailure {
+                    root?.setStatus(
+                        it.message
+                            ?: "Stylus handwriting model failed to load."
+                    )
+                }
+            }
+        }
+    }
+
+    private fun scheduleSystemHandwritingRecognition() {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            sensitiveField
+        ) {
+            return
+        }
+
+        mainHandler.removeCallbacks(
+            systemHandwritingRecognitionRunnable
+        )
+        mainHandler.postDelayed(
+            systemHandwritingRecognitionRunnable,
+            650L
+        )
+    }
+
+    private fun recognizeSystemHandwritingBatch() {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            sensitiveField ||
+            systemHandwritingRecognitionInFlight
+        ) {
+            return
+        }
+
+        val view =
+            systemHandwritingView ?: return
+
+        if (!view.hasInk()) {
+            return
+        }
+
+        if (!systemHandwritingModelReady) {
+            prepareSystemHandwritingModel()
+            mainHandler.postDelayed(
+                systemHandwritingRecognitionRunnable,
+                250L
+            )
+            return
+        }
+
+        val generation = systemHandwritingGeneration
+        val ink = view.drainInk()
+        val width = view.width
+            .toFloat()
+            .coerceAtLeast(1f)
+        val height = view.height
+            .toFloat()
+            .coerceAtLeast(1f)
+
+        val before = currentInputConnection
+            ?.getTextBeforeCursor(200, 0)
+            ?.toString()
+            .orEmpty()
+
+        systemHandwritingRecognitionInFlight = true
+
+        digitalInkEngine.recognize(
+            ink = ink,
+            preContext = before,
+            width = width,
+            height = height
+        ) { result ->
+            mainHandler.post {
+                if (
+                    generation != systemHandwritingGeneration
+                ) {
+                    systemHandwritingRecognitionInFlight = false
+                    return@post
+                }
+
+                systemHandwritingRecognitionInFlight = false
+
+                result.onSuccess { values ->
+                    val best =
+                        values.firstOrNull().orEmpty()
+
+                    val committed =
+                        HandwritingCommitFormatter
+                            .formatRecognition(best)
+
+                    if (committed.isNotBlank()) {
+                        currentInputConnection
+                            ?.commitText(
+                                committed,
+                                1
+                            )
+
+                        if (!sensitiveField) {
+                            val words =
+                                extractWords(
+                                    textBeforeCursor()
+                                )
+
+                            predictionLearningStore
+                                .learnTransition(
+                                    words.takeLast(5)
+                                )
+
+                            extractWords(best)
+                                .forEach {
+                                    userVocabularyStore
+                                        .observeWord(
+                                            it,
+                                            languageHints
+                                        )
+                                }
+                        }
+
+                        refreshLanguageHints(
+                            textBeforeCursor()
+                        )
+                        refreshPredictionBar()
+                    }
+
+                    root?.setStatus(
+                        "Stylus handwriting recognized locally."
+                    )
+                }.onFailure {
+                    root?.setStatus(
+                        it.message
+                            ?: "Stylus handwriting recognition failed."
+                    )
+                }
+
+                if (
+                    systemHandwritingView
+                        ?.hasInk() == true
+                ) {
+                    scheduleSystemHandwritingRecognition()
                 }
             }
         }

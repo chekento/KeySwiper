@@ -336,6 +336,25 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
+            text = "Direct stylus handwriting"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "On compatible Android 14+ text fields, KeySwiper can now act as the system stylus-handwriting IME: write directly over the target app, recognize locally with ML Kit Digital Ink, and commit the result into the focused field."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "The configured handwriting language above is used for both the in-keyboard handwriting pad and direct system handwriting. Sensitive/password fields never start a KeySwiper handwriting session."
+            textSize = 13f
+            setPadding(0, dp(2), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
             text = "Stylus / S Pen actions"
             textSize = 20f
             setTextColor(Color.rgb(22, 24, 30))

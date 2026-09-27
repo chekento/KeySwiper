@@ -44,6 +44,9 @@ class DigitalInkEngine {
             .addOnFailureListener { callback(Result.failure(it)) }
     }
 
+    fun isReadyFor(languageTag: String): Boolean =
+        recognizer != null && activeLanguage == languageTag
+
     fun recognize(
         ink: Ink,
         preContext: String,

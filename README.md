@@ -1,108 +1,293 @@
 # KeySwiper
 
-**Adaptive multimodal Android keyboard — swipe, stylus, voice, clipboard, emoji and multilingual input.**
+<p align="center">
+  <strong>Adaptive AI Keyboard for Android</strong><br>
+  Swipe · Context Intelligence · Local AI · Voice · Handwriting · Translation · Stylus · Privacy
+</p>
 
-> 🚧 **Early development / experimental build.** KeySwiper is not yet intended for production use or for entering secrets such as passwords, recovery phrases or payment data.
+<p align="center">
+  <a href="https://github.com/chekento/KeySwiper/releases/latest/download/KeySwiper-latest.apk">
+    <img alt="Download latest KeySwiper APK" src="https://img.shields.io/badge/%E2%AC%87%20DOWNLOAD-LATEST%20KEYSWIPER%20APK-2563EB?style=for-the-badge&logo=android&logoColor=white">
+  </a>
+</p>
 
-## Vision
+<p align="center">
+  <a href="docs/versions/README.md">APK Archive</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="docs/PREDICTION_ENGINE.md">Prediction Engine</a> ·
+  <a href="docs/SWIPE_ENGINE.md">Swipe Engine</a>
+</p>
 
-KeySwiper is an Android Input Method Editor (IME) designed around **input fusion**:
+> 🚧 **Experimental alpha.** KeySwiper is under active development. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
-- finger typing and swipe paths
-- stylus / S Pen input
-- local handwriting recognition
-- Voice2Text
-- clipboard actions
-- emoji input
-- language detection and translation
-- adaptive, privacy-first personalization
+## What KeySwiper is
 
-The goal is not to clone an existing keyboard. KeySwiper is designed so the input system adapts to the user's motor patterns, languages and workflows.
+KeySwiper is an Android Input Method Editor built as an **adaptive multimodal input system**, not a clone of a conventional keyboard. Finger typing, geometric swipe input, context-aware prediction, local neural models, voice, handwriting, stylus actions, clipboard, emoji, language detection and translation are designed to cooperate inside one input session.
 
-## Current alpha foundation
+## Current feature set
 
-The first implementation focuses on a buildable architecture with:
+### 🧠 Intelligent word & sentence prediction
 
-- Android `InputMethodService`
-- custom QWERTY keyboard view with tap + swipe path capture
-- adaptive Swipe v3 ranking with geometric path scoring and local correction learning
-- intelligent word completion, next-word and sentence prediction strip
-- hybrid instant + semantic beam-search prediction up to 2–6 words ahead
-- surrounding-context intelligence using text before/after the cursor, selection, sentence, paragraph and topics
-- optional local LiteRT-LM neural refinement with importable `.litertlm` models
-- Google ML Kit auto-language hints plus per-user motor offsets for swipe ranking
-- personal local 2/3/4-gram prediction learning
-- local General / Message / Email / Search / Code context modes
-- three simultaneous language lanes for real code-switching
-- larger DE/EN/IT/FR/ES core language packs plus local personal vocabulary
-- local neural model manager with SHA-256 verification
-- suggestion/candidate strip
-- clipboard panel
-- emoji panel
-- Android SpeechRecognizer integration
+- dedicated prediction strip between toolbar and keyboard
+- live word completion while typing
+- next-word prediction
+- sentence continuations 2–6 words ahead
+- local 2/3/4-gram personal learning
+- contextual semantic beam search
+- optional local LiteRT-LM neural refinement
+- stale neural results are discarded instead of overwriting newer context
+- General / Message / Email / Search / Code context modes
+- personal vocabulary with remember / forget / reset controls
+- prediction learning disabled in sensitive fields
+
+### 🧩 Surrounding Context Intelligence
+
+KeySwiper can locally reason over more than the immediately preceding word:
+
+- text before **and after** the cursor
+- selected text
+- current sentence before/after the cursor
+- previous and next sentence
+- current paragraph
+- topic terms
+- question intent
+- detected languages
+- Android editor/input mode
+
+This lets suggestions fit the current thought and avoid blindly duplicating text already present after the cursor.
+
+### 🌍 Multilingual input & code-switching
+
+- larger embedded German, English, Italian, French and Spanish language packs
+- up to three active language lanes in parallel
+- mixed-language sentences without manual language switching
+- language scoring from ML Kit hints, recent words, prefixes, diacritics and technical vocabulary
+- accented/umlaut words preserve correct spelling while using normalized swipe geometry
+- personal words can carry an optional language tag
 - Google ML Kit language identification
 - Google ML Kit on-device translation
-- Google ML Kit Digital Ink Recognition foundation
-- stylus-aware touch handling
-- configurable S Pen / stylus primary-single, primary-double and secondary-button actions
-- local preferences and privacy controls
-- CI debug-APK build
-- permanent per-build GitHub Release + version-page archive
+- Google ML Kit Digital Ink models for broad handwriting coverage
 
-## Google language stack
+### ✨ Adaptive Swipe v3
 
-KeySwiper deliberately separates three capabilities:
+- real X/Y/time swipe traces instead of touched-letter sequences only
+- Dynamic Time Warping against ideal keyboard paths
+- path-length similarity
+- direction-change scoring
+- velocity-aware scoring
+- per-letter personal motor offsets
+- local learning from explicit corrections
+- language-lane-aware swipe ranking
+- whole-word Backspace undo immediately after a swipe
+- candidate cycling through the suggestion strip or mapped stylus actions
 
-1. **Language identification** — local ML Kit detection for 100+ languages.
-2. **Translation** — local ML Kit translation for 50+ languages.
-3. **Digital Ink** — local handwriting recognition with models for 300+ languages / variants.
+### ✍️ Direct Android stylus handwriting
 
-A cloud translation gateway can be added for broader Google Cloud Translation coverage without embedding service-account credentials into the APK.
+- native IME stylus-handwriting support
+- system handwriting window
+- transparent live ink overlay
+- local ML Kit Digital Ink recognition
+- direct commit into the focused app via InputConnection
+- configured handwriting language shared with the manual handwriting panel
+- short idle debounce for multi-stroke words
+- eraser-tool clears the current uncommitted batch
+- handwriting recognition feeds local vocabulary/prediction learning
+- disabled in sensitive fields
+- manual in-keyboard handwriting pad remains available
 
-## Privacy model
+See [Direct Stylus Handwriting](docs/SYSTEM_HANDWRITING.md).
 
-Keyboard software handles unusually sensitive data. KeySwiper therefore follows these defaults:
+### 🖊️ Stylus / S Pen controls
+
+Generic Android stylus-button mappings are configurable independently:
+
+- primary single-click
+- primary double-click
+- secondary button
+
+Available actions include:
+
+- Voice2Text
+- accept top prediction
+- next / previous swipe candidate
+- translate selected text
+- clipboard
+- emoji panel
+- handwriting
+- undo last swipe
+- Settings
+- None
+
+Default mapping:
+
+- primary single → Voice2Text
+- primary double → translate selection
+- secondary → next swipe candidate
+
+Samsung remote Air Actions remain a device/foreground-specific optional adapter rather than a dependency for system-wide IME behavior.
+
+### 🎙 Voice2Text
+
+- Android SpeechRecognizer integration
+- prefers the on-device recognizer when available
+- partial recognition status
+- final text commit into the active app
+- prediction refresh after dictation
+- disabled in sensitive fields
+
+### 🌐 Translation
+
+- explicit translation of selected text
+- local language identification
+- Google ML Kit on-device translation when the pair is supported
+- configurable target language
+- fails closed rather than silently uploading text when a local pair is unavailable
+
+### 📋 Clipboard
+
+- in-session clipboard history
+- explicit clipboard panel
+- tap to insert
+- hidden in sensitive fields
+- no persistent clipboard database yet
+
+### 😀 Emoji
+
+- built-in emoji panel
+- direct insertion into the target editor
+
+### 🤖 Optional local neural models
+
+KeySwiper can import a compatible `.litertlm` model into private app storage.
+
+- model is separate from the APK
+- SHA-256 calculated during import
+- manual hash re-verification
+- model can be removed from Settings
+- lazy initialization
+- neural work runs off the UI thread
+- fast local prediction remains available without a model
+- neural suggestions are marked with ✦
+
+See [Neural Model Manager](docs/NEURAL_MODEL_MANAGER.md).
+
+### 🔐 Privacy model
+
+Keyboard software handles unusually sensitive input. KeySwiper therefore defaults to:
 
 - no keystroke logging
-- no network transmission for normal typing
-- no learning in password fields
-- local-first language and handwriting models
-- clipboard access only while the IME is active
-- cloud features must be explicit and separately configured
+- no analytics/telemetry layer
+- no network transmission for ordinary typing
+- no personalization in password / sensitive / no-learning fields
+- no surrounding-context prediction in sensitive fields
+- no neural inference in sensitive fields
+- no clipboard panel in sensitive fields
+- no Voice2Text in sensitive fields
+- no handwriting helper/direct handwriting in sensitive fields
+- local swipe, prediction and vocabulary models
+- `allowBackup=false`
 
-## Build
+## App identity
 
-Requirements:
+The KeySwiper K/swipe logo is included as the Android launcher and IME icon.
 
-- JDK 21
-- Android SDK 36
-- Gradle 9.6+
-- Android Gradle Plugin 9.4
+## Install
 
-From the repository root:
+1. Download the current APK using the large button above.
+2. Install the APK on Android.
+3. Open **KeySwiper**.
+4. Tap **Enable KeySwiper**.
+5. Enable it in Android's input-method settings.
+6. Return and tap **Choose KeySwiper**.
+7. Select KeySwiper in the system IME picker.
 
-```bash
-gradle :app:assembleDebug
+For stylus handwriting, use a compatible Android stylus and a text field/device that supports Android system handwriting.
+
+## Build archive
+
+Every successful `main` APK build is permanently preserved as a GitHub Release with:
+
+- semantic version
+- Android versionCode
+- CI run number
+- exact Git commit
+- SHA-256 checksum
+- permanent version-specific APK
+- stable `KeySwiper-latest.apk` alias
+- complete per-version changelog
+- dedicated version page
+
+➡️ [Browse every archived APK](docs/versions/README.md)
+
+## Architecture
+
+```
+Touch / Swipe ───────────────┐
+Stylus / Handwriting ────────┤
+Voice ───────────────────────┤
+Clipboard / Emoji ───────────┤
+                             ▼
+                    KeySwiper IME Core
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+ Adaptive Swipe       Context Prediction    Language Lanes
+ Motor Model          2/3/4-gram Memory     Code Switching
+        │                    │                    │
+        └──────────────┬─────┴──────────────┬─────┘
+                       ▼                    ▼
+              Semantic Beam Search    Optional LiteRT-LM
+                       │                    │
+                       └─────────┬──────────┘
+                                 ▼
+                         Prediction Strip
+                                 │
+                                 ▼
+                         InputConnection
 ```
 
-The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
+## Technical baseline
 
-See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_ENGINE.md), [Code Switching](docs/CODE_SWITCHING.md), [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md), [Neural Model Manager](docs/NEURAL_MODEL_MANAGER.md) and [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md).
+- Android `InputMethodService`
+- package: `cloud.kosch.keyswiper`
+- minSdk 24
+- target / compile SDK 36
+- JDK 21 for CI
+- Java bytecode target 17
+- Gradle 9.6
+- Android Gradle Plugin 9.4
+- Kotlin Gradle Plugin 2.4.10
+- Google ML Kit Language ID / Translation / Digital Ink
+- LiteRT-LM Android 0.17.1
+
+## Documentation
+
+- [Swipe Engine](docs/SWIPE_ENGINE.md)
+- [Prediction Engine](docs/PREDICTION_ENGINE.md)
+- [Code Switching](docs/CODE_SWITCHING.md)
+- [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md)
+- [Direct Stylus Handwriting](docs/SYSTEM_HANDWRITING.md)
+- [S Pen / Stylus](docs/SPEN.md)
+- [Neural Model Manager](docs/NEURAL_MODEL_MANAGER.md)
+- [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md)
+- [Privacy](docs/PRIVACY.md)
+- [Cloud Translation architecture](docs/CLOUD_TRANSLATION.md)
+- [APK Version Archive](docs/versions/README.md)
 
 ## Roadmap
 
 Next milestones:
 
-- optional Samsung Air Action adapter where foreground/device routing permits it
-- direct Android stylus-handwriting IME session support
-- editable gesture mappings
-- multilingual target-language wheel
-- smart clipboard categorization/search
-- voice editing commands
+- connectionless Android handwriting sessions + handwriting edit gestures
+- multilingual translation-target wheel
+- smart clipboard categorization, expiry and search
+- Voice Editing commands
 - optional Google Cloud Translation gateway
-- one-hand geometry adaptation
+- one-hand thumb geometry adaptation
 - autocorrect timeline / undo-redo
-- developer layout and programmable profiles
+- developer keyboard layout
+- programmable input profiles
+- optional Samsung Air Action adapter where device/foreground routing permits it
 
 ## License
 

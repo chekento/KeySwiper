@@ -1,6 +1,7 @@
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
     android:settingsActivity="cloud.kosch.keyswiper.settings.SettingsActivity"
-    android:supportsSwitchingToNextInputMethod="true">
+    android:supportsSwitchingToNextInputMethod="true"
+    android:supportsStylusHandwriting="true">
     <subtype
         android:imeSubtypeLocale=""
         android:imeSubtypeMode="keyboard"

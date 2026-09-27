@@ -55,6 +55,7 @@ jobs:
           TAG="v$VERSION_NAME-b$VERSION_CODE-run$GITHUB_RUN_NUMBER"
           PAGE="docs/versions/$VERSION_NAME-build$VERSION_CODE-run$GITHUB_RUN_NUMBER.md"
           cp app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
+          cp app/build/outputs/apk/debug/app-debug.apk "KeySwiper-latest.apk"
           SHA256=$(sha256sum "$APK_NAME" | awk '{print $1}')
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
@@ -68,7 +69,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: KeySwiper-${{ steps.build_meta.outputs.version_name }}-build-${{ steps.build_meta.outputs.version_code }}-run-${{ github.run_number }}
-          path: ${{ steps.build_meta.outputs.apk_name }}
+          path: |
+            ${{ steps.build_meta.outputs.apk_name }}
+            KeySwiper-latest.apk
           if-no-files-found: error
 
       - name: Create permanent GitHub Release
@@ -97,7 +100,10 @@ jobs:
           $CHANGELOG_SECTION
           EOF
 
-          gh release create "$TAG" "$APK_NAME"             --title "KeySwiper $VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER"             --notes-file release-notes.md             --target "$GITHUB_SHA"
+          gh release create "$TAG" "$APK_NAME" "KeySwiper-latest.apk" \
+            --title "KeySwiper $VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
 
       - name: Generate permanent version page
         if: github.event_name == 'push'
@@ -120,12 +126,15 @@ jobs:
           ' CHANGELOG.md)
 
           DOWNLOAD_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK_NAME"
+          LATEST_URL="https://github.com/$GITHUB_REPOSITORY/releases/latest/download/KeySwiper-latest.apk"
           RUN_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
           {
             echo "# KeySwiper $VERSION_NAME — build $VERSION_CODE — run $GITHUB_RUN_NUMBER"
             echo
             echo "**Permanent APK:** [$APK_NAME]($DOWNLOAD_URL)"
+            echo
+            echo "**Latest APK alias:** [KeySwiper-latest.apk]($LATEST_URL)"
             echo
             echo "- Version: $VERSION_NAME"
             echo "- Version code: $VERSION_CODE"

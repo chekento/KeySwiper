@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.0-alpha09 — 2026-09-28
+
+Direct Android stylus handwriting + KeySwiper app identity:
+
+- KeySwiper now declares native Android stylus-handwriting IME support
+- Android system handwriting lifecycle implemented through InputMethodService onPrepareStylusHandwriting, onStartStylusHandwriting, onStylusHandwritingMotionEvent and onFinishStylusHandwriting
+- direct handwriting uses the system stylus ink window instead of requiring the in-keyboard handwriting panel
+- stylus strokes are rendered in a transparent KeySwiper ink overlay above the target app
+- Google ML Kit Digital Ink recognizes stroke batches locally after a short idle debounce
+- recognized handwriting is committed directly into the active target app through InputConnection
+- handwriting model preparation begins in the Android handwriting prepare phase to reduce first-stroke latency
+- Android 14+ handwriting session timeout is explicitly configured for continued multi-word writing
+- eraser-tool input clears the current uncommitted ink batch
+- new handwriting batches can arrive while a previous recognition request is running without blocking normal keyboard input
+- direct handwriting feeds local prediction learning and personal vocabulary after successful recognition
+- sensitive/password/no-learning fields refuse direct handwriting sessions
+- existing in-keyboard handwriting pad remains available as a manual fallback
+- KeySwiper InputMethod XML now advertises android:supportsStylusHandwriting=true
+- official K swipe logo integrated as launcher/IME icon using a scalable neon vector resource
+- Android application and IME service now publish the KeySwiper launcher icon
+- CI releases now additionally publish a stable KeySwiper-latest.apk asset
+- README can permanently link to releases/latest/download/KeySwiper-latest.apk without version-specific edits
+- unit tests added for handwriting commit formatting
+- version advanced to 0.9.0-alpha09 / build 9
+
 ## 0.8.0-alpha08 — 2026-09-27
 
 Configurable S Pen / stylus actions:
