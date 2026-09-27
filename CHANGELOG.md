@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0-alpha03 — 2026-09-27
+
+Geometric adaptive swipe engine:
+
+- swipe gestures now capture normalized X/Y/time samples instead of only touched key letters
+- swipe traces retain up to 96 path points for low-overhead geometric analysis
+- candidate ranking now includes Dynamic Time Warping between the user path and ideal QWERTY word paths
+- path-length similarity is included in candidate scoring
+- direction changes are compared against the expected word path
+- timestamp-derived speed is used for velocity-aware key/corner scoring
+- explicit candidate corrections train a local per-letter motor offset profile
+- motor offsets use an adaptive exponential moving average and remain bounded to avoid model drift
+- geometry and motor-profile learning remain disabled in password/no-learning fields
+- Settings can reset both lexical swipe learning and the geometric motor profile together
+- new geometry unit tests cover ideal-vs-wrong word paths and shifted motor traces
+- version advanced to 0.3.0-alpha03 / build 3
+
 ## 0.2.0-alpha02 — 2026-09-27
 
 Swipe v2 and permanent build archive:

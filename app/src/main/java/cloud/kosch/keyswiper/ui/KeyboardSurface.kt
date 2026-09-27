@@ -8,12 +8,14 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
+import cloud.kosch.keyswiper.input.SwipePoint
+import cloud.kosch.keyswiper.input.SwipeTrace
 import kotlin.math.hypot
 
 class KeyboardSurface(context: Context) : View(context) {
     interface Listener {
         fun onTap(character: Char)
-        fun onSwipe(trace: List<Char>)
+        fun onSwipe(trace: SwipeTrace)
         fun onStylusPrimaryButton()
         fun onStylusSecondaryButton()
     }
@@ -30,7 +32,9 @@ class KeyboardSurface(context: Context) : View(context) {
     private val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
     private val cells = mutableListOf<Cell>()
     private val traceChars = mutableListOf<Char>()
+    private val tracePoints = mutableListOf<SwipePoint>()
     private val path = Path()
+
     private var downX = 0f
     private var downY = 0f
     private var dragging = false
@@ -114,50 +118,71 @@ class KeyboardSurface(context: Context) : View(context) {
                 downY = event.y
                 dragging = false
                 traceChars.clear()
+                tracePoints.clear()
                 path.reset()
                 path.moveTo(event.x, event.y)
                 addTraceCharacter(event.x, event.y)
+                addTracePoint(event.x, event.y, event.eventTime)
                 invalidate()
                 return true
             }
+
             MotionEvent.ACTION_MOVE -> {
                 if (hypot(event.x - downX, event.y - downY) >
                     resources.displayMetrics.density * 12f
                 ) dragging = true
 
                 for (i in 0 until event.historySize) {
-                    path.lineTo(event.getHistoricalX(i), event.getHistoricalY(i))
-                    addTraceCharacter(event.getHistoricalX(i), event.getHistoricalY(i))
+                    val hx = event.getHistoricalX(i)
+                    val hy = event.getHistoricalY(i)
+                    path.lineTo(hx, hy)
+                    addTraceCharacter(hx, hy)
+                    addTracePoint(hx, hy, event.getHistoricalEventTime(i))
                 }
+
                 path.lineTo(event.x, event.y)
                 addTraceCharacter(event.x, event.y)
+                addTracePoint(event.x, event.y, event.eventTime)
                 invalidate()
                 return true
             }
+
             MotionEvent.ACTION_UP -> {
                 addTraceCharacter(event.x, event.y)
-                if (dragging && traceChars.size > 1) {
-                    listener?.onSwipe(traceChars.toList())
+                addTracePoint(event.x, event.y, event.eventTime)
+
+                if (dragging && traceChars.size > 1 && tracePoints.size > 1) {
+                    listener?.onSwipe(
+                        SwipeTrace(
+                            points = tracePoints.toList(),
+                            touchedKeys = traceChars.toList()
+                        )
+                    )
                 } else {
                     charAt(event.x, event.y)?.let {
                         listener?.onTap(if (shifted) it.uppercaseChar() else it)
                     }
                 }
+
                 dragging = false
                 traceChars.clear()
+                tracePoints.clear()
                 path.reset()
                 invalidate()
                 performClick()
                 return true
             }
+
             MotionEvent.ACTION_CANCEL -> {
                 dragging = false
                 traceChars.clear()
+                tracePoints.clear()
                 path.reset()
                 invalidate()
                 return true
             }
         }
+
         return super.onTouchEvent(event)
     }
 
@@ -185,6 +210,28 @@ class KeyboardSurface(context: Context) : View(context) {
     private fun addTraceCharacter(x: Float, y: Float) {
         val c = charAt(x, y) ?: return
         if (traceChars.lastOrNull() != c) traceChars.add(c)
+    }
+
+    private fun addTracePoint(x: Float, y: Float, timeMs: Long) {
+        if (width <= 0 || height <= 0) return
+
+        val normalized = SwipePoint(
+            x = (x / width.toFloat()).coerceIn(0f, 1f),
+            y = (y / height.toFloat()).coerceIn(0f, 1f),
+            timeMs = timeMs
+        )
+
+        val previous = tracePoints.lastOrNull()
+        if (previous != null) {
+            val distance = hypot(normalized.x - previous.x, normalized.y - previous.y)
+            val dt = normalized.timeMs - previous.timeMs
+            if (distance < 0.006f && dt < 12L) return
+        }
+
+        if (tracePoints.size >= 96) {
+            tracePoints.removeAt(1.coerceAtMost(tracePoints.lastIndex))
+        }
+        tracePoints.add(normalized)
     }
 
     private fun charAt(x: Float, y: Float): Char? =

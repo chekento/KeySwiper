@@ -15,6 +15,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeLearningStore
 
 class SettingsActivity : Activity() {
@@ -96,16 +97,17 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Swipe v2 uses Google ML Kit language identification as a context signal and learns candidate choices locally on this device."
+            text = "Swipe v3 uses Google ML Kit language identification plus swipe geometry, speed, direction and a local per-key motor profile."
             textSize = 14f
             setPadding(0, dp(24), 0, dp(8))
         })
 
         content.addView(Button(this).apply {
-            text = "Reset local swipe learning"
+            text = "Reset adaptive swipe profile"
             setOnClickListener {
                 SwipeLearningStore(this@SettingsActivity).reset()
-                text = "Swipe learning reset ✓"
+                MotorProfileStore(this@SettingsActivity).reset()
+                text = "Adaptive swipe profile reset ✓"
             }
         })
 

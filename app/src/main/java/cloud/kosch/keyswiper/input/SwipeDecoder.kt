@@ -9,6 +9,11 @@ class SwipeDecoder {
         val languages: Set<String>
     )
 
+    private data class CandidateScore(
+        val word: String,
+        val score: Float
+    )
+
     private fun lexeme(word: String, vararg languages: String) =
         Lexeme(word, languages.map { it.lowercase() }.toSet())
 
@@ -71,53 +76,60 @@ class SwipeDecoder {
         lexeme("ahora", "es"), lexeme("más", "es")
     )
 
-    fun signature(trace: List<Char>): String =
-        compactTrace(trace).joinToString("")
+    fun signature(trace: SwipeTrace): String =
+        trace.normalizedKeys().joinToString("")
 
     fun decode(
-        trace: List<Char>,
+        trace: SwipeTrace,
         context: String = "",
         preferredLanguages: List<String> = emptyList(),
         personalizationBoost: (signature: String, previousWord: String, candidate: String) -> Int =
-            { _, _, _ -> 0 }
+            { _, _, _ -> 0 },
+        motorOffset: (Char) -> KeyOffset = { KeyOffset() }
     ): List<String> {
-        val compact = compactTrace(trace)
+        val compact = trace.normalizedKeys()
         if (compact.isEmpty()) return emptyList()
 
         val sentenceStart = isSentenceStart(context)
         if (compact.size == 1) {
-            val single = compact.first().toString()
-            return listOf(applyCase(single, sentenceStart))
+            return listOf(applyCase(compact.first().toString(), sentenceStart))
         }
 
         val sig = compact.joinToString("")
         val previousWord = previousWord(context)
         val first = compact.first()
         val last = compact.last()
+        val hasGeometry = trace.points.size >= 3
 
         val ranked = lexicon.asSequence()
-            .filter { abs(it.word.length - sig.length) <= maxOf(5, sig.length / 2 + 1) }
+            .filter { abs(it.word.length - sig.length) <= maxOf(6, sig.length / 2 + 2) }
             .map { item ->
                 val word = item.word
                 val distance = levenshtein(sig, word)
                 val coverage = orderedCoverage(compact, word)
                 val endpointPenalty =
-                    (if (word.firstOrNull() == first) 0 else 6) +
-                    (if (word.lastOrNull() == last) 0 else 5)
+                    (if (word.firstOrNull() == first) 0 else 5) +
+                    (if (word.lastOrNull() == last) 0 else 4)
                 val lengthPenalty = abs(word.length - sig.length) * 2
                 val languageBoost = languageBoost(item.languages, preferredLanguages)
                 val contextBoost = bigramBoost(previousWord, word)
                 val learnedBoost = personalizationBoost(sig, previousWord, word).coerceIn(0, 24)
+                val geometryScore = if (hasGeometry) {
+                    SwipeGeometryScorer.score(trace, word, motorOffset)
+                } else {
+                    0f
+                }
 
                 CandidateScore(
                     word = word,
-                    score = distance * 7 +
+                    score = distance * 7f +
                         lengthPenalty +
                         endpointPenalty -
-                        coverage * 2 -
-                        languageBoost * 4 -
-                        contextBoost * 5 -
-                        learnedBoost * 6
+                        coverage * 2f -
+                        languageBoost * 4f -
+                        contextBoost * 5f -
+                        learnedBoost * 6f +
+                        geometryScore * if (hasGeometry) 0.85f else 0f
                 )
             }
             .sortedBy { it.score }
@@ -132,14 +144,6 @@ class SwipeDecoder {
 
         return ranked.take(5)
     }
-
-    private data class CandidateScore(val word: String, val score: Int)
-
-    private fun compactTrace(trace: List<Char>): List<Char> =
-        trace.map { it.lowercaseChar() }.fold(mutableListOf()) { acc, c ->
-            if (acc.lastOrNull() != c) acc.add(c)
-            acc
-        }
 
     private fun previousWord(context: String): String =
         context.trim().split(Regex("\\s+")).lastOrNull()
@@ -187,15 +191,12 @@ class SwipeDecoder {
         when (previous to word) {
             "thank" to "you" -> 5
             "see" to "you" -> 4
-            "good" to "morning" -> 5
             "danke" to "dir" -> 5
             "guten" to "morgen" -> 5
             "gute" to "nacht" -> 5
             "bis" to "später" -> 4
             "a" to "domani" -> 4
-            "buon" to "giorno" -> 5
             "à" to "demain" -> 4
-            "buenos" to "días" -> 5
             else -> 0
         }
 

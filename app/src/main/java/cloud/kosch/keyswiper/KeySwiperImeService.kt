@@ -7,8 +7,10 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import cloud.kosch.keyswiper.clipboard.ClipboardController
 import cloud.kosch.keyswiper.handwriting.DigitalInkEngine
+import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeDecoder
 import cloud.kosch.keyswiper.input.SwipeLearningStore
+import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.security.SecurityPolicy
 import cloud.kosch.keyswiper.settings.Prefs
@@ -24,6 +26,7 @@ class KeySwiperImeService : InputMethodService() {
     private val digitalInkEngine = DigitalInkEngine()
 
     private lateinit var swipeLearningStore: SwipeLearningStore
+    private lateinit var motorProfileStore: MotorProfileStore
     private lateinit var clipboardController: ClipboardController
     private lateinit var voiceController: VoiceInputController
     private var root: KeyboardRootView? = null
@@ -34,10 +37,12 @@ class KeySwiperImeService : InputMethodService() {
     private var lastSwipeCandidates: List<String> = emptyList()
     private var lastSwipeSignature: String? = null
     private var lastSwipeContextWord: String = ""
+    private var lastSwipeTrace: SwipeTrace? = null
 
     override fun onCreate() {
         super.onCreate()
         swipeLearningStore = SwipeLearningStore(this)
+        motorProfileStore = MotorProfileStore(this)
         clipboardController = ClipboardController(this)
         voiceController = VoiceInputController(this)
         clipboardController.start()
@@ -91,7 +96,7 @@ class KeySwiperImeService : InputMethodService() {
             clearSwipeState()
         }
 
-        override fun onSwipe(trace: List<Char>) {
+        override fun onSwipe(trace: SwipeTrace) {
             val before = currentInputConnection?.getTextBeforeCursor(300, 0)?.toString().orEmpty()
             val signature = swipeDecoder.signature(trace)
             val previousWord = previousWord(before)
@@ -103,6 +108,10 @@ class KeySwiperImeService : InputMethodService() {
                 personalizationBoost = { sig, previous, candidate ->
                     if (sensitiveField) 0
                     else swipeLearningStore.boost(sig, previous, candidate)
+                },
+                motorOffset = { character ->
+                    if (sensitiveField) cloud.kosch.keyswiper.input.KeyOffset()
+                    else motorProfileStore.offsetFor(character)
                 }
             )
             if (values.isEmpty()) return
@@ -114,6 +123,7 @@ class KeySwiperImeService : InputMethodService() {
             lastSwipeCandidates = values
             lastSwipeSignature = signature
             lastSwipeContextWord = previousWord
+            lastSwipeTrace = trace
             root?.setCandidates(values)
 
             refreshLanguageHints((before + " " + word).takeLast(400))
@@ -271,16 +281,21 @@ class KeySwiperImeService : InputMethodService() {
         val previous = lastSwipeWord ?: return
         val connection = currentInputConnection ?: return
         val signature = lastSwipeSignature
+        val trace = lastSwipeTrace
 
         connection.deleteSurroundingText(previous.length + 1, 0)
         connection.commitText(value + " ", 1)
 
         if (!sensitiveField && signature != null) {
             swipeLearningStore.record(signature, lastSwipeContextWord, value)
+            if (trace != null) {
+                motorProfileStore.learn(trace, value)
+            }
         }
 
         lastSwipeWord = value
         root?.setCandidates(lastSwipeCandidates)
+        root?.setStatus("Adaptive swipe learned this correction locally.")
     }
 
     private fun refreshLanguageHints(text: String) {
@@ -303,6 +318,7 @@ class KeySwiperImeService : InputMethodService() {
         lastSwipeCandidates = emptyList()
         lastSwipeSignature = null
         lastSwipeContextWord = ""
+        lastSwipeTrace = null
         root?.setCandidates(emptyList())
     }
 

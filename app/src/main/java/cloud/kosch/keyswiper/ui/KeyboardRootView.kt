@@ -10,11 +10,12 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import cloud.kosch.keyswiper.input.SwipeTrace
 
 class KeyboardRootView(context: Context) : LinearLayout(context) {
     interface Callbacks {
         fun onCharacter(value: Char)
-        fun onSwipe(trace: List<Char>)
+        fun onSwipe(trace: SwipeTrace)
         fun onBackspace()
         fun onSpace()
         fun onEnter()
@@ -68,7 +69,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
         keyboardPanel.orientation = VERTICAL
         keyboardSurface.listener = object : KeyboardSurface.Listener {
             override fun onTap(character: Char) = callbacks?.onCharacter(character) ?: Unit
-            override fun onSwipe(trace: List<Char>) = callbacks?.onSwipe(trace) ?: Unit
+            override fun onSwipe(trace: SwipeTrace) = callbacks?.onSwipe(trace) ?: Unit
             override fun onStylusPrimaryButton() = callbacks?.onStylusPrimary() ?: Unit
             override fun onStylusSecondaryButton() = callbacks?.onStylusSecondary() ?: Unit
         }
