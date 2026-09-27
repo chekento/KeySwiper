@@ -53,7 +53,7 @@ class LiteRtLmPredictionBackend(
                 synchronized(lock) {
                     activeEngine.createConversation().use { conversation ->
                         val response = conversation.sendMessage(prompt)
-                        parseSuggestions(response.text, maxSuggestions)
+                        parseSuggestions(response.toString(), maxSuggestions)
                     }
                 }
             }.getOrElse {
