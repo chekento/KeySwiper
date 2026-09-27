@@ -73,7 +73,7 @@ From the repository root:
 gradle :app:assembleDebug
 ```
 
-The GitHub Actions workflow runs unit tests, builds the debug APK and uploads it as the `KeySwiper-debug` workflow artifact.
+The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
 
 ## Roadmap
 

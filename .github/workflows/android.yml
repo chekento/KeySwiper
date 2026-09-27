@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -42,9 +44,129 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Upload debug APK
+      - name: Read build identity
+        id: build_meta
+        shell: bash
+        run: |
+          VERSION_NAME=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
+          VERSION_CODE=$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          APK_NAME="KeySwiper-v$VERSION_NAME-build$VERSION_CODE-run$GITHUB_RUN_NUMBER.apk"
+          TAG="v$VERSION_NAME-b$VERSION_CODE-run$GITHUB_RUN_NUMBER"
+          PAGE="docs/versions/$VERSION_NAME-build$VERSION_CODE-run$GITHUB_RUN_NUMBER.md"
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
+          SHA256=$(sha256sum "$APK_NAME" | awk '{print $1}')
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "page=$PAGE" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KeySwiper-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: KeySwiper-${{ steps.build_meta.outputs.version_name }}-build-${{ steps.build_meta.outputs.version_code }}-run-${{ github.run_number }}
+          path: ${{ steps.build_meta.outputs.apk_name }}
           if-no-files-found: error
+
+      - name: Create permanent GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.build_meta.outputs.tag }}
+          APK_NAME: ${{ steps.build_meta.outputs.apk_name }}
+          VERSION_NAME: ${{ steps.build_meta.outputs.version_name }}
+          VERSION_CODE: ${{ steps.build_meta.outputs.version_code }}
+          SHA256: ${{ steps.build_meta.outputs.sha256 }}
+        shell: bash
+        run: |
+          CHANGELOG_SECTION=$(awk -v v="$VERSION_NAME" '
+            $0 ~ "^## " v " " {p=1}
+            p && /^## / && $0 !~ "^## " v " " {exit}
+            p {print}
+          ' CHANGELOG.md)
+
+          cat > release-notes.md <<EOF
+          KeySwiper $VERSION_NAME — build $VERSION_CODE — CI run $GITHUB_RUN_NUMBER
+
+          Commit: $GITHUB_SHA
+          SHA-256: $SHA256
+
+          $CHANGELOG_SECTION
+          EOF
+
+          gh release create "$TAG" "$APK_NAME"             --title "KeySwiper $VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER"             --notes-file release-notes.md             --target "$GITHUB_SHA"
+
+      - name: Generate permanent version page
+        if: github.event_name == 'push'
+        env:
+          PAGE: ${{ steps.build_meta.outputs.page }}
+          TAG: ${{ steps.build_meta.outputs.tag }}
+          APK_NAME: ${{ steps.build_meta.outputs.apk_name }}
+          VERSION_NAME: ${{ steps.build_meta.outputs.version_name }}
+          VERSION_CODE: ${{ steps.build_meta.outputs.version_code }}
+          SHA256: ${{ steps.build_meta.outputs.sha256 }}
+          SHORT_SHA: ${{ steps.build_meta.outputs.short_sha }}
+        shell: bash
+        run: |
+          mkdir -p docs/versions
+
+          CHANGELOG_SECTION=$(awk -v v="$VERSION_NAME" '
+            $0 ~ "^## " v " " {p=1}
+            p && /^## / && $0 !~ "^## " v " " {exit}
+            p {print}
+          ' CHANGELOG.md)
+
+          DOWNLOAD_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$APK_NAME"
+          RUN_URL="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          {
+            echo "# KeySwiper $VERSION_NAME — build $VERSION_CODE — run $GITHUB_RUN_NUMBER"
+            echo
+            echo "**Permanent APK:** [$APK_NAME]($DOWNLOAD_URL)"
+            echo
+            echo "- Version: $VERSION_NAME"
+            echo "- Version code: $VERSION_CODE"
+            echo "- CI run: [$GITHUB_RUN_NUMBER]($RUN_URL)"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Short commit: $SHORT_SHA"
+            echo "- SHA-256: `$SHA256`"
+            echo "- Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "## Changelog"
+            echo
+            printf '%s\n' "$CHANGELOG_SECTION"
+            echo
+            echo "[← Version archive](README.md)"
+          } > "$PAGE"
+
+          INDEX="docs/versions/README.md"
+          if [ ! -f "$INDEX" ]; then
+            {
+              echo "# KeySwiper APK version archive"
+              echo
+              echo "Every successful main-branch APK build is preserved as a GitHub Release and gets its own version page."
+              echo
+              echo "## Builds"
+              echo
+            } > "$INDEX"
+          fi
+
+          ENTRY="- [$VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER]($(basename "$PAGE")) — [APK]($DOWNLOAD_URL) — `$SHA256`"
+          if ! grep -Fq "run $GITHUB_RUN_NUMBER]" "$INDEX"; then
+            awk -v entry="$ENTRY" '
+              {print}
+              /^## Builds$/ && !done {getline; print ""; print entry; done=1}
+            ' "$INDEX" > "$INDEX.tmp"
+            mv "$INDEX.tmp" "$INDEX"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$PAGE" "$INDEX"
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: archive KeySwiper $VERSION_NAME build $VERSION_CODE run $GITHUB_RUN_NUMBER [skip ci]"
+            git push
+          fi
