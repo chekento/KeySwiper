@@ -27,6 +27,7 @@ Surrounding Context Intelligence + LiteRT-LM model manager:
 - minimum Android version raised from API 23 to API 24 for LiteRT-LM compatibility
 - CI build JDK raised to 21 while app source compatibility remains Java 17
 - external Kotlin Gradle Plugin 2.4.10 enabled because LiteRT-LM 0.17.1 ships Kotlin 2.4 metadata while AGP 9.4 built-in Kotlin remains 2.2.10
+- Gradle Kotlin DSL migrated to modern `kotlin.compilerOptions` while the temporary AGP legacy Android DSL is explicitly suppression-scoped for external KGP compatibility
 - new tests cover surrounding-context extraction, topic extraction, question detection, contextual semantic generation and neural/local merge
 - version advanced to 0.6.0-alpha06 / build 6
 
