@@ -230,8 +230,8 @@ class KeyboardRootView(
 
         fun tool(
             label: String,
-            action: () -> Unit,
-            longAction: (() -> Unit)? = null
+            longAction: (() -> Unit)? = null,
+            action: () -> Unit
         ): Button =
             Button(context).apply {
                 text = label
