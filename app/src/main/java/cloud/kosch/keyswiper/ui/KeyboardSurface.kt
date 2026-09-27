@@ -98,7 +98,7 @@ class KeyboardSurface(context: Context) : View(context) {
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.pointerCount == 0) return false
 
-        if (event.toolType(0) == MotionEvent.TOOL_TYPE_STYLUS) {
+        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS) {
             if ((event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0 &&
                 event.actionMasked == MotionEvent.ACTION_DOWN
             ) listener?.onStylusPrimaryButton()
