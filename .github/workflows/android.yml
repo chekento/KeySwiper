@@ -132,7 +132,7 @@ jobs:
             echo "- CI run: [$GITHUB_RUN_NUMBER]($RUN_URL)"
             echo "- Commit: $GITHUB_SHA"
             echo "- Short commit: $SHORT_SHA"
-            echo "- SHA-256: `$SHA256`"
+            echo "- SHA-256: $SHA256"
             echo "- Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo
             echo "## Changelog"
@@ -154,7 +154,7 @@ jobs:
             } > "$INDEX"
           fi
 
-          ENTRY="- [$VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER]($(basename "$PAGE")) — [APK]($DOWNLOAD_URL) — `$SHA256`"
+          ENTRY="- [$VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER]($(basename "$PAGE")) — [APK]($DOWNLOAD_URL) — SHA-256: $SHA256"
           if ! grep -Fq "run $GITHUB_RUN_NUMBER]" "$INDEX"; then
             awk -v entry="$ENTRY" '
               {print}

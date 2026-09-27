@@ -8,6 +8,7 @@ import android.view.inputmethod.EditorInfo
 import cloud.kosch.keyswiper.clipboard.ClipboardController
 import cloud.kosch.keyswiper.handwriting.DigitalInkEngine
 import cloud.kosch.keyswiper.input.SwipeDecoder
+import cloud.kosch.keyswiper.input.SwipeLearningStore
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.security.SecurityPolicy
 import cloud.kosch.keyswiper.settings.Prefs
@@ -22,16 +23,21 @@ class KeySwiperImeService : InputMethodService() {
     private val translationEngine = TranslationEngine()
     private val digitalInkEngine = DigitalInkEngine()
 
+    private lateinit var swipeLearningStore: SwipeLearningStore
     private lateinit var clipboardController: ClipboardController
     private lateinit var voiceController: VoiceInputController
     private var root: KeyboardRootView? = null
 
     private var sensitiveField = false
+    private var languageHints: List<String> = emptyList()
     private var lastSwipeWord: String? = null
     private var lastSwipeCandidates: List<String> = emptyList()
+    private var lastSwipeSignature: String? = null
+    private var lastSwipeContextWord: String = ""
 
     override fun onCreate() {
         super.onCreate()
+        swipeLearningStore = SwipeLearningStore(this)
         clipboardController = ClipboardController(this)
         voiceController = VoiceInputController(this)
         clipboardController.start()
@@ -47,6 +53,7 @@ class KeySwiperImeService : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         sensitiveField = SecurityPolicy.isSensitive(attribute)
+        languageHints = emptyList()
         clearSwipeState()
     }
 
@@ -54,11 +61,16 @@ class KeySwiperImeService : InputMethodService() {
         super.onStartInputView(info, restarting)
         sensitiveField = SecurityPolicy.isSensitive(info)
         refreshPrivacyState()
+        if (!sensitiveField) {
+            val before = currentInputConnection?.getTextBeforeCursor(300, 0)?.toString().orEmpty()
+            refreshLanguageHints(before)
+        }
     }
 
     override fun onFinishInput() {
         super.onFinishInput()
         voiceController.stop()
+        languageHints = emptyList()
         root?.setCandidates(emptyList())
         root?.setStatus(null)
     }
@@ -80,25 +92,48 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onSwipe(trace: List<Char>) {
-            val before = currentInputConnection?.getTextBeforeCursor(80, 0)?.toString().orEmpty()
-            val values = swipeDecoder.decode(trace, before)
+            val before = currentInputConnection?.getTextBeforeCursor(300, 0)?.toString().orEmpty()
+            val signature = swipeDecoder.signature(trace)
+            val previousWord = previousWord(before)
+
+            val values = swipeDecoder.decode(
+                trace = trace,
+                context = before,
+                preferredLanguages = languageHints,
+                personalizationBoost = { sig, previous, candidate ->
+                    if (sensitiveField) 0
+                    else swipeLearningStore.boost(sig, previous, candidate)
+                }
+            )
             if (values.isEmpty()) return
 
             val word = values.first()
             currentInputConnection?.commitText(word + " ", 1)
+
             lastSwipeWord = word
             lastSwipeCandidates = values
+            lastSwipeSignature = signature
+            lastSwipeContextWord = previousWord
             root?.setCandidates(values)
+
+            refreshLanguageHints((before + " " + word).takeLast(400))
         }
 
         override fun onBackspace() {
-            currentInputConnection?.deleteSurroundingText(1, 0)
-            clearSwipeState()
+            val swipeWord = lastSwipeWord
+            if (swipeWord != null) {
+                currentInputConnection?.deleteSurroundingText(swipeWord.length + 1, 0)
+                clearSwipeState()
+            } else {
+                currentInputConnection?.deleteSurroundingText(1, 0)
+            }
         }
 
         override fun onSpace() {
             currentInputConnection?.commitText(" ", 1)
             clearSwipeState()
+            val before = currentInputConnection?.getTextBeforeCursor(300, 0)?.toString().orEmpty()
+            refreshLanguageHints(before)
         }
 
         override fun onEnter() {
@@ -127,6 +162,7 @@ class KeySwiperImeService : InputMethodService() {
                 result.onSuccess { translated ->
                     currentInputConnection?.commitText(translated, 1)
                     root?.setStatus("Translated locally with Google ML Kit.")
+                    refreshLanguageHints(translated)
                 }.onFailure {
                     root?.setStatus(it.message ?: "Translation failed.")
                 }
@@ -145,6 +181,8 @@ class KeySwiperImeService : InputMethodService() {
                 onFinal = {
                     currentInputConnection?.commitText(it + " ", 1)
                     root?.setStatus(null)
+                    val before = currentInputConnection?.getTextBeforeCursor(300, 0)?.toString().orEmpty()
+                    refreshLanguageHints(before)
                 },
                 onError = { root?.setStatus(it) }
             )
@@ -184,7 +222,7 @@ class KeySwiperImeService : InputMethodService() {
 
         override fun onHandwritingRecognize(view: HandwritingPadView) {
             if (sensitiveField) return
-            val before = currentInputConnection?.getTextBeforeCursor(40, 0)?.toString().orEmpty()
+            val before = currentInputConnection?.getTextBeforeCursor(120, 0)?.toString().orEmpty()
 
             root?.setStatus("Recognizing handwriting…")
             digitalInkEngine.recognize(
@@ -194,10 +232,12 @@ class KeySwiperImeService : InputMethodService() {
                 height = view.height.toFloat()
             ) { result ->
                 result.onSuccess { values ->
-                    currentInputConnection?.commitText(values.first() + " ", 1)
+                    val best = values.first()
+                    currentInputConnection?.commitText(best + " ", 1)
                     root?.setCandidates(values)
                     root?.setStatus(null)
                     view.clearInk()
+                    refreshLanguageHints((before + " " + best).takeLast(400))
                 }.onFailure {
                     root?.setStatus(it.message ?: "Handwriting recognition failed.")
                 }
@@ -230,15 +270,39 @@ class KeySwiperImeService : InputMethodService() {
     private fun replaceLastSwipe(value: String) {
         val previous = lastSwipeWord ?: return
         val connection = currentInputConnection ?: return
+        val signature = lastSwipeSignature
+
         connection.deleteSurroundingText(previous.length + 1, 0)
         connection.commitText(value + " ", 1)
+
+        if (!sensitiveField && signature != null) {
+            swipeLearningStore.record(signature, lastSwipeContextWord, value)
+        }
+
         lastSwipeWord = value
         root?.setCandidates(lastSwipeCandidates)
     }
 
+    private fun refreshLanguageHints(text: String) {
+        if (sensitiveField || text.isBlank()) return
+        translationEngine.identifyLikelyLanguages(text) { detected ->
+            if (detected.isNotEmpty()) {
+                languageHints = detected
+            }
+        }
+    }
+
+    private fun previousWord(context: String): String =
+        context.trim().split(Regex("\\s+")).lastOrNull()
+            ?.trim { !it.isLetter() && it != '\'' }
+            ?.lowercase()
+            .orEmpty()
+
     private fun clearSwipeState() {
         lastSwipeWord = null
         lastSwipeCandidates = emptyList()
+        lastSwipeSignature = null
+        lastSwipeContextWord = ""
         root?.setCandidates(emptyList())
     }
 

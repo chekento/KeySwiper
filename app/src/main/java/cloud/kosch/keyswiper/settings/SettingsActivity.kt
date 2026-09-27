@@ -15,7 +15,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.core.content.ContextCompat
+import cloud.kosch.keyswiper.input.SwipeLearningStore
 
 class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -94,6 +94,21 @@ class SettingsActivity : Activity() {
                 text = "Saved ✓"
             }
         })
+
+        content.addView(TextView(this).apply {
+            text = "Swipe v2 uses Google ML Kit language identification as a context signal and learns candidate choices locally on this device."
+            textSize = 14f
+            setPadding(0, dp(24), 0, dp(8))
+        })
+
+        content.addView(Button(this).apply {
+            text = "Reset local swipe learning"
+            setOnClickListener {
+                SwipeLearningStore(this@SettingsActivity).reset()
+                text = "Swipe learning reset ✓"
+            }
+        })
+
         content.addView(TextView(this).apply {
             text = "Privacy default: normal typing is local. Voice, clipboard and translation actions are explicit. Learning and transformation tools are disabled for sensitive/password fields."
             textSize = 14f

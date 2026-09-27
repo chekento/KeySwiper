@@ -10,6 +10,30 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 class TranslationEngine {
     private val identifier: LanguageIdentifier = LanguageIdentification.getClient()
 
+    fun identifyLikelyLanguages(
+        text: String,
+        callback: (List<String>) -> Unit
+    ) {
+        if (text.trim().length < 8) {
+            callback(emptyList())
+            return
+        }
+
+        identifier.identifyPossibleLanguages(text.takeLast(400))
+            .addOnSuccessListener { identified ->
+                callback(
+                    identified.asSequence()
+                        .filter { it.languageTag != "und" && it.confidence >= 0.10f }
+                        .sortedByDescending { it.confidence }
+                        .map { it.languageTag.substringBefore('-').lowercase() }
+                        .distinct()
+                        .take(3)
+                        .toList()
+                )
+            }
+            .addOnFailureListener { callback(emptyList()) }
+    }
+
     fun translate(
         text: String,
         targetLanguageTag: String,

@@ -19,12 +19,14 @@ KeySwiper is an Android Input Method Editor (IME) designed around **input fusion
 
 The goal is not to clone an existing keyboard. KeySwiper is designed so the input system adapts to the user's motor patterns, languages and workflows.
 
-## v0.1 foundation
+## Current alpha foundation
 
 The first implementation focuses on a buildable architecture with:
 
 - Android `InputMethodService`
 - custom QWERTY keyboard view with tap + swipe path capture
+- adaptive Swipe v2 ranking with local correction learning
+- Google ML Kit auto-language hints for swipe ranking
 - suggestion/candidate strip
 - clipboard panel
 - emoji panel
@@ -36,6 +38,7 @@ The first implementation focuses on a buildable architecture with:
 - S Pen / stylus button mapping abstraction
 - local preferences and privacy controls
 - CI debug-APK build
+- permanent per-build GitHub Release + version-page archive
 
 ## Google language stack
 
@@ -75,7 +78,7 @@ gradle :app:assembleDebug
 
 The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
 
-## Roadmap
+See [Swipe Engine](docs/SWIPE_ENGINE.md) for the current adaptive-decoder design.\n\n## Roadmap
 
 Next milestones:
 
