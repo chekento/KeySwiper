@@ -31,8 +31,6 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.19.1")
-    implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("com.google.mlkit:language-id:17.0.6")
     implementation("com.google.mlkit:translate:17.0.3")
     implementation("com.google.mlkit:digital-ink-recognition:19.0.0")

@@ -28,7 +28,7 @@ class VoiceInputController(private val context: Context) {
             stop()
             return
         }
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             onError("Grant microphone permission in KeySwiper settings.")
