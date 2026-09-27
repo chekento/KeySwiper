@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.0-alpha06 — 2026-09-27
+
+Surrounding Context Intelligence + LiteRT-LM model manager:
+
+- prediction context now reads both text before and text after the cursor
+- selected text is included as a local context signal
+- current sentence, previous sentence, following sentence and current paragraph are extracted locally
+- local topic-term extraction ranks context-related continuations more strongly
+- question intent is detected and can affect semantic ranking
+- semantic beam search v2 uses the current sentence rather than only a short trailing word list
+- semantic candidates can bridge toward existing text after the cursor and suppress obvious duplication
+- Android API 31+ uses InputConnection.getSurroundingText with legacy before/after/selection fallbacks
+- surrounding context remains completely disabled in sensitive/password/no-learning fields
+- neural prompts receive only the local surrounding snapshot when an optional local model is installed
+- LiteRT-LM Android 0.17.1 runtime integrated
+- local .litertlm model manager added with private-app-storage import, SHA-256 hashing, verification and removal
+- neural inference runs on a dedicated background executor and never blocks normal keyboard input
+- stale queued neural prediction jobs are discarded in favor of the newest context
+- stale neural results cannot overwrite newer prediction-strip state
+- fast local suggestions remain visible while neural refinement runs
+- optional neural suggestions are marked with ✦ and merged with local word/sentence predictions
+- LiteRT-LM model import UI added to Settings
+- optional native GPU libraries declared as non-required
+- release ProGuard keep rules added for LiteRT-LM/JNI integration
+- minimum Android version raised from API 23 to API 24 for LiteRT-LM compatibility
+- CI build JDK raised to 21 while app source compatibility remains Java 17
+- new tests cover surrounding-context extraction, topic extraction, question detection, contextual semantic generation and neural/local merge
+- version advanced to 0.6.0-alpha06 / build 6
+
 ## 0.5.0-alpha05 — 2026-09-27
 
 Hybrid semantic prediction:

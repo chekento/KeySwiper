@@ -18,11 +18,18 @@ import android.widget.ScrollView
 import android.widget.TextView
 import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeLearningStore
+import cloud.kosch.keyswiper.prediction.NeuralModelManager
+import cloud.kosch.keyswiper.prediction.NeuralModelStatus
 import cloud.kosch.keyswiper.prediction.PredictionLearningStore
 
 class SettingsActivity : Activity() {
+
+    private lateinit var neuralModelManager: NeuralModelManager
+    private lateinit var neuralStatusText: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        neuralModelManager = NeuralModelManager(this)
 
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
@@ -39,7 +46,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Adaptive multimodal Android keyboard — swipe, hybrid prediction, stylus, voice, clipboard, emoji and multilingual input."
+            text = "Adaptive multimodal Android keyboard — swipe, context-aware hybrid prediction, local neural models, stylus, voice, clipboard and multilingual input."
             textSize = 16f
             setPadding(0, dp(8), 0, dp(22))
         })
@@ -124,7 +131,11 @@ class SettingsActivity : Activity() {
 
         val semanticDepth = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
-            setText(Prefs.semanticPredictionDepth(this@SettingsActivity).toString())
+            setText(
+                Prefs.semanticPredictionDepth(
+                    this@SettingsActivity
+                ).toString()
+            )
             hint = "5"
             maxLines = 1
         }
@@ -153,28 +164,31 @@ class SettingsActivity : Activity() {
                     semanticDepth.text.toString().toIntOrNull() ?: 5
                 )
                 semanticDepth.setText(
-                    Prefs.semanticPredictionDepth(this@SettingsActivity).toString()
+                    Prefs.semanticPredictionDepth(
+                        this@SettingsActivity
+                    ).toString()
                 )
                 text = "Saved ✓"
             }
         })
 
         content.addView(TextView(this).apply {
-            text = "Prediction v2 combines instant completion, next-word prediction, local 2/3/4-gram learning and a semantic beam-search layer that can plan several words ahead."
-            textSize = 14f
-            setPadding(0, dp(24), 0, dp(8))
+            text = "Context Intelligence"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
         })
 
         content.addView(TextView(this).apply {
-            text = "Input context is classified locally as General, Message, Email, Search or Code so ranking can adapt without sending app content anywhere."
+            text = "Predictions now use surrounding text before and after the cursor, the current and neighbouring sentences, selected text, paragraph topics, detected language, question intent and the editor mode. Sensitive fields bypass this context completely."
             textSize = 14f
             setPadding(0, dp(4), 0, dp(8))
         })
 
         content.addView(TextView(this).apply {
-            text = "A neural-provider interface is prepared for future downloaded LiteRT-LM models. The keyboard does not depend on that model and remains fully usable without it."
+            text = "Prediction v3 combines instant completion, local 2/3/4-gram learning, contextual beam search and an optional LiteRT-LM neural reranker."
             textSize = 14f
-            setPadding(0, dp(4), 0, dp(8))
+            setPadding(0, dp(6), 0, dp(8))
         })
 
         content.addView(Button(this).apply {
@@ -186,9 +200,69 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
+            text = "Local neural model (LiteRT-LM)"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        neuralStatusText = TextView(this).apply {
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        content.addView(neuralStatusText)
+        refreshNeuralStatus()
+
+        content.addView(Button(this).apply {
+            text = "Import .litertlm model"
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                }
+                startActivityForResult(intent, REQUEST_IMPORT_MODEL)
+            }
+        })
+
+        content.addView(Button(this).apply {
+            text = "Verify neural model SHA-256"
+            setOnClickListener {
+                neuralStatusText.text = "Verifying model…"
+                Thread {
+                    val result = neuralModelManager.verify()
+                    runOnUiThread {
+                        neuralStatusText.text = result.fold(
+                            onSuccess = {
+                                "Neural model verified ✓\n" +
+                                    formatModelInfo(it.sizeBytes, it.sha256)
+                            },
+                            onFailure = {
+                                "Verification failed: ${it.message}"
+                            }
+                        )
+                    }
+                }.start()
+            }
+        })
+
+        content.addView(Button(this).apply {
+            text = "Remove neural model"
+            setOnClickListener {
+                neuralModelManager.remove()
+                refreshNeuralStatus()
+            }
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Neural models are optional and stored only inside KeySwiper's private app storage. The keyboard remains fully functional without one."
+            textSize = 13f
+            setPadding(0, dp(6), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
             text = "Swipe v3 uses path geometry, speed, direction and a local per-key motor profile."
             textSize = 14f
-            setPadding(0, dp(20), 0, dp(8))
+            setPadding(0, dp(24), 0, dp(8))
         })
 
         content.addView(Button(this).apply {
@@ -201,7 +275,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Privacy default: prediction context and learning are disabled in sensitive/password fields. Personal prediction and swipe models stay local."
+            text = "Privacy default: surrounding context, prediction learning and neural inference are disabled in sensitive/password fields. Personal models stay local."
             textSize = 14f
             setPadding(0, dp(24), 0, 0)
         })
@@ -213,7 +287,79 @@ class SettingsActivity : Activity() {
         )
     }
 
+    @Deprecated("Legacy activity result API is sufficient for this internal file picker.")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (
+            requestCode != REQUEST_IMPORT_MODEL ||
+            resultCode != RESULT_OK
+        ) {
+            return
+        }
+
+        val uri = data?.data ?: return
+        neuralStatusText.text = "Importing and hashing model…"
+
+        Thread {
+            val result = neuralModelManager.installFromUri(uri)
+
+            runOnUiThread {
+                neuralStatusText.text = result.fold(
+                    onSuccess = {
+                        "Neural model ready ✓\n" +
+                            formatModelInfo(it.sizeBytes, it.sha256)
+                    },
+                    onFailure = {
+                        "Import failed: ${it.message}"
+                    }
+                )
+            }
+        }.start()
+    }
+
+    private fun refreshNeuralStatus() {
+        neuralStatusText.text = when (val status = neuralModelManager.status()) {
+            NeuralModelStatus.NotInstalled ->
+                "No neural model installed. Instant and semantic local prediction are active."
+
+            is NeuralModelStatus.Invalid ->
+                "Neural model invalid: ${status.reason}"
+
+            is NeuralModelStatus.Ready ->
+                "Neural model installed ✓\n" +
+                    formatModelInfo(
+                        status.info.sizeBytes,
+                        status.info.sha256
+                    )
+        }
+    }
+
+    private fun formatModelInfo(
+        sizeBytes: Long,
+        sha256: String
+    ): String {
+        val sizeGb = sizeBytes / 1_073_741_824.0
+        val sizeMb = sizeBytes / 1_048_576.0
+
+        val size = if (sizeGb >= 1.0) {
+            "%.2f GB".format(sizeGb)
+        } else {
+            "%.1f MB".format(sizeMb)
+        }
+
+        return "Size: $size\nSHA-256: $sha256"
+    }
+
     private fun hasMicPermission(): Boolean =
         checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
+
+    companion object {
+        private const val REQUEST_IMPORT_MODEL = 81
+    }
 }

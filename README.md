@@ -28,9 +28,12 @@ The first implementation focuses on a buildable architecture with:
 - adaptive Swipe v3 ranking with geometric path scoring and local correction learning
 - intelligent word completion, next-word and sentence prediction strip
 - hybrid instant + semantic beam-search prediction up to 2–6 words ahead
+- surrounding-context intelligence using text before/after the cursor, selection, sentence, paragraph and topics
+- optional local LiteRT-LM neural refinement with importable `.litertlm` models
 - Google ML Kit auto-language hints plus per-user motor offsets for swipe ranking
 - personal local 2/3/4-gram prediction learning
 - local General / Message / Email / Search / Code context modes
+- local neural model manager with SHA-256 verification
 - suggestion/candidate strip
 - clipboard panel
 - emoji panel
@@ -69,7 +72,7 @@ Keyboard software handles unusually sensitive data. KeySwiper therefore follows 
 
 Requirements:
 
-- JDK 17
+- JDK 21
 - Android SDK 36
 - Gradle 9.6+
 - Android Gradle Plugin 9.4
@@ -82,13 +85,12 @@ gradle :app:assembleDebug
 
 The GitHub Actions workflow runs unit tests, builds the debug APK, keeps a CI artifact, publishes a permanent GitHub Release asset and generates a dedicated version page with SHA-256 and changelog. See [APK version archive](docs/versions/README.md).
 
-See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_ENGINE.md) and [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md).
+See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_ENGINE.md), [Context Intelligence](docs/CONTEXT_INTELLIGENCE.md), [Neural Model Manager](docs/NEURAL_MODEL_MANAGER.md) and [Neural Prediction Roadmap](docs/NEURAL_PREDICTION.md).
 
 ## Roadmap
 
 Next milestones:
 
-- downloadable LiteRT-LM neural prediction provider
 - larger multilingual dictionaries and code-switching prediction
 - richer S Pen button / Air Action support on compatible Samsung devices
 - direct Android stylus-handwriting IME session support

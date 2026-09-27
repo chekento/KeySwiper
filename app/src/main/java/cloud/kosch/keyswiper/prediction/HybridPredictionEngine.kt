@@ -36,4 +36,52 @@ class HybridPredictionEngine(
             .distinctBy { it.commitText.lowercase() }
             .take(maxSuggestions)
     }
+
+    fun mergeNeural(
+        base: List<PredictionSuggestion>,
+        neural: List<PredictionSuggestion>,
+        maxSuggestions: Int = 6
+    ): List<PredictionSuggestion> {
+        if (neural.isEmpty()) return base.take(maxSuggestions)
+
+        val words = base
+            .filter {
+                it.kind == PredictionKind.COMPLETION ||
+                    it.kind == PredictionKind.NEXT_WORD
+            }
+            .take(3)
+
+        val neuralUnique = neural
+            .distinctBy { it.commitText.lowercase() }
+            .take(2)
+
+        val localSentence = base
+            .firstOrNull { it.kind == PredictionKind.SENTENCE }
+
+        return buildList {
+            addAll(words)
+            addAll(neuralUnique)
+
+            if (
+                localSentence != null &&
+                none { it.commitText.equals(localSentence.commitText, ignoreCase = true) }
+            ) {
+                add(localSentence)
+            }
+
+            base.forEach { suggestion ->
+                if (
+                    size < maxSuggestions &&
+                    none {
+                        it.commitText.equals(
+                            suggestion.commitText,
+                            ignoreCase = true
+                        )
+                    }
+                ) {
+                    add(suggestion)
+                }
+            }
+        }.take(maxSuggestions)
+    }
 }

@@ -8,6 +8,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.KeySwiper">
 
+        <uses-native-library
+            android:name="libvndksupport.so"
+            android:required="false" />
+        <uses-native-library
+            android:name="libOpenCL.so"
+            android:required="false" />
+
         <activity
             android:name=".settings.SettingsActivity"
             android:exported="true"

@@ -8,10 +8,10 @@ android {
 
     defaultConfig {
         applicationId = "cloud.kosch.keyswiper"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0-alpha05"
+        versionCode = 6
+        versionName = "0.6.0-alpha06"
     }
 
     compileOptions {
@@ -34,5 +34,6 @@ dependencies {
     implementation("com.google.mlkit:language-id:17.0.6")
     implementation("com.google.mlkit:translate:17.0.3")
     implementation("com.google.mlkit:digital-ink-recognition:19.0.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.17.1")
     testImplementation("junit:junit:4.13.2")
 }

@@ -4,7 +4,8 @@ enum class PredictionKind {
     COMPLETION,
     NEXT_WORD,
     SENTENCE,
-    SWIPE_CORRECTION
+    SWIPE_CORRECTION,
+    NEURAL
 }
 
 enum class PredictionInputMode {
@@ -14,6 +15,19 @@ enum class PredictionInputMode {
     SEARCH,
     CODE
 }
+
+data class SurroundingContextSnapshot(
+    val beforeCursor: String = "",
+    val selectedText: String = "",
+    val afterCursor: String = "",
+    val previousSentence: String = "",
+    val currentSentenceBefore: String = "",
+    val currentSentenceAfter: String = "",
+    val nextSentence: String = "",
+    val currentParagraph: String = "",
+    val topicTerms: List<String> = emptyList(),
+    val isQuestion: Boolean = false
+)
 
 data class PredictionSuggestion(
     val display: String,
@@ -27,7 +41,10 @@ data class PredictionContext(
     val beforeCursor: String,
     val languageHints: List<String>,
     val inputMode: PredictionInputMode = PredictionInputMode.GENERAL,
-    val maxSemanticTokens: Int = 4
+    val maxSemanticTokens: Int = 4,
+    val surrounding: SurroundingContextSnapshot = SurroundingContextSnapshot(
+        beforeCursor = beforeCursor
+    )
 )
 
 interface PredictionMemory {
