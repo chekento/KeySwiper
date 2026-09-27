@@ -2,6 +2,9 @@ package cloud.kosch.keyswiper
 
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -29,6 +32,10 @@ import cloud.kosch.keyswiper.prediction.SurroundingContextReader
 import cloud.kosch.keyswiper.security.SecurityPolicy
 import cloud.kosch.keyswiper.settings.Prefs
 import cloud.kosch.keyswiper.settings.SettingsActivity
+import cloud.kosch.keyswiper.stylus.StylusAction
+import cloud.kosch.keyswiper.stylus.StylusActionStore
+import cloud.kosch.keyswiper.stylus.StylusClickInterpreter
+import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardRootView
 import cloud.kosch.keyswiper.voice.VoiceInputController
@@ -39,6 +46,8 @@ class KeySwiperImeService : InputMethodService() {
     private val translationEngine = TranslationEngine()
     private val digitalInkEngine = DigitalInkEngine()
     private val surroundingContextReader = SurroundingContextReader()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val stylusClickInterpreter = StylusClickInterpreter()
 
     private lateinit var swipeLearningStore: SwipeLearningStore
     private lateinit var motorProfileStore: MotorProfileStore
@@ -49,12 +58,14 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var neuralPredictionBackend: LiteRtLmPredictionBackend
     private lateinit var clipboardController: ClipboardController
     private lateinit var voiceController: VoiceInputController
+    private lateinit var stylusActionStore: StylusActionStore
 
     private var root: KeyboardRootView? = null
     private var sensitiveField = false
     private var languageHints: List<String> = emptyList()
     private var predictionInputMode = PredictionInputMode.GENERAL
     private var predictionGeneration = 0L
+    private var currentPredictions: List<PredictionSuggestion> = emptyList()
 
     private var lastSwipeWord: String? = null
     private var lastSwipeCandidates: List<String> = emptyList()
@@ -85,6 +96,7 @@ class KeySwiperImeService : InputMethodService() {
 
         clipboardController = ClipboardController(this)
         voiceController = VoiceInputController(this)
+        stylusActionStore = StylusActionStore(this)
         clipboardController.start()
     }
 
@@ -124,6 +136,8 @@ class KeySwiperImeService : InputMethodService() {
     override fun onFinishInput() {
         super.onFinishInput()
         predictionGeneration++
+        stylusClickInterpreter.clear()
+        mainHandler.removeCallbacksAndMessages(null)
         voiceController.stop()
         languageHints = emptyList()
         predictionInputMode = PredictionInputMode.GENERAL
@@ -136,6 +150,8 @@ class KeySwiperImeService : InputMethodService() {
 
     override fun onDestroy() {
         predictionGeneration++
+        stylusClickInterpreter.clear()
+        mainHandler.removeCallbacksAndMessages(null)
         neuralPredictionBackend.close()
         clipboardController.stop()
         voiceController.destroy()
@@ -189,6 +205,7 @@ class KeySwiperImeService : InputMethodService() {
             lastSwipeTrace = trace
 
             predictionGeneration++
+            currentPredictions = emptyList()
             root?.setSwipeCandidates(values)
             refreshLanguageHints((before + " " + word).takeLast(1000))
         }
@@ -432,35 +449,146 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onStylusPrimary() {
-            if (sensitiveField) {
-                root?.setStatus("S Pen action blocked in sensitive field.")
-            } else {
-                onVoice()
-            }
+            handlePrimaryStylusPress()
         }
 
         override fun onStylusSecondary() {
-            val word = lastSwipeWord
-
-            if (word != null && lastSwipeCandidates.size > 1) {
-                val index = lastSwipeCandidates
-                    .indexOf(word)
-                    .coerceAtLeast(0)
-
-                val next = lastSwipeCandidates[
-                    (index + 1) % lastSwipeCandidates.size
-                ]
-
-                replaceLastSwipe(next)
-            } else {
-                root?.setStatus(
-                    "Secondary stylus action: no alternate candidate."
+            executeStylusAction(
+                stylusActionStore.actionFor(
+                    StylusTrigger.SECONDARY_SINGLE
                 )
-            }
+            )
         }
     }
 
-    private fun replaceLastSwipe(value: String) {
+    private fun handlePrimaryStylusPress() {
+        val now = SystemClock.uptimeMillis()
+        val isDouble = stylusClickInterpreter.registerPrimaryPress(now)
+
+        if (isDouble) {
+            executeStylusAction(
+                stylusActionStore.actionFor(
+                    StylusTrigger.PRIMARY_DOUBLE
+                )
+            )
+            return
+        }
+
+        mainHandler.postDelayed(
+            {
+                if (
+                    stylusClickInterpreter.consumePendingSingle(now)
+                ) {
+                    executeStylusAction(
+                        stylusActionStore.actionFor(
+                            StylusTrigger.PRIMARY_SINGLE
+                        )
+                    )
+                }
+            },
+            280L
+        )
+    }
+
+    private fun executeStylusAction(
+        action: StylusAction
+    ) {
+        if (
+            sensitiveField &&
+            action != StylusAction.SETTINGS &&
+            action != StylusAction.NONE
+        ) {
+            root?.setStatus(
+                "Stylus content action blocked in sensitive field."
+            )
+            return
+        }
+
+        when (action) {
+            StylusAction.VOICE_TOGGLE ->
+                callbacks.onVoice()
+
+            StylusAction.ACCEPT_TOP_PREDICTION -> {
+                val top = currentPredictions.firstOrNull()
+                if (top != null) {
+                    callbacks.onPrediction(top)
+                } else {
+                    root?.setStatus(
+                        "No prediction is currently available."
+                    )
+                }
+            }
+
+            StylusAction.NEXT_CANDIDATE ->
+                cycleSwipeCandidate(1)
+
+            StylusAction.PREVIOUS_CANDIDATE ->
+                cycleSwipeCandidate(-1)
+
+            StylusAction.TRANSLATE_SELECTION ->
+                callbacks.onTranslate()
+
+            StylusAction.CLIPBOARD ->
+                callbacks.onClipboard()
+
+            StylusAction.EMOJI ->
+                root?.showEmojiPanel()
+
+            StylusAction.HANDWRITING ->
+                callbacks.onHandwritingRequested()
+
+            StylusAction.UNDO_LAST_SWIPE -> {
+                if (lastSwipeWord != null) {
+                    callbacks.onBackspace()
+                } else {
+                    root?.setStatus(
+                        "No recent swipe word to undo."
+                    )
+                }
+            }
+
+            StylusAction.SETTINGS ->
+                callbacks.onSettings()
+
+            StylusAction.NONE ->
+                Unit
+        }
+    }
+
+    private fun cycleSwipeCandidate(
+        delta: Int
+    ) {
+        val current = lastSwipeWord
+
+        if (
+            current == null ||
+            lastSwipeCandidates.size <= 1
+        ) {
+            root?.setStatus(
+                "No alternate swipe candidate."
+            )
+            return
+        }
+
+        val index = lastSwipeCandidates
+            .indexOf(current)
+            .coerceAtLeast(0)
+
+        val size = lastSwipeCandidates.size
+        val nextIndex = (
+            (index + delta) % size + size
+            ) % size
+
+        replaceLastSwipe(
+            value = lastSwipeCandidates[nextIndex],
+            learn = false
+        )
+    }
+
+    private fun replaceLastSwipe(
+        value: String,
+        learn: Boolean = true
+    ) {
         val previous = lastSwipeWord ?: return
         val connection = currentInputConnection ?: return
         val signature = lastSwipeSignature
@@ -469,7 +597,7 @@ class KeySwiperImeService : InputMethodService() {
         connection.deleteSurroundingText(previous.length + 1, 0)
         connection.commitText(value + " ", 1)
 
-        if (!sensitiveField && signature != null) {
+        if (!sensitiveField && signature != null && learn) {
             swipeLearningStore.record(
                 signature,
                 lastSwipeContextWord,
@@ -491,10 +619,19 @@ class KeySwiperImeService : InputMethodService() {
 
         lastSwipeWord = value
         root?.setStatus(
-            "Adaptive swipe learned this correction locally."
+            if (learn) {
+                "Adaptive swipe learned this correction locally."
+            } else {
+                "Swipe candidate changed with stylus."
+            }
         )
 
-        refreshPredictionBar()
+        if (learn) {
+            refreshPredictionBar()
+        } else {
+            currentPredictions = emptyList()
+            root?.setSwipeCandidates(lastSwipeCandidates)
+        }
     }
 
     private fun refreshPredictionBar() {
@@ -522,6 +659,7 @@ class KeySwiperImeService : InputMethodService() {
             maxSuggestions = 6
         )
 
+        currentPredictions = base
         root?.setPredictions(base)
 
         if (
@@ -538,13 +676,13 @@ class KeySwiperImeService : InputMethodService() {
                         !sensitiveField &&
                         neural.isNotEmpty()
                     ) {
-                        root?.setPredictions(
-                            predictionEngine.mergeNeural(
-                                base = base,
-                                neural = neural,
-                                maxSuggestions = 6
-                            )
+                        val merged = predictionEngine.mergeNeural(
+                            base = base,
+                            neural = neural,
+                            maxSuggestions = 6
                         )
+                        currentPredictions = merged
+                        root?.setPredictions(merged)
                     }
                 }
             }

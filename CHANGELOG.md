@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.0-alpha08 — 2026-09-27
+
+Configurable S Pen / stylus actions:
+
+- primary stylus button single-click is now independently configurable
+- primary stylus button double-click recognition added with a 280 ms discrimination window
+- secondary stylus button is independently configurable
+- duplicate MotionEvent button reports are debounced before gesture interpretation
+- configurable actions: Voice2Text, accept top prediction, next/previous swipe candidate, translate selection, clipboard, emoji, handwriting, undo last swipe, Settings or None
+- default mappings remain familiar: primary single = Voice2Text, primary double = translate selection, secondary = next swipe candidate
+- swipe candidate cycling through stylus buttons no longer trains intermediate candidates as corrections
+- both primary and secondary stylus buttons work on the handwriting pad
+- prediction state is retained so a stylus mapping can accept the current top word/sentence prediction
+- content-affecting stylus actions are blocked in sensitive/password fields
+- Settings UI added for saving and resetting stylus mappings
+- Samsung Air Actions documented as an optional foreground/device-specific adapter rather than a required system-IME dependency
+- new unit tests cover single/double-click interpretation and stale single-click consumption
+- version advanced to 0.8.0-alpha08 / build 8
+
 ## 0.7.0-alpha07 — 2026-09-27
 
 Multilingual language lanes, larger dictionaries and personal vocabulary:

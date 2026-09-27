@@ -44,7 +44,7 @@ The first implementation focuses on a buildable architecture with:
 - Google ML Kit on-device translation
 - Google ML Kit Digital Ink Recognition foundation
 - stylus-aware touch handling
-- S Pen / stylus button mapping abstraction
+- configurable S Pen / stylus primary-single, primary-double and secondary-button actions
 - local preferences and privacy controls
 - CI debug-APK build
 - permanent per-build GitHub Release + version-page archive
@@ -93,7 +93,7 @@ See [Swipe Engine](docs/SWIPE_ENGINE.md), [Prediction Engine](docs/PREDICTION_EN
 
 Next milestones:
 
-- richer S Pen button / Air Action support on compatible Samsung devices
+- optional Samsung Air Action adapter where foreground/device routing permits it
 - direct Android stylus-handwriting IME session support
 - editable gesture mappings
 - multilingual target-language wheel

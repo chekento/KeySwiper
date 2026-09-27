@@ -11,6 +11,9 @@ import com.google.mlkit.vision.digitalink.recognition.Ink
 
 class HandwritingPadView(context: Context) : View(context) {
     var onStylusPrimaryButton: (() -> Unit)? = null
+    var onStylusSecondaryButton: (() -> Unit)? = null
+    private var lastPrimaryButtonEventMs = Long.MIN_VALUE
+    private var lastSecondaryButtonEventMs = Long.MIN_VALUE
 
     private var inkBuilder: Ink.Builder = Ink.builder()
     private var strokeBuilder: Ink.Stroke.Builder? = null
@@ -39,11 +42,21 @@ class HandwritingPadView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS &&
-            (event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0 &&
+        if (
+            event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS &&
             event.actionMasked == MotionEvent.ACTION_DOWN
         ) {
-            onStylusPrimaryButton?.invoke()
+            if (
+                (event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
+            ) {
+                dispatchPrimaryButton(event.eventTime)
+            }
+
+            if (
+                (event.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY) != 0
+            ) {
+                dispatchSecondaryButton(event.eventTime)
+            }
         }
 
         val x = event.x
@@ -100,13 +113,31 @@ class HandwritingPadView(context: Context) : View(context) {
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS &&
-            event.actionButton == MotionEvent.BUTTON_STYLUS_PRIMARY
-        ) {
-            onStylusPrimaryButton?.invoke()
-            return true
+        if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS) {
+            when (event.actionButton) {
+                MotionEvent.BUTTON_STYLUS_PRIMARY -> {
+                    dispatchPrimaryButton(event.eventTime)
+                    return true
+                }
+                MotionEvent.BUTTON_STYLUS_SECONDARY -> {
+                    dispatchSecondaryButton(event.eventTime)
+                    return true
+                }
+            }
         }
         return super.onGenericMotionEvent(event)
+    }
+
+    private fun dispatchPrimaryButton(eventTimeMs: Long) {
+        if (eventTimeMs - lastPrimaryButtonEventMs < 80L) return
+        lastPrimaryButtonEventMs = eventTimeMs
+        onStylusPrimaryButton?.invoke()
+    }
+
+    private fun dispatchSecondaryButton(eventTimeMs: Long) {
+        if (eventTimeMs - lastSecondaryButtonEventMs < 80L) return
+        lastSecondaryButtonEventMs = eventTimeMs
+        onStylusSecondaryButton?.invoke()
     }
 
     fun snapshotInk(): Ink = inkBuilder.build()

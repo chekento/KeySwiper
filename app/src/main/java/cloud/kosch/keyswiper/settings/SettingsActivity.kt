@@ -11,10 +11,12 @@ import android.provider.Settings
 import android.text.InputType
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeLearningStore
@@ -22,6 +24,9 @@ import cloud.kosch.keyswiper.language.UserVocabularyStore
 import cloud.kosch.keyswiper.prediction.NeuralModelManager
 import cloud.kosch.keyswiper.prediction.NeuralModelStatus
 import cloud.kosch.keyswiper.prediction.PredictionLearningStore
+import cloud.kosch.keyswiper.stylus.StylusAction
+import cloud.kosch.keyswiper.stylus.StylusActionStore
+import cloud.kosch.keyswiper.stylus.StylusTrigger
 
 class SettingsActivity : Activity() {
 
@@ -328,6 +333,131 @@ class SettingsActivity : Activity() {
                 UserVocabularyStore(this@SettingsActivity).reset()
                 text = "Personal vocabulary reset ✓"
             }
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Stylus / S Pen actions"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Generic Android stylus buttons can be mapped independently. Primary single-click waits briefly to distinguish it from a double-click."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        val stylusStore = StylusActionStore(this)
+        val stylusLabels = StylusAction.entries.map { it.label }
+        val stylusAdapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            stylusLabels
+        ).apply {
+            setDropDownViewResource(
+                android.R.layout.simple_spinner_dropdown_item
+            )
+        }
+
+        fun addStylusMapping(
+            label: String,
+            trigger: StylusTrigger
+        ): Spinner {
+            content.addView(TextView(this).apply {
+                text = label
+                textSize = 14f
+                setPadding(0, dp(10), 0, dp(4))
+            })
+
+            return Spinner(this).apply {
+                adapter = stylusAdapter
+                val current = stylusStore.actionFor(trigger)
+                setSelection(
+                    StylusAction.entries.indexOf(current)
+                        .coerceAtLeast(0)
+                )
+                content.addView(
+                    this,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+        }
+
+        val primarySingle = addStylusMapping(
+            "Primary button · single click",
+            StylusTrigger.PRIMARY_SINGLE
+        )
+        val primaryDouble = addStylusMapping(
+            "Primary button · double click",
+            StylusTrigger.PRIMARY_DOUBLE
+        )
+        val secondarySingle = addStylusMapping(
+            "Secondary button",
+            StylusTrigger.SECONDARY_SINGLE
+        )
+
+        content.addView(Button(this).apply {
+            text = "Save stylus mappings"
+            setOnClickListener {
+                stylusStore.setAction(
+                    StylusTrigger.PRIMARY_SINGLE,
+                    StylusAction.entries[
+                        primarySingle.selectedItemPosition
+                    ]
+                )
+                stylusStore.setAction(
+                    StylusTrigger.PRIMARY_DOUBLE,
+                    StylusAction.entries[
+                        primaryDouble.selectedItemPosition
+                    ]
+                )
+                stylusStore.setAction(
+                    StylusTrigger.SECONDARY_SINGLE,
+                    StylusAction.entries[
+                        secondarySingle.selectedItemPosition
+                    ]
+                )
+                text = "Stylus mappings saved ✓"
+            }
+        })
+
+        content.addView(Button(this).apply {
+            text = "Reset stylus mappings"
+            setOnClickListener {
+                stylusStore.reset()
+                primarySingle.setSelection(
+                    StylusAction.entries.indexOf(
+                        stylusStore.actionFor(
+                            StylusTrigger.PRIMARY_SINGLE
+                        )
+                    )
+                )
+                primaryDouble.setSelection(
+                    StylusAction.entries.indexOf(
+                        stylusStore.actionFor(
+                            StylusTrigger.PRIMARY_DOUBLE
+                        )
+                    )
+                )
+                secondarySingle.setSelection(
+                    StylusAction.entries.indexOf(
+                        stylusStore.actionFor(
+                            StylusTrigger.SECONDARY_SINGLE
+                        )
+                    )
+                )
+                text = "Stylus mappings reset ✓"
+            }
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Samsung Air Actions remain an optional device-specific adapter: remote gestures are foreground-app scoped on Samsung devices, so KeySwiper does not depend on them for system-wide typing."
+            textSize = 13f
+            setPadding(0, dp(6), 0, dp(8))
         })
 
         content.addView(TextView(this).apply {

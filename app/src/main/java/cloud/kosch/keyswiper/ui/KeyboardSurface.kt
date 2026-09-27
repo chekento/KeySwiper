@@ -38,6 +38,8 @@ class KeyboardSurface(context: Context) : View(context) {
     private var downX = 0f
     private var downY = 0f
     private var dragging = false
+    private var lastPrimaryButtonEventMs = Long.MIN_VALUE
+    private var lastSecondaryButtonEventMs = Long.MIN_VALUE
 
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(49, 53, 64)
@@ -105,11 +107,11 @@ class KeyboardSurface(context: Context) : View(context) {
         if (event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS) {
             if ((event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0 &&
                 event.actionMasked == MotionEvent.ACTION_DOWN
-            ) listener?.onStylusPrimaryButton()
+            ) dispatchPrimaryButton(event.eventTime)
 
             if ((event.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY) != 0 &&
                 event.actionMasked == MotionEvent.ACTION_DOWN
-            ) listener?.onStylusSecondaryButton()
+            ) dispatchSecondaryButton(event.eventTime)
         }
 
         when (event.actionMasked) {
@@ -195,16 +197,28 @@ class KeyboardSurface(context: Context) : View(context) {
         if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS) {
             when (event.actionButton) {
                 MotionEvent.BUTTON_STYLUS_PRIMARY -> {
-                    listener?.onStylusPrimaryButton()
+                    dispatchPrimaryButton(event.eventTime)
                     return true
                 }
                 MotionEvent.BUTTON_STYLUS_SECONDARY -> {
-                    listener?.onStylusSecondaryButton()
+                    dispatchSecondaryButton(event.eventTime)
                     return true
                 }
             }
         }
         return super.onGenericMotionEvent(event)
+    }
+
+    private fun dispatchPrimaryButton(eventTimeMs: Long) {
+        if (eventTimeMs - lastPrimaryButtonEventMs < 80L) return
+        lastPrimaryButtonEventMs = eventTimeMs
+        listener?.onStylusPrimaryButton()
+    }
+
+    private fun dispatchSecondaryButton(eventTimeMs: Long) {
+        if (eventTimeMs - lastSecondaryButtonEventMs < 80L) return
+        lastSecondaryButtonEventMs = eventTimeMs
+        listener?.onStylusSecondaryButton()
     }
 
     private fun addTraceCharacter(x: Float, y: Float) {

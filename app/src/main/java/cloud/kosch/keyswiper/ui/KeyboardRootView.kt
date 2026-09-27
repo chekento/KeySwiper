@@ -236,7 +236,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
         swapContent(panel)
     }
 
-    private fun showEmojiPanel() {
+    fun showEmojiPanel() {
         val panel = LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(dp(4), dp(4), dp(4), dp(4))
@@ -276,6 +276,7 @@ class KeyboardRootView(context: Context) : LinearLayout(context) {
 
         val pad = HandwritingPadView(context).apply {
             onStylusPrimaryButton = { callbacks?.onStylusPrimary() }
+            onStylusSecondaryButton = { callbacks?.onStylusSecondary() }
         }
         panel.addView(pad, LayoutParams(LayoutParams.MATCH_PARENT, dp(185)))
 
