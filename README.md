@@ -1,4 +1,8 @@
-# KeySwiper
+<p align="center">
+  <img src="docs/assets/marketing/keyswiper-app-icon.webp" alt="KeySwiper app icon" width="150">
+</p>
+
+<h1 align="center">KeySwiper</h1>
 
 <p align="center">
   <strong>Adaptive AI Keyboard for Android</strong><br>
@@ -6,8 +10,25 @@
 </p>
 
 <p align="center">
+  <strong>Current build: 0.14.0-alpha14 · Build 14 · Run 25</strong><br>
+  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Permanent Release ✓
+</p>
+
+<p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest/download/KeySwiper-latest.apk">
     <img alt="Download latest KeySwiper APK" src="https://img.shields.io/badge/%E2%AC%87%20DOWNLOAD-LATEST%20KEYSWIPER%20APK-2563EB?style=for-the-badge&logo=android&logoColor=white">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/chekento/KeySwiper/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.14.0--alpha14-8B5CF6?style=for-the-badge">
+  </a>
+  <a href="docs/versions/README.md">
+    <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
+  </a>
+  <a href="CHANGELOG.md">
+    <img alt="Changelog" src="https://img.shields.io/badge/FULL-CHANGELOG-0F766E?style=for-the-badge">
   </a>
 </p>
 
@@ -18,7 +39,23 @@
   <a href="docs/SWIPE_ENGINE.md">Swipe Engine</a>
 </p>
 
-> 🚧 **Experimental alpha.** KeySwiper is under active development. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current release: 0.14.0-alpha14 / Build 14.** The APK passed unit tests, Android Lint and compilation in GitHub Actions. Real-device testing is still required before treating KeySwiper as production-ready. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+
+## KeySwiper in action
+
+<p align="center">
+  <img src="docs/assets/marketing/keyswiper-neon-keyboard-future.webp" alt="KeySwiper — Neon keyboard of the future" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/marketing/keyswiper-beyond-boundaries.webp" alt="KeySwiper — Typing beyond boundaries" width="49%">
+  <img src="docs/assets/marketing/keyswiper-local-ai-neon.webp" alt="KeySwiper — Local AI keyboard" width="49%">
+</p>
+
+<p align="center">
+  <strong>One keyboard. Multiple input modes. Local intelligence where possible.</strong><br>
+  Adaptive swipe · contextual prediction · multilingual input · Voice Editing · Smart Clipboard · handwriting · S Pen/stylus · local neural models
+</p>
 
 ## What KeySwiper is
 
