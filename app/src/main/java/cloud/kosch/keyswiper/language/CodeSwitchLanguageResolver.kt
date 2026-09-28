@@ -16,7 +16,7 @@ object CodeSwitchLanguageResolver {
         val scores = mutableMapOf<String, Float>()
 
         detectedLanguages
-            .map { it.substringBefore('-').lowercase() }
+            .map(::normalizeTag)
             .distinct()
             .take(3)
             .forEachIndexed { index, tag ->
@@ -28,15 +28,13 @@ object CodeSwitchLanguageResolver {
                 }
             }
 
-        val recentTokens = Regex("[\\p{L}\\p{N}'-]+")
-            .findAll(contextText.takeLast(280))
-            .map { it.value.lowercase() }
-            .toList()
-            .takeLast(10)
+        val recentTokens = lexicalTokens(contextText, 10)
 
         recentTokens.forEachIndexed { index, token ->
-            val recency = 0.12f + 0.28f *
-                ((index + 1).toFloat() / recentTokens.size.coerceAtLeast(1))
+            val recency =
+                0.12f +
+                    0.28f *
+                    ((index + 1).toFloat() / recentTokens.size.coerceAtLeast(1))
 
             LanguagePackRegistry.languagesForWord(token).forEach { tag ->
                 scores[tag] = (scores[tag] ?: 0f) + recency
@@ -54,12 +52,13 @@ object CodeSwitchLanguageResolver {
                     scores[pack.tag] = (scores[pack.tag] ?: 0f) + 0.32f
                 }
             }
+
             distinctiveLanguage(partial)?.let { tag ->
                 scores[tag] = (scores[tag] ?: 0f) + 0.70f
             }
         }
 
-        // Tech vocabulary deliberately keeps German/English lanes alive together.
+        // Swipe decoding intentionally keeps technical code-switching broad.
         val recentTech = recentTokens.any { token ->
             LanguagePackRegistry.all.any { token in it.technicalTerms }
         }
@@ -73,11 +72,16 @@ object CodeSwitchLanguageResolver {
             scores["en"] = 0.55f
         }
 
-        val ordered = scores.entries
-            .sortedByDescending { it.value }
-            .take(maxLanes.coerceIn(1, 5))
+        val ordered =
+            scores.entries
+                .sortedByDescending { it.value }
+                .take(maxLanes.coerceIn(1, 5))
 
-        val max = ordered.firstOrNull()?.value?.coerceAtLeast(0.01f) ?: 1f
+        val max =
+            ordered.firstOrNull()
+                ?.value
+                ?.coerceAtLeast(0.01f)
+                ?: 1f
 
         return ordered.map {
             LanguageLane(
@@ -87,13 +91,104 @@ object CodeSwitchLanguageResolver {
         }
     }
 
+    fun resolveForPrediction(
+        contextText: String,
+        detectedLanguages: List<String>,
+        currentToken: String = "",
+        fallbackLanguage: String? = null
+    ): List<LanguageLane> {
+        val primary =
+            primaryInputLanguage(
+                contextText,
+                detectedLanguages,
+                currentToken,
+                fallbackLanguage
+            )
+
+        return if (primary != null) {
+            listOf(LanguageLane(primary, 1f))
+        } else {
+            resolve(
+                contextText,
+                detectedLanguages,
+                currentToken,
+                maxLanes = 1
+            )
+        }
+    }
+
+    fun primaryInputLanguage(
+        contextText: String,
+        detectedLanguages: List<String>,
+        currentToken: String = "",
+        fallbackLanguage: String? = null
+    ): String? {
+        tokenLanguage(currentToken)?.let { return it }
+
+        lexicalTokens(contextText, 8)
+            .asReversed()
+            .asSequence()
+            .mapNotNull(::tokenLanguage)
+            .firstOrNull()
+            ?.let { return it }
+
+        detectedLanguages
+            .asSequence()
+            .map(::normalizeTag)
+            .firstOrNull { LanguagePackRegistry.get(it) != null }
+            ?.let { return it }
+
+        return fallbackLanguage
+            ?.let(::normalizeTag)
+            ?.takeIf { LanguagePackRegistry.get(it) != null }
+    }
+
+    fun matchesLanguage(
+        text: String,
+        languageTag: String
+    ): Boolean {
+        val wanted = normalizeTag(languageTag)
+        var matchingVotes = 0
+        var foreignVotes = 0
+
+        lexicalTokens(text, 12).forEach { token ->
+            val languages = LanguagePackRegistry.languagesForWord(token)
+            if (languages.isEmpty()) return@forEach
+
+            if (wanted in languages) {
+                matchingVotes++
+            } else {
+                foreignVotes++
+            }
+        }
+
+        return when {
+            matchingVotes > 0 -> matchingVotes >= foreignVotes
+            foreignVotes > 0 -> false
+            else -> true
+        }
+    }
+
     fun tokenLanguage(token: String): String? {
-        val distinctive = distinctiveLanguage(token)
-        if (distinctive != null) return distinctive
+        if (token.isBlank()) return null
+        distinctiveLanguage(token)?.let { return it }
 
         val languages = LanguagePackRegistry.languagesForWord(token)
         return if (languages.size == 1) languages.first() else null
     }
+
+    private fun lexicalTokens(
+        text: String,
+        limit: Int
+    ): List<String> =
+        Regex("[\\p{L}\\p{N}'-]+")
+            .findAll(text.takeLast(420))
+            .map { it.value.lowercase() }
+            .toList()
+            .takeLast(limit)
+
+    private fun normalizeTag(tag: String): String =
+        tag.substringBefore('-').lowercase()
 
     private fun distinctiveLanguage(token: String): String? {
         val lower = token.lowercase()
@@ -102,9 +197,12 @@ object CodeSwitchLanguageResolver {
             lower.any { it in "äöüß" } -> "de"
             lower.any { it in "ñ¿¡" } -> "es"
             lower.any { it in "œç" } -> "fr"
-            lower.contains("à") || lower.contains("è") ||
-                lower.contains("ê") || lower.contains("î") -> "fr"
-            lower.contains("ì") || lower.contains("ò") ||
+            lower.contains("à") ||
+                lower.contains("è") ||
+                lower.contains("ê") ||
+                lower.contains("î") -> "fr"
+            lower.contains("ì") ||
+                lower.contains("ò") ||
                 lower.contains("ù") -> "it"
             else -> null
         }
