@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import cloud.kosch.keyswiper.clipboard.ClipboardEntry
 import cloud.kosch.keyswiper.input.EditTimelineEntry
 import cloud.kosch.keyswiper.input.SwipeTrace
@@ -82,8 +83,12 @@ class KeyboardRootView(
     private fun dp(value: Int) =
         (value * density).toInt()
 
-    private val status =
-        TextView(context)
+    private var statusToast: Toast? = null
+    private var systemBottomInsetPx = 0
+
+    private lateinit var toolbarView: View
+    private lateinit var predictionRowView: LinearLayout
+    private lateinit var suggestionScrollView: HorizontalScrollView
 
     private val suggestions =
         LinearLayout(context)
@@ -120,37 +125,16 @@ class KeyboardRootView(
             theme.background
         )
 
-        status.apply {
-            setTextColor(
-                theme.textSecondary
-            )
-            textSize = 12f
-            setPadding(
-                dp(10),
-                dp(4),
-                dp(10),
-                dp(4)
-            )
-            visibility = GONE
-        }
-
+        toolbarView = buildToolbar()
         addView(
-            status,
+            toolbarView,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                LayoutParams.WRAP_CONTENT
+                dp(30)
             )
         )
 
-        addView(
-            buildToolbar(),
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                dp(40)
-            )
-        )
-
-        val suggestionScroll =
+        suggestionScrollView =
             HorizontalScrollView(context).apply {
                 isHorizontalScrollBarEnabled =
                     false
@@ -224,7 +208,7 @@ class KeyboardRootView(
             }
         }
 
-        val predictionRow =
+        predictionRowView =
             LinearLayout(context).apply {
                 orientation =
                     HORIZONTAL
@@ -235,7 +219,7 @@ class KeyboardRootView(
                 )
             }
 
-        predictionRow.addView(
+        predictionRowView.addView(
             undoButton,
             LayoutParams(
                 dp(44),
@@ -243,8 +227,8 @@ class KeyboardRootView(
             )
         )
 
-        predictionRow.addView(
-            suggestionScroll,
+        predictionRowView.addView(
+            suggestionScrollView,
             LayoutParams(
                 0,
                 LayoutParams.MATCH_PARENT,
@@ -252,7 +236,7 @@ class KeyboardRootView(
             )
         )
 
-        predictionRow.addView(
+        predictionRowView.addView(
             redoButton,
             LayoutParams(
                 dp(44),
@@ -261,10 +245,10 @@ class KeyboardRootView(
         )
 
         addView(
-            predictionRow,
+            predictionRowView,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                dp(46)
+                dp(36)
             )
         )
 
@@ -443,6 +427,31 @@ class KeyboardRootView(
                 )
             )
 
+        val sizing =
+            KeyboardSizing.calculate(
+                screenHeightPx =
+                    resources.displayMetrics.heightPixels,
+                density = density,
+                symbolMode = symbolMode,
+                bottomInsetPx = systemBottomInsetPx,
+                contentVerticalPaddingPx = dp(4)
+            )
+
+        setPadding(
+            paddingLeft,
+            paddingTop,
+            paddingRight,
+            sizing.bottomInsetPx
+        )
+        toolbarView.layoutParams =
+            toolbarView.layoutParams.apply {
+                height = sizing.toolbarHeightPx
+            }
+        predictionRowView.layoutParams =
+            predictionRowView.layoutParams.apply {
+                height = sizing.predictionHeightPx
+            }
+
         keyboardSurface.setLayout(
             profile = layoutProfile,
             symbols = symbolMode
@@ -454,7 +463,7 @@ class KeyboardRootView(
             keyboardSurface,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                dp(190)
+                sizing.surfaceHeightPx
             )
         )
 
@@ -463,7 +472,7 @@ class KeyboardRootView(
                 buildAccentAndLayoutRow(),
                 LayoutParams(
                     LayoutParams.MATCH_PARENT,
-                    dp(38)
+                    sizing.accentRowHeightPx
                 )
             )
         }
@@ -472,9 +481,19 @@ class KeyboardRootView(
             buildBottomRow(),
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                dp(54)
+                sizing.bottomRowHeightPx
             )
         )
+    }
+
+    fun setSystemBottomInset(
+        valuePx: Int
+    ) {
+        val normalized = valuePx.coerceAtLeast(0)
+        if (normalized == systemBottomInsetPx) return
+
+        systemBottomInsetPx = normalized
+        rebuildKeyboardPanel()
     }
 
     private fun buildAccentAndLayoutRow(): View {
@@ -960,17 +979,19 @@ class KeyboardRootView(
     fun setStatus(
         message: String?
     ) {
-        status.text =
-            message.orEmpty()
+        statusToast?.cancel()
+        statusToast = null
 
-        status.visibility =
-            if (
-                message.isNullOrBlank()
-            ) {
-                GONE
-            } else {
-                VISIBLE
-            }
+        if (!message.isNullOrBlank()) {
+            statusToast =
+                Toast.makeText(
+                    context,
+                    message,
+                    Toast.LENGTH_SHORT
+                ).also {
+                    it.show()
+                }
+        }
     }
 
     fun setPredictions(
@@ -1117,6 +1138,7 @@ class KeyboardRootView(
         setBackgroundColor(
             theme.background
         )
+        applyChromeTheme()
         oneHandMode =
             Prefs.oneHandMode(
                 context
@@ -1556,6 +1578,28 @@ class KeyboardRootView(
                 oneHandMode.label
         )
         showKeyboard()
+    }
+
+    private fun applyChromeTheme() {
+        toolbarView.setBackgroundColor(theme.background)
+        predictionRowView.setBackgroundColor(theme.surface)
+        suggestionScrollView.setBackgroundColor(theme.surface)
+        keyboardPanel.setBackgroundColor(theme.background)
+
+        themeAuxiliaryTree(toolbarView)
+
+        undoButton.setTextColor(theme.accent)
+        redoButton.setTextColor(theme.accent)
+        undoButton.background =
+            buttonBackground(
+                special = true,
+                subtle = true
+            )
+        redoButton.background =
+            buttonBackground(
+                special = true,
+                subtle = true
+            )
     }
 
     private fun attachMainPanel(
