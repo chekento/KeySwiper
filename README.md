@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <strong>Current candidate: 0.16.0-alpha16 · Build 16</strong><br>
-  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME runtime validation in CI
+  <strong>Current build: 0.16.0-alpha16 · Build 16 · Run 33</strong><br>
+  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 Emulator IME Smoke ✓ · Permanent Release ✓
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.15.0--alpha15-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.16.0--alpha16-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
