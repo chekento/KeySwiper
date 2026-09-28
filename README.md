@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.16.0-alpha16 · Build 16 · Run 29</strong><br>
+  <strong>Current build: 0.16.0-alpha16 · Build 16 · Run 30</strong><br>
   Unit Tests ✓ · Android 15 Emulator IME Smoke ✓ · Android Lint ✓ · APK Build ✓ · Permanent Release ✓
 </p>
 

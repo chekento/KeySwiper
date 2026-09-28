@@ -3,14 +3,19 @@ package cloud.kosch.keyswiper.test
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.Settings
-import android.test.InstrumentationTestCase
-import java.io.FileInputStream
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(AndroidJUnit4::class)
 @Suppress("DEPRECATION")
-class ImeServiceSmokeTest : InstrumentationTestCase() {
+class ImeServiceSmokeTest {
 
+    @Test(timeout = 120_000L)
     fun testImeCanBeSelectedAndShownWithoutCrashing() {
-        val testInstrumentation = getInstrumentation()
+        val testInstrumentation = InstrumentationRegistry.getInstrumentation()
         val targetContext = testInstrumentation.targetContext
         val targetPackage = targetContext.packageName
         val serviceId = "$targetPackage/.KeySwiperImeService"
@@ -85,7 +90,7 @@ class ImeServiceSmokeTest : InstrumentationTestCase() {
     }
 
     private fun runShell(command: String): String {
-        val result = getInstrumentation().uiAutomation.executeShellCommand(command)
+        val result = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
         return ParcelFileDescriptor.AutoCloseInputStream(result)
             .bufferedReader()
             .use { it.readText() }
