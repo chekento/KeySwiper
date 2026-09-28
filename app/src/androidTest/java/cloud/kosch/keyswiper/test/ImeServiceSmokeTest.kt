@@ -29,7 +29,7 @@ class ImeServiceSmokeTest {
         var inputMethodState = ""
 
         try {
-            runShell("am force-stop $targetPackage")
+            // Force-stopping the target package can also terminate the instrumentation process.
             runShell("ime enable $serviceId")
             runShell("ime set $serviceId")
 
