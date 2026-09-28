@@ -1,6 +1,6 @@
 # KeySwiper Real-device Daily-driver Test Plan
 
-This checklist is for real Android hardware. Passing CI proves unit tests, Android lint and APK compilation; it does not prove touch feel, Samsung IME switching, stylus hardware behavior or third-party editor compatibility.
+CI also runs an Android 15 emulator smoke test: it cold-starts Settings, enables and selects KeySwiper, opens a text field and verifies the IME window is shown. This catches basic startup and service lifecycle regressions. It does not prove touch feel, Samsung OEM switching, stylus hardware behavior or third-party editor compatibility; those still need the real-device checks below.
 
 ## 1. Setup and system integration
 

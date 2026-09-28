@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.15.0-alpha15 · Build 15 · Run 28</strong><br>
-  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Permanent Release ✓
+  <strong>Current build: 0.16.0-alpha16 · Build 16 · Run 29</strong><br>
+  Unit Tests ✓ · Android 15 Emulator IME Smoke ✓ · Android Lint ✓ · APK Build ✓ · Permanent Release ✓
 </p>
 
 <p align="center">
@@ -40,7 +40,7 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current release: 0.15.0-alpha15 / Build 15.** The APK passed unit tests, Android Lint and compilation in GitHub Actions. The next validation stage is the real-device test plan. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current release: 0.16.0-alpha16 / Build 16.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
 ## KeySwiper in action
 
@@ -63,6 +63,14 @@
 KeySwiper is an Android Input Method Editor built as an **adaptive multimodal input system**, not a clone of a conventional keyboard. Finger typing, geometric swipe input, context-aware prediction, local neural models, voice, handwriting, stylus actions, clipboard, emoji, language detection and translation are designed to cooperate inside one input session.
 
 ## Current feature set
+
+### 🧪 Runtime smoke coverage
+
+- CI cold-starts KeySwiper Settings on an Android 15 emulator.
+- It enables and selects the IME, opens a test text field and confirms Android reports the keyboard window as visible.
+- Unit and instrumentation reports are uploaded even when a CI test fails.
+- The test host stays in `androidTest` and is not included in the release APK.
+
 
 ### 🟢 Matrix Cyber UI
 
@@ -398,12 +406,11 @@ Clipboard / Emoji ───────────┤
 
 Next milestones:
 
+- broaden emulator coverage to typing, editing and input-method lifecycle changes
 - more handwriting edit gestures: select, range select, insert, join/split and preview
 - multilingual translation-target wheel
 - optional Google Cloud Translation gateway
 - one-hand thumb geometry adaptation
-- autocorrect timeline / undo-redo
-- developer keyboard layout
 - programmable input profiles
 - optional Samsung Air Action adapter where device/foreground routing permits it
 

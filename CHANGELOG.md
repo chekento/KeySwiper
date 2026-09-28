@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0-alpha16 — 2026-09-28
+
+Stability and automated runtime validation:
+
+- Added an Android 15 emulator test that cold-starts Settings, enables and selects KeySwiper, opens a test text field and confirms the IME window is visible.
+- Added a test-only host activity and instrumentation runner; neither is shipped in the release APK.
+- CI uploads unit and instrumentation reports even when tests fail, making startup regressions easier to diagnose.
+- Advanced Android package version to 0.16.0-alpha16 / build 16.
+
 ## 0.15.0-alpha15 — 2026-09-28
 
 Daily-driver core + Matrix Cyber UI overhaul:
