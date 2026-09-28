@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.14.0-alpha14 · Build 14 · Run 25</strong><br>
+  <strong>Current build: 0.15.0-alpha15 · Build 15 · Run 28</strong><br>
   Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Permanent Release ✓
 </p>
 
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.14.0--alpha14-8B5CF6?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.15.0--alpha15-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -36,10 +36,11 @@
   <a href="docs/versions/README.md">APK Archive</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="docs/PREDICTION_ENGINE.md">Prediction Engine</a> ·
-  <a href="docs/SWIPE_ENGINE.md">Swipe Engine</a>
+  <a href="docs/SWIPE_ENGINE.md">Swipe Engine</a> ·
+  <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current release: 0.14.0-alpha14 / Build 14.** The APK passed unit tests, Android Lint and compilation in GitHub Actions. Real-device testing is still required before treating KeySwiper as production-ready. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current release: 0.15.0-alpha15 / Build 15.** The APK passed unit tests, Android Lint and compilation in GitHub Actions. The next validation stage is the real-device test plan. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
 ## KeySwiper in action
 
@@ -63,8 +64,47 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 ## Current feature set
 
+### 🟢 Matrix Cyber UI
+
+- new default Matrix/Cyber/Techno theme with Android-compatible readability
+- near-black surfaces with restrained neon-mint accents
+- rounded full-width character keys with pressed states and keyboard haptics
+- compact low-profile toolbar instead of large default Android buttons
+- Backspace integrated directly after M on the third character row
+- Emoji moved out of the toolbar to immediately left of Space
+- prediction chips, auxiliary panels and Android navigation bar visually match the keyboard
+- reusable theme-profile architecture prepared for additional selectable themes
+
+See [Theme Architecture](docs/THEMES.md).
+
+### ↶ Autocorrect Timeline / Undo–Redo
+
+- session-local correction timeline for explicit prediction, swipe and Voice Editing replacements
+- dedicated ↶ / ↷ controls beside the prediction strip
+- long-press ↶ opens recent correction history
+- context verification prevents stale undo from deleting unrelated text
+- history is memory-only, per input session and disabled in sensitive fields
+
+See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
+
+### ↔ One-hand mode
+
+- full-width, left-hand and right-hand modes
+- long-press ⌨ cycles modes directly from the keyboard
+- mode persists locally and can also be selected in Settings
+
+### </> Developer layout
+
+- Esc, Tab, arrows, Home/End
+- braces, brackets, parentheses, angle brackets
+- slash, backslash, pipe, tilde, backtick and quotes
+- Ctrl+A/C/V/X/Z/Y through Android key events
+
 ### 🛠 Daily-driver hardening
 
+- live IME setup-state detection: registered / enabled / selected
+- Samsung/Android setup flow refreshes automatically after returning to KeySwiper
+- in-app daily-driver readiness summary and concrete real-device checklist
 - editor-aware Text / Email / URL / Number keyboard modes
 - direct @ for email and / for URL fields
 - numeric fields open on numbers/symbols and suppress word prediction
@@ -145,6 +185,9 @@ This lets suggestions fit the current thought and avoid blindly duplicating text
 - native IME stylus-handwriting support
 - Android 15+ connectionless handwriting for delegated/search-style flows
 - scratch-out handwriting deletion through Android DeleteGesture when supported
+- circle-selection through Android SelectGesture when supported
+- horizontal remove-space gesture when supported
+- vertical join/split gesture when supported
 - system handwriting window
 - transparent live ink overlay
 - local ML Kit Digital Ink recognition
