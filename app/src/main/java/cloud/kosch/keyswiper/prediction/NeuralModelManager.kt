@@ -25,7 +25,7 @@ class NeuralModelManager(private val context: Context) {
         context.getSharedPreferences("keyswiper_neural_model", Context.MODE_PRIVATE)
 
     private val modelDir: File
-        get() = File(context.filesDir, "neural_models").apply { mkdirs() }
+        get() = File(context.filesDir, "neural_models")
 
     private val activeFile: File
         get() = File(modelDir, "active-model.litertlm")

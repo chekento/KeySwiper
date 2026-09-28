@@ -40,9 +40,10 @@ import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.language.UserVocabularyStore
 import cloud.kosch.keyswiper.prediction.ContextPredictionEngine
 import cloud.kosch.keyswiper.prediction.HybridPredictionEngine
-import cloud.kosch.keyswiper.prediction.LiteRtLmPredictionBackend
 import cloud.kosch.keyswiper.prediction.LocalBeamSemanticProvider
+import cloud.kosch.keyswiper.prediction.NeuralBackendFactory
 import cloud.kosch.keyswiper.prediction.NeuralModelManager
+import cloud.kosch.keyswiper.prediction.NeuralPredictionBackend
 import cloud.kosch.keyswiper.prediction.PredictionContext
 import cloud.kosch.keyswiper.prediction.PredictionContextClassifier
 import cloud.kosch.keyswiper.prediction.PredictionInputMode
@@ -70,9 +71,21 @@ import java.util.Locale
 
 class KeySwiperImeService : InputMethodService() {
     private val swipeDecoder = SwipeDecoder()
-    private val translationEngine = TranslationEngine()
-    private val digitalInkEngine = DigitalInkEngine()
     private val surroundingContextReader = SurroundingContextReader()
+
+    private val translationEngineDelegate =
+        lazy(LazyThreadSafetyMode.NONE) {
+            TranslationEngine()
+        }
+    private val translationEngine: TranslationEngine
+        get() = translationEngineDelegate.value
+
+    private val digitalInkEngineDelegate =
+        lazy(LazyThreadSafetyMode.NONE) {
+            DigitalInkEngine()
+        }
+    private val digitalInkEngine: DigitalInkEngine
+        get() = digitalInkEngineDelegate.value
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stylusClickInterpreter = StylusClickInterpreter()
     private val editTimeline = EditTimeline()
@@ -83,9 +96,27 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var userVocabularyStore: UserVocabularyStore
     private lateinit var predictionEngine: HybridPredictionEngine
     private lateinit var neuralModelManager: NeuralModelManager
-    private lateinit var neuralPredictionBackend: LiteRtLmPredictionBackend
-    private lateinit var clipboardController: ClipboardController
-    private lateinit var voiceController: VoiceInputController
+    private var neuralPredictionBackend: NeuralPredictionBackend? = null
+
+    private val clipboardControllerDelegate =
+        lazy(LazyThreadSafetyMode.NONE) {
+            ClipboardController(this).also {
+                it.setDefaultExpiryMinutes(
+                    Prefs.clipboardExpiryMinutes(this)
+                )
+                it.start()
+            }
+        }
+    private val clipboardController: ClipboardController
+        get() = clipboardControllerDelegate.value
+
+    private val voiceControllerDelegate =
+        lazy(LazyThreadSafetyMode.NONE) {
+            VoiceInputController(this)
+        }
+    private val voiceController: VoiceInputController
+        get() = voiceControllerDelegate.value
+
     private lateinit var stylusActionStore: StylusActionStore
 
     private var root: KeyboardRootView? = null
@@ -149,15 +180,7 @@ class KeySwiperImeService : InputMethodService() {
         )
 
         neuralModelManager = NeuralModelManager(this)
-        neuralPredictionBackend = LiteRtLmPredictionBackend(neuralModelManager)
-
-        clipboardController = ClipboardController(this)
-        clipboardController.setDefaultExpiryMinutes(
-            Prefs.clipboardExpiryMinutes(this)
-        )
-        voiceController = VoiceInputController(this)
         stylusActionStore = StylusActionStore(this)
-        clipboardController.start()
     }
 
     override fun onPrepareStylusHandwriting() {
@@ -448,7 +471,9 @@ class KeySwiperImeService : InputMethodService() {
         systemHandwritingView = null
         stylusClickInterpreter.clear()
         mainHandler.removeCallbacksAndMessages(null)
-        voiceController.stop()
+        if (voiceControllerDelegate.isInitialized()) {
+            voiceControllerDelegate.value.stop()
+        }
         languageHints = emptyList()
         languageDetectionGeneration++
         predictionInputMode = PredictionInputMode.GENERAL
@@ -465,11 +490,24 @@ class KeySwiperImeService : InputMethodService() {
         predictionGeneration++
         stylusClickInterpreter.clear()
         mainHandler.removeCallbacksAndMessages(null)
-        neuralPredictionBackend.close()
-        clipboardController.stop()
-        voiceController.destroy()
-        translationEngine.close()
-        digitalInkEngine.close()
+        NeuralBackendFactory.close(
+            neuralPredictionBackend
+        )
+        neuralPredictionBackend = null
+
+        if (clipboardControllerDelegate.isInitialized()) {
+            clipboardControllerDelegate.value.stop()
+        }
+        if (voiceControllerDelegate.isInitialized()) {
+            voiceControllerDelegate.value.destroy()
+        }
+        if (translationEngineDelegate.isInitialized()) {
+            translationEngineDelegate.value.close()
+        }
+        if (digitalInkEngineDelegate.isInitialized()) {
+            digitalInkEngineDelegate.value.close()
+        }
+
         super.onDestroy()
     }
 
@@ -1972,10 +2010,18 @@ class KeySwiperImeService : InputMethodService() {
         root?.setPredictions(base)
 
         if (
-            neuralPredictionBackend.isReady() &&
+            neuralModelManager.activeModelPath() != null &&
             currentToken(before).isBlank()
         ) {
-            neuralPredictionBackend.predict(
+            val backend =
+                neuralPredictionBackend
+                    ?: NeuralBackendFactory
+                        .create(neuralModelManager)
+                        .also {
+                            neuralPredictionBackend = it
+                        }
+
+            backend.predict(
                 context = context,
                 maxSuggestions = 2
             ) { neural ->
