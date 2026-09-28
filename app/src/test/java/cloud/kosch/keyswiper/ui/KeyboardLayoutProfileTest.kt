@@ -104,8 +104,8 @@ class KeyboardLayoutProfileTest {
         )
 
         assertTrue(
-            bottomLeft.first <
-                homeLeft.first
+            homeLeft.first <
+                bottomLeft.first
         )
     }
 }
