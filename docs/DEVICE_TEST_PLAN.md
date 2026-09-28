@@ -1,6 +1,6 @@
 # KeySwiper Real-device Daily-driver Test Plan
 
-CI also runs an Android 15 emulator smoke test: it cold-starts Settings, enables and selects KeySwiper, opens a text field and verifies the IME window is shown. This catches basic startup and service lifecycle regressions. It does not prove touch feel, Samsung OEM switching, stylus hardware behavior or third-party editor compatibility; those still need the real-device checks below.
+CI also runs a shell-driven Android 15 Google ATD emulator smoke test. It installs the debug APK, enables and selects KeySwiper from outside the app process, opens a debug-only focused text field, verifies the KeySwiper package stays alive and confirms Android reports the IME as current and visible. Failures preserve dumpsys and logcat diagnostics. This catches basic startup and service-lifecycle regressions, but it does not prove touch feel, Samsung OEM switching, stylus hardware behavior or third-party editor compatibility; those still need the real-device checks below.
 
 ## 1. Setup and system integration
 

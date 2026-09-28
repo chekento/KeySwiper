@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.16.0-alpha16 · Build 16 · Run 30</strong><br>
-  Unit Tests ✓ · Android 15 Emulator IME Smoke ✓ · Android Lint ✓ · APK Build ✓ · Permanent Release ✓
+  <strong>Current candidate: 0.16.0-alpha16 · Build 16</strong><br>
+  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME runtime validation in CI
 </p>
 
 <p align="center">
@@ -66,10 +66,11 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 ### 🧪 Runtime smoke coverage
 
-- CI cold-starts KeySwiper Settings on an Android 15 emulator.
-- It enables and selects the IME, opens a test text field and confirms Android reports the keyboard window as visible.
-- Unit and instrumentation reports are uploaded even when a CI test fails.
-- The test host stays in `androidTest` and is not included in the release APK.
+- CI installs the real debug APK on an Android 15 Google ATD emulator.
+- A shell-driven harness enables and selects KeySwiper from outside the app process, then opens a debug-only text host and confirms Android reports KeySwiper as the current visible IME.
+- The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
+- Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.
+- The host exists only in the `debug` source set and is never included in the release APK.
 
 
 ### 🟢 Matrix Cyber UI

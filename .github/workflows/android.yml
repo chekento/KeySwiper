@@ -46,29 +46,6 @@ jobs:
       - name: Unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
 
-      - name: Android emulator IME smoke test
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_atd
-          emulator-boot-timeout: 900
-          disable-spellchecker: true
-          profile: pixel_2
-          disable-animations: true
-          script: gradle :app:connectedDebugAndroidTest --stacktrace
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: KeySwiper-test-reports-${{ github.run_number }}
-          path: |
-            app/build/reports/tests/
-            app/build/reports/androidTests/connected/
-            app/build/outputs/androidTest-results/connected/
-          if-no-files-found: ignore
-
       - name: Android lint
         shell: bash
         run: |
@@ -82,6 +59,30 @@ jobs:
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
+
+      - name: Android emulator IME smoke test
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_atd
+          emulator-boot-timeout: 900
+          disable-spellchecker: true
+          profile: pixel_2
+          disable-animations: true
+          script: bash scripts/ime-smoke-test.sh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload test and smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeySwiper-test-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.txt
+            artifacts/ime-smoke/
+          if-no-files-found: ignore
 
       - name: Read build identity
         id: build_meta

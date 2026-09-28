@@ -15,7 +15,6 @@ android {
         applicationId = "cloud.kosch.keyswiper"
         minSdk = 24
         targetSdk = 36
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 16
         versionName = "0.16.0-alpha16"
     }
@@ -48,7 +47,4 @@ dependencies {
     implementation("com.google.mlkit:digital-ink-recognition:19.0.0")
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.17.1")
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test:core:1.7.0")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test:runner:1.7.0")
 }

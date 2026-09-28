@@ -4,9 +4,12 @@
 
 Stability and automated runtime validation:
 
-- Added an Android 15 Google ATD emulator test that cold-starts Settings, enables and selects KeySwiper, opens a test text field and confirms the IME window is visible.
-- Added a test-only host activity and instrumentation runner; neither is shipped in the release APK.
-- CI uploads unit and instrumentation reports even when tests fail, making startup regressions easier to diagnose.
+- Added an Android 15 Google ATD emulator test that installs the debug APK, enables/selects KeySwiper, opens a focused text field and confirms the IME becomes current and visible.
+- Replaced the first instrumentation-based IME smoke test after Android killed its own test process while rebinding the target package as an input method.
+- The runtime harness now executes from ADB outside the app process, matching the real system IME lifecycle more closely.
+- Added a debug-only smoke host activity; it is not included in release APKs.
+- Smoke failures capture input-method state, focused windows, activity state and filtered logcat diagnostics.
+- Unit tests, Android Lint and APK compilation now run before emulator validation so a flaky emulator cannot mask core build health.
 - Advanced Android package version to 0.16.0-alpha16 / build 16.
 
 ## 0.15.0-alpha15 — 2026-09-28
