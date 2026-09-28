@@ -6,6 +6,7 @@ Each entry records the exact app version, Android version code, CI run, Git comm
 
 ## Builds
 
+- [0.17.0-alpha17 · build 17 · run 36](0.17.0-alpha17-build17-run36.md) — [APK](https://github.com/chekento/KeySwiper/releases/download/v0.17.0-alpha17-b17-run36/KeySwiper-v0.17.0-alpha17-build17-run36.apk) — SHA-256: ad4f10d70a576e30f0402e9beb8be0e2930e42199721797706fbfe009402830a
 - [0.16.0-alpha16 · build 16 · run 33](0.16.0-alpha16-build16-run33.md) — [APK](https://github.com/chekento/KeySwiper/releases/download/v0.16.0-alpha16-b16-run33/KeySwiper-v0.16.0-alpha16-build16-run33.apk) — SHA-256: d5a5a3231dce81e2dc877dd420b0ddadc2d932eefdcc5d1784d4202d4c0fae7a
 - [0.15.0-alpha15 · build 15 · run 28](0.15.0-alpha15-build15-run28.md) — [APK](https://github.com/chekento/KeySwiper/releases/download/v0.15.0-alpha15-b15-run28/KeySwiper-v0.15.0-alpha15-build15-run28.apk) — SHA-256: 9f60ccd55f061151992b7e60d7c12737d36085fc56a18c2c3b3fd78e15f3f25f
 - [0.14.0-alpha14 · build 14 · run 25](0.14.0-alpha14-build14-run25.md) — [APK](https://github.com/chekento/KeySwiper/releases/download/v0.14.0-alpha14-b14-run25/KeySwiper-v0.14.0-alpha14-build14-run25.apk) — SHA-256: 7c7c4e9ea16fc137a001cfded144d53bb30c7aeba0af8dca496807d1ee00acd4
