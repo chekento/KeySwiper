@@ -16,6 +16,9 @@ CI also runs a shell-driven Android 15 Google ATD emulator smoke test. It instal
 
 ## 2. Keyboard geometry and UI
 
+- Confirm no KeySwiper status strip remains above the functional keyboard controls; status feedback should appear transiently.
+- Confirm the complete normal keyboard UI uses at most one third of the display height.
+- Confirm the IME reserves the Android navigation-bar inset instead of drawing keys underneath it.
 - Confirm the IME sits above and visually joins the Android navigation bar.
 - Confirm Matrix Cyber is the default theme.
 - Confirm all three character rows use the available keyboard width.
@@ -27,6 +30,8 @@ CI also runs a shell-driven Android 15 Google ATD emulator smoke test. It instal
 
 ## 3. Tap and swipe
 
+- Tap at least 20 keys with S Pen/stylus and verify normal pen jitter never starts a swipe.
+- Deliberately swipe several words with the stylus and verify the higher threshold still permits intentional swipe input.
 - Type German umlauts and ß.
 - Type English and German mixed text.
 - Swipe at least 50 common words.

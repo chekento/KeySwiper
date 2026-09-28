@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.17.0-alpha17 — 2026-09-28
+
+Compact input, language-locked prediction, stylus intent and five new themes:
+
+- capped the normal keyboard UI at one third of the physical display height, including navigation-bar inset budget
+- replaced the persistent in-keyboard status strip with transient status toasts so status messages no longer add another bar above the keys
+- added navigation-bar inset handling and consistent IME navigation-bar theming to prevent system chrome from covering the keyboard surface
+- reduced toolbar, prediction strip, accent row and bottom-row height proportionally while preserving the maximum one-third constraint
+- added a dedicated touch/stylus gesture-intent classifier
+- stylus movement now needs a substantially larger deliberate path before KeySwiper treats it as swipe input
+- non-swipe stylus motion commits the key selected at pen-down, preventing small pen jitter from becoming a swipe or a neighboring key
+- finger swipe thresholds remain more responsive than stylus thresholds
+- word and sentence prediction now resolve one primary input language from the current token/recent input, detected language and active keyboard layout
+- learned followers, semantic beam candidates and optional neural candidates are language-gated to the active input language
+- stale asynchronous language-detection callbacks can no longer overwrite newer typing context
+- broad multilingual lanes remain available to swipe decoding for intentional code-switching
+- added five selectable themes: OLED Obsidian, Neon Tokyo, Aurora Glass, Ember Copper and Kawaii Cyber
+- added unit tests for stylus tap-vs-swipe intent, one-third keyboard sizing and language-locked prediction
+- advanced Android package version to 0.17.0-alpha17 / build 17
+
 ## 0.16.0-alpha16 — 2026-09-28
 
 Stability and automated runtime validation:

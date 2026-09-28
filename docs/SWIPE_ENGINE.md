@@ -49,3 +49,15 @@ Planned extensions:
 - per-orientation and per-device geometry profiles;
 - confidence-aware candidate UI;
 - larger modular multilingual dictionaries.
+
+
+## Stylus intent gate (0.17)
+
+Finger and stylus movement no longer share the same swipe threshold.
+
+- touch can enter swipe mode after roughly 12 dp of deliberate displacement;
+- stylus requires roughly 30 dp displacement plus a longer path, multiple touched keys and a minimum gesture duration;
+- small S Pen jitter therefore remains a tap;
+- when a stylus gesture does not qualify as a swipe, KeySwiper commits the key selected at pen-down rather than whichever key the pen drifted over at pen-up.
+
+The classifier is isolated from rendering and covered by JVM unit tests.

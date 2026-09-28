@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.16.0-alpha16 · Build 16 · Run 33</strong><br>
-  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 Emulator IME Smoke ✓ · Permanent Release ✓
+  <strong>Current candidate: 0.17.0-alpha17 · Build 17</strong><br>
+  Compact ≤ 1/3-height keyboard · language-locked prediction · stylus tap/swipe intent · 6 themes · CI validation pending
 </p>
 
 <p align="center">
@@ -40,7 +40,7 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current release: 0.16.0-alpha16 / Build 16.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — release 0.16.0-alpha16 / Build 16 remains the last validated APK until 0.17 CI completes.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
 ## KeySwiper in action
 
@@ -73,9 +73,40 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - The host exists only in the `debug` source set and is never included in the release APK.
 
 
+### 🎨 Six keyboard themes
+
+- Matrix Cyber remains the default
+- OLED Obsidian for true-black OLED surfaces
+- Neon Tokyo with magenta/cyan nightlife accents
+- Aurora Glass with cool teal/blue glass-like tones
+- Ember Copper with warm copper/orange contrast
+- Kawaii Cyber with softer rounded pink/cyan cyber styling
+- all themes share the same geometry, touch logic and prediction behavior
+
+### 📐 Compact ≤ 1/3-height keyboard
+
+- the normal keyboard, toolbar, prediction strip and navigation inset are budgeted to at most one third of the display height
+- system navigation insets are reserved instead of drawing keyboard content underneath them
+- status feedback uses transient toasts instead of adding a persistent bar above the keys
+- controls scale proportionally on shorter displays
+
+### 🖊 Tap-first stylus intent
+
+- S Pen/stylus input uses a larger motion threshold than finger input
+- small pen jitter remains a tap
+- deliberate stylus paths can still swipe
+- non-swipe taps commit the pen-down key for stability
+
+### 🌐 Input-language-locked prediction
+
+- predictions follow the current/recent input language instead of mixing all active language lanes
+- active keyboard layout is used as a fallback when the context is still empty
+- learned, semantic and optional neural suggestions are filtered against the resolved input language
+- swipe decoding still permits intentional multilingual code-switching
+
 ### 🟢 Matrix Cyber UI
 
-- new default Matrix/Cyber/Techno theme with Android-compatible readability
+- default Matrix/Cyber/Techno theme with Android-compatible readability
 - near-black surfaces with restrained neon-mint accents
 - rounded full-width character keys with pressed states and keyboard haptics
 - compact low-profile toolbar instead of large default Android buttons

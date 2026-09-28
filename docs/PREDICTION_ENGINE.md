@@ -98,3 +98,14 @@ The instant layer now queries up to three simultaneous language lanes rather tha
 The same lane order is shared with swipe recognition. Personal vocabulary sits above the embedded packs and can introduce user-specific words without rebuilding the application.
 
 See [Code Switching](CODE_SWITCHING.md).
+
+
+## Input-language lock (0.17)
+
+Prediction and swipe language handling are intentionally different.
+
+For word/sentence prediction, KeySwiper resolves one primary input language from the current token, the most recent identifiable words, ML Kit language hints and finally the active keyboard layout. Local learned followers, semantic beam candidates and optional neural candidates are filtered against that primary language. This prevents German input from suddenly receiving English suggestions, and vice versa.
+
+Swipe decoding keeps broader language lanes so deliberate code-switching can still work without forcing a layout change.
+
+Asynchronous language-identification results are generation-guarded: an older detector callback cannot replace the language state of newer text.
