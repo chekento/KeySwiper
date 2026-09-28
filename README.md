@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <strong>Current candidate: 0.17.0-alpha17 · Build 17</strong><br>
-  Compact ≤ 1/3-height keyboard · language-locked prediction · stylus tap/swipe intent · 6 themes · CI validation pending
+  <strong>Current build: 0.17.0-alpha17 · Build 17 · Run 36</strong><br>
+  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 AOSP IME Smoke ✓ · Permanent Release ✓
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.16.0--alpha16-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.17.0--alpha17-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,7 +40,7 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — release 0.16.0-alpha16 / Build 16 remains the last validated APK until 0.17 CI completes.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.17.0-alpha17 / Build 17 / Run 36.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
 ## KeySwiper in action
 
@@ -198,8 +198,9 @@ This lets suggestions fit the current thought and avoid blindly duplicating text
 ### 🌍 Multilingual input & code-switching
 
 - larger embedded German, English, Italian, French and Spanish language packs
-- up to three active language lanes in parallel
-- mixed-language sentences without manual language switching
+- strict single-language lane for word/sentence predictions, resolved from current/recent input
+- broader multilingual lanes remain available for intentional swipe code-switching
+- mixed-language typing can switch prediction language from the newest identifiable input without a manual layout change
 - language scoring from ML Kit hints, recent words, prefixes, diacritics and technical vocabulary
 - accented/umlaut words preserve correct spelling while using normalized swipe geometry
 - personal words can carry an optional language tag
