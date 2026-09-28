@@ -1,5 +1,6 @@
 package cloud.kosch.keyswiper
 
+import android.annotation.TargetApi
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.graphics.drawable.ColorDrawable
@@ -15,12 +16,18 @@ import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.DeleteGesture
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.HandwritingGesture
+import android.view.inputmethod.JoinOrSplitGesture
+import android.view.inputmethod.RemoveSpaceGesture
+import android.view.inputmethod.SelectGesture
 import cloud.kosch.keyswiper.clipboard.ClipboardController
 import cloud.kosch.keyswiper.handwriting.DigitalInkEngine
+import cloud.kosch.keyswiper.handwriting.ExtendedHandwritingGesture
+import cloud.kosch.keyswiper.handwriting.ExtendedHandwritingGestureClassifier
 import cloud.kosch.keyswiper.handwriting.HandwritingCommitFormatter
 import cloud.kosch.keyswiper.handwriting.ScratchDeleteGestureClassifier
 import cloud.kosch.keyswiper.handwriting.StylusScreenPoint
 import cloud.kosch.keyswiper.handwriting.SystemHandwritingInkView
+import cloud.kosch.keyswiper.input.EditTimeline
 import cloud.kosch.keyswiper.input.KeyOffset
 import cloud.kosch.keyswiper.input.MotorProfileStore
 import cloud.kosch.keyswiper.input.SwipeDecoder
@@ -52,6 +59,7 @@ import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardEditorMode
 import cloud.kosch.keyswiper.ui.KeyboardEditorModeResolver
 import cloud.kosch.keyswiper.ui.KeyboardRootView
+import cloud.kosch.keyswiper.ui.KeyboardThemes
 import cloud.kosch.keyswiper.voice.VoiceEditCommand
 import cloud.kosch.keyswiper.voice.VoiceEditCommandParser
 import cloud.kosch.keyswiper.voice.VoiceInputController
@@ -65,6 +73,7 @@ class KeySwiperImeService : InputMethodService() {
     private val surroundingContextReader = SurroundingContextReader()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stylusClickInterpreter = StylusClickInterpreter()
+    private val editTimeline = EditTimeline()
 
     private lateinit var swipeLearningStore: SwipeLearningStore
     private lateinit var motorProfileStore: MotorProfileStore
@@ -281,7 +290,9 @@ class KeySwiperImeService : InputMethodService() {
             ?.consumeStylusEvent(motionEvent)
 
         if (motionEvent.actionMasked == MotionEvent.ACTION_UP) {
-            if (tryPerformScratchDeleteGesture()) {
+            if (
+                tryPerformHandwritingEditGesture()
+            ) {
                 mainHandler.removeCallbacks(
                     systemHandwritingRecognitionRunnable
                 )
@@ -308,11 +319,18 @@ class KeySwiperImeService : InputMethodService() {
 
     override fun onCreateInputView(): View =
         KeyboardRootView(this).also { view ->
+            styleImeSystemBars()
             root = view
             view.callbacks = callbacks
             refreshPrivacyState()
             refreshPredictionBar()
+            refreshEditHistoryState()
         }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        styleImeSystemBars()
+    }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
@@ -320,11 +338,14 @@ class KeySwiperImeService : InputMethodService() {
         predictionInputMode = PredictionContextClassifier.classify(attribute)
         languageHints = emptyList()
         predictionGeneration++
+        editTimeline.clear()
         clearSwipeState()
+        refreshEditHistoryState()
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        styleImeSystemBars()
         sensitiveField = SecurityPolicy.isSensitive(info)
         predictionInputMode =
             PredictionContextClassifier.classify(
@@ -404,7 +425,9 @@ class KeySwiperImeService : InputMethodService() {
         voiceController.stop()
         languageHints = emptyList()
         predictionInputMode = PredictionInputMode.GENERAL
+        editTimeline.clear()
         clearSwipeState()
+        refreshEditHistoryState()
         root?.clearSuggestions()
         root?.setStatus(null)
     }
@@ -617,10 +640,23 @@ class KeySwiperImeService : InputMethodService() {
             val before = snapshot.beforeCursor
             val contextWords = extractWords(before).takeLast(5)
 
+            var replacedToken: String? =
+                null
+
             if (suggestion.replacesCurrentToken) {
-                val length = currentToken(before).length
+                val token =
+                    currentToken(before)
+                val length =
+                    token.length
+
                 if (length > 0) {
-                    connection.deleteSurroundingText(length, 0)
+                    replacedToken =
+                        token
+                    connection
+                        .deleteSurroundingText(
+                            length,
+                            0
+                        )
                 }
             } else if (
                 before.isNotEmpty() &&
@@ -630,7 +666,29 @@ class KeySwiperImeService : InputMethodService() {
                 connection.commitText(" ", 1)
             }
 
-            connection.commitText(suggestion.commitText + " ", 1)
+            val committedText =
+                suggestion.commitText +
+                    " "
+
+            connection.commitText(
+                committedText,
+                1
+            )
+
+            if (
+                !sensitiveField &&
+                replacedToken != null
+            ) {
+                editTimeline.record(
+                    deletedText =
+                        replacedToken,
+                    insertedText =
+                        committedText,
+                    source =
+                        "Prediction"
+                )
+                refreshEditHistoryState()
+            }
 
             predictionLearningStore.learnChosenSuggestion(
                 contextWords,
@@ -833,6 +891,86 @@ class KeySwiperImeService : InputMethodService() {
                     root?.setStatus(it)
                 }
             )
+        }
+
+        override fun onUndoEdit() {
+            performTimelineUndo()
+        }
+
+        override fun onRedoEdit() {
+            performTimelineRedo()
+        }
+
+        override fun onEditTimelineRequested() {
+            if (sensitiveField) {
+                root?.setStatus(
+                    "Correction history is disabled in sensitive fields."
+                )
+                return
+            }
+
+            root?.showEditTimeline(
+                editTimeline.recent()
+            )
+        }
+
+        override fun onDeveloperText(
+            value: String
+        ) {
+            currentInputConnection
+                ?.commitText(
+                    value,
+                    1
+                )
+
+            clearSwipeState()
+            refreshPredictionBar()
+            updateAutoShift()
+        }
+
+        override fun onDeveloperKeyCode(
+            keyCode: Int,
+            ctrl: Boolean
+        ) {
+            val connection =
+                currentInputConnection
+                    ?: return
+
+            val now =
+                SystemClock.uptimeMillis()
+
+            val metaState =
+                if (ctrl) {
+                    KeyEvent.META_CTRL_ON
+                } else {
+                    0
+                }
+
+            connection.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_DOWN,
+                    keyCode,
+                    0,
+                    metaState
+                )
+            )
+
+            connection.sendKeyEvent(
+                KeyEvent(
+                    now,
+                    now,
+                    KeyEvent.ACTION_UP,
+                    keyCode,
+                    0,
+                    metaState
+                )
+            )
+
+            clearSwipeState()
+            refreshPredictionBar()
+            updateAutoShift()
         }
 
         override fun onClipboard() {
@@ -1289,10 +1427,27 @@ class KeySwiperImeService : InputMethodService() {
             return false
         }
 
+        val inserted =
+            newText +
+                suffix
+
         connection.commitText(
-            newText + suffix,
+            inserted,
             1
         )
+
+        if (!sensitiveField) {
+            editTimeline.record(
+                deletedText =
+                    oldText +
+                        suffix,
+                insertedText =
+                    inserted,
+                source =
+                    "Voice replace"
+            )
+            refreshEditHistoryState()
+        }
 
         return true
     }
@@ -1372,6 +1527,155 @@ class KeySwiperImeService : InputMethodService() {
                 )
             }
         }
+    }
+
+    private fun performTimelineUndo() {
+        if (sensitiveField) {
+            root?.setStatus(
+                "Correction history is disabled in sensitive fields."
+            )
+            return
+        }
+
+        val connection =
+            currentInputConnection
+                ?: return
+
+        val plan =
+            editTimeline.planUndo(
+                textBeforeCursor()
+            )
+
+        if (plan == null) {
+            root?.setStatus(
+                if (editTimeline.canUndo) {
+                    "Undo paused: cursor context changed. Move the cursor back to the corrected text first."
+                } else {
+                    "Nothing to undo in this input session."
+                }
+            )
+            refreshEditHistoryState()
+            return
+        }
+
+        val deleted =
+            if (
+                plan.deleteUtf16Count >
+                0
+            ) {
+                connection
+                    .deleteSurroundingText(
+                        plan.deleteUtf16Count,
+                        0
+                    )
+            } else {
+                true
+            }
+
+        if (!deleted) {
+            root?.setStatus(
+                "The editor rejected the undo operation."
+            )
+            return
+        }
+
+        connection.commitText(
+            plan.insertText,
+            1
+        )
+
+        editTimeline.completeUndo(
+            plan.entry.id
+        )
+        clearSwipeState()
+        refreshEditHistoryState()
+        refreshPredictionBar()
+        updateAutoShift()
+
+        root?.setStatus(
+            "Undo: " +
+                plan.entry.summary
+        )
+    }
+
+    private fun performTimelineRedo() {
+        if (sensitiveField) {
+            root?.setStatus(
+                "Correction history is disabled in sensitive fields."
+            )
+            return
+        }
+
+        val connection =
+            currentInputConnection
+                ?: return
+
+        val plan =
+            editTimeline.planRedo(
+                textBeforeCursor()
+            )
+
+        if (plan == null) {
+            root?.setStatus(
+                if (editTimeline.canRedo) {
+                    "Redo paused: cursor context changed."
+                } else {
+                    "Nothing to redo."
+                }
+            )
+            refreshEditHistoryState()
+            return
+        }
+
+        val deleted =
+            if (
+                plan.deleteUtf16Count >
+                0
+            ) {
+                connection
+                    .deleteSurroundingText(
+                        plan.deleteUtf16Count,
+                        0
+                    )
+            } else {
+                true
+            }
+
+        if (!deleted) {
+            root?.setStatus(
+                "The editor rejected the redo operation."
+            )
+            return
+        }
+
+        connection.commitText(
+            plan.insertText,
+            1
+        )
+
+        editTimeline.completeRedo(
+            plan.entry.id
+        )
+        clearSwipeState()
+        refreshEditHistoryState()
+        refreshPredictionBar()
+        updateAutoShift()
+
+        root?.setStatus(
+            "Redo: " +
+                plan.entry.summary
+        )
+    }
+
+    private fun refreshEditHistoryState() {
+        root?.setEditHistoryState(
+            canUndo =
+                !sensitiveField &&
+                    editTimeline.canUndo,
+            canRedo =
+                !sensitiveField &&
+                    editTimeline.canRedo
+        )
     }
 
     private fun handlePrimaryStylusPress() {
@@ -1507,8 +1811,40 @@ class KeySwiperImeService : InputMethodService() {
         val signature = lastSwipeSignature
         val trace = lastSwipeTrace
 
-        connection.deleteSurroundingText(previous.length + 1, 0)
-        connection.commitText(value + " ", 1)
+        val deletedText =
+            previous +
+                " "
+        val insertedText =
+            value +
+                " "
+
+        connection.deleteSurroundingText(
+            deletedText.length,
+            0
+        )
+        connection.commitText(
+            insertedText,
+            1
+        )
+
+        if (
+            !sensitiveField &&
+            previous != value
+        ) {
+            editTimeline.record(
+                deletedText =
+                    deletedText,
+                insertedText =
+                    insertedText,
+                source =
+                    if (learn) {
+                        "Swipe correction"
+                    } else {
+                        "Swipe candidate"
+                    }
+            )
+            refreshEditHistoryState()
+        }
 
         if (!sensitiveField && signature != null && learn) {
             swipeLearningStore.record(
@@ -1892,9 +2228,11 @@ class KeySwiperImeService : InputMethodService() {
         }
     }
 
-    private fun tryPerformScratchDeleteGesture(): Boolean {
+    @TargetApi(34)
+    private fun tryPerformHandwritingEditGesture(): Boolean {
         if (
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            Build.VERSION.SDK_INT <
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
             connectionlessHandwriting ||
             sensitiveField
         ) {
@@ -1902,35 +2240,151 @@ class KeySwiperImeService : InputMethodService() {
             return false
         }
 
-        val scratch = ScratchDeleteGestureClassifier.classify(
-            points = handwritingGesturePoints.toList(),
-            density = resources.displayMetrics.density
-        )
+        val points =
+            handwritingGesturePoints
+                .toList()
 
         handwritingGesturePoints.clear()
 
-        if (scratch == null) {
-            return false
-        }
+        val scratch =
+            ScratchDeleteGestureClassifier
+                .classify(
+                    points = points,
+                    density =
+                        resources
+                            .displayMetrics
+                            .density
+                )
 
-        val supportsDelete = currentInputEditorInfo
-            ?.supportedHandwritingGestures
-            ?.contains(DeleteGesture::class.java) == true
+        if (scratch != null) {
+            val supported =
+                currentInputEditorInfo
+                    ?.supportedHandwritingGestures
+                    ?.contains(
+                        DeleteGesture::class.java
+                    ) == true
 
-        if (!supportsDelete) {
-            return false
-        }
+            if (!supported) {
+                return false
+            }
 
-        val connection = currentInputConnection ?: return false
+            val gesture =
+                DeleteGesture.Builder()
+                    .setDeletionArea(
+                        scratch.bounds
+                    )
+                    .setGranularity(
+                        HandwritingGesture
+                            .GRANULARITY_WORD
+                    )
+                    .build()
 
-        systemHandwritingView?.discardLastStroke()
-
-        val gesture = DeleteGesture.Builder()
-            .setDeletionArea(scratch.bounds)
-            .setGranularity(
-                HandwritingGesture.GRANULARITY_WORD
+            return performHandwritingEditGesture(
+                gesture,
+                successMessage =
+                    "Scratch-out gesture deleted text."
             )
-            .build()
+        }
+
+        val extended =
+            ExtendedHandwritingGestureClassifier
+                .classify(
+                    points = points,
+                    density =
+                        resources
+                            .displayMetrics
+                            .density
+                )
+                ?: return false
+
+        val supported =
+            currentInputEditorInfo
+                ?.supportedHandwritingGestures
+                .orEmpty()
+
+        val gesture: HandwritingGesture =
+            when (extended) {
+                is ExtendedHandwritingGesture.SelectArea -> {
+                    if (
+                        !supported.contains(
+                            SelectGesture::class.java
+                        )
+                    ) {
+                        return false
+                    }
+
+                    SelectGesture.Builder()
+                        .setSelectionArea(
+                            extended.bounds
+                        )
+                        .setGranularity(
+                            HandwritingGesture
+                                .GRANULARITY_WORD
+                        )
+                        .build()
+                }
+
+                is ExtendedHandwritingGesture.JoinOrSplit -> {
+                    if (
+                        !supported.contains(
+                            JoinOrSplitGesture::class.java
+                        )
+                    ) {
+                        return false
+                    }
+
+                    JoinOrSplitGesture.Builder()
+                        .setJoinOrSplitPoint(
+                            extended.point
+                        )
+                        .build()
+                }
+
+                is ExtendedHandwritingGesture.RemoveSpace -> {
+                    if (
+                        !supported.contains(
+                            RemoveSpaceGesture::class.java
+                        )
+                    ) {
+                        return false
+                    }
+
+                    RemoveSpaceGesture.Builder()
+                        .setPoints(
+                            extended.start,
+                            extended.end
+                        )
+                        .build()
+                }
+            }
+
+        val message =
+            when (extended) {
+                is ExtendedHandwritingGesture.SelectArea ->
+                    "Circle gesture selected text."
+                is ExtendedHandwritingGesture.JoinOrSplit ->
+                    "Vertical gesture joined or split text."
+                is ExtendedHandwritingGesture.RemoveSpace ->
+                    "Horizontal gesture removed whitespace."
+            }
+
+        return performHandwritingEditGesture(
+            gesture,
+            message
+        )
+    }
+
+    @TargetApi(34)
+    private fun performHandwritingEditGesture(
+        gesture: HandwritingGesture,
+        successMessage: String
+    ): Boolean {
+        val connection =
+            currentInputConnection
+                ?: return false
+
+        systemHandwritingView
+            ?.discardLastStroke()
 
         connection.performHandwritingGesture(
             gesture,
@@ -1938,24 +2392,29 @@ class KeySwiperImeService : InputMethodService() {
         ) { result ->
             root?.setStatus(
                 when (result) {
-                    android.view.inputmethod.InputConnection
+                    android.view.inputmethod
+                        .InputConnection
                         .HANDWRITING_GESTURE_RESULT_SUCCESS ->
-                        "Scratch-out gesture deleted text."
+                        successMessage
 
-                    android.view.inputmethod.InputConnection
+                    android.view.inputmethod
+                        .InputConnection
                         .HANDWRITING_GESTURE_RESULT_UNSUPPORTED ->
-                        "This editor does not support scratch-out deletion."
+                        "This editor does not support that handwriting gesture."
 
                     else ->
-                        "Scratch-out gesture was not applied."
+                        "Handwriting gesture was not applied."
                 }
             )
 
             if (
-                result == android.view.inputmethod.InputConnection
+                result ==
+                android.view.inputmethod
+                    .InputConnection
                     .HANDWRITING_GESTURE_RESULT_SUCCESS
             ) {
                 refreshPredictionBar()
+                updateAutoShift()
             }
         }
 
@@ -2003,6 +2462,39 @@ class KeySwiperImeService : InputMethodService() {
                     this
                 )
         )
+    }
+
+    private fun styleImeSystemBars() {
+        val theme =
+            KeyboardThemes.byId(
+                Prefs.keyboardThemeId(
+                    this
+                )
+            )
+
+        val imeWindow =
+            window
+                ?.window
+                ?: return
+
+        imeWindow.navigationBarColor =
+            theme.background
+
+        @Suppress("DEPRECATION")
+        run {
+            imeWindow.decorView.systemUiVisibility =
+                imeWindow.decorView.systemUiVisibility and
+                    View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                        .inv()
+        }
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.Q
+        ) {
+            imeWindow.isNavigationBarContrastEnforced =
+                false
+        }
     }
 
     private fun currentContextSnapshot() =

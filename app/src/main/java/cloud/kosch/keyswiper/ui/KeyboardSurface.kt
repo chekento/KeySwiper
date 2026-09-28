@@ -2,20 +2,24 @@ package cloud.kosch.keyswiper.ui
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import cloud.kosch.keyswiper.input.SwipePoint
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.settings.Prefs
 import kotlin.math.hypot
-import kotlin.math.max
 
-class KeyboardSurface(context: Context) : View(context) {
+class KeyboardSurface(
+    context: Context
+) : View(context) {
+
     interface Listener {
         fun onTap(character: Char)
+        fun onBackspace()
         fun onSwipe(trace: SwipeTrace)
         fun onStylusPrimaryButton()
         fun onStylusSecondaryButton()
@@ -30,48 +34,100 @@ class KeyboardSurface(context: Context) : View(context) {
         }
 
     private data class Cell(
-        val value: Char,
-        val bounds: RectF
+        val token: String,
+        val bounds: RectF,
+        val special: Boolean
     )
 
     private var layoutProfile =
-        KeyboardLayoutProfiles.byId("en-qwerty")
-    private var symbolMode = false
-    private var rows: List<String> =
-        layoutProfile.letterRows
+        KeyboardLayoutProfiles
+            .byId(
+                "en-qwerty"
+            )
 
-    private val cells = mutableListOf<Cell>()
-    private val traceChars = mutableListOf<Char>()
-    private val tracePoints = mutableListOf<SwipePoint>()
-    private val path = Path()
+    private var symbolMode = false
+
+    private val cells =
+        mutableListOf<Cell>()
+
+    private val traceChars =
+        mutableListOf<Char>()
+
+    private val tracePoints =
+        mutableListOf<SwipePoint>()
+
+    private val path =
+        Path()
 
     private var downX = 0f
     private var downY = 0f
     private var dragging = false
-    private var lastPrimaryButtonEventMs = Long.MIN_VALUE
-    private var lastSecondaryButtonEventMs = Long.MIN_VALUE
+    private var pressedToken: String? = null
+
+    private var lastPrimaryButtonEventMs =
+        Long.MIN_VALUE
+    private var lastSecondaryButtonEventMs =
+        Long.MIN_VALUE
+
+    private var theme =
+        KeyboardThemes.byId(
+            Prefs.keyboardThemeId(
+                context
+            )
+        )
 
     private val keyPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(49, 53, 64)
+        Paint(
+            Paint.ANTI_ALIAS_FLAG
+        )
+
+    private val borderPaint =
+        Paint(
+            Paint.ANTI_ALIAS_FLAG
+        ).apply {
+            style =
+                Paint.Style.STROKE
+            strokeWidth =
+                resources
+                    .displayMetrics
+                    .density
         }
 
     private val labelPaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textAlign = Paint.Align.CENTER
+        Paint(
+            Paint.ANTI_ALIAS_FLAG
+        ).apply {
+            textAlign =
+                Paint.Align.CENTER
             textSize =
-                resources.displayMetrics.scaledDensity * 20f
+                resources
+                    .displayMetrics
+                    .scaledDensity *
+                    19f
+            typeface =
+                android.graphics.Typeface
+                    .create(
+                        "sans-serif-medium",
+                        android.graphics
+                            .Typeface.NORMAL
+                    )
         }
 
     private val tracePaint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(118, 144, 255)
-            style = Paint.Style.STROKE
+        Paint(
+            Paint.ANTI_ALIAS_FLAG
+        ).apply {
+            style =
+                Paint.Style.STROKE
             strokeWidth =
-                resources.displayMetrics.density * 4f
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
+                resources
+                    .displayMetrics
+                    .density *
+                    4.2f
+            strokeCap =
+                Paint.Cap.ROUND
+            strokeJoin =
+                Paint.Join.ROUND
         }
 
     fun setLayout(
@@ -80,13 +136,14 @@ class KeyboardSurface(context: Context) : View(context) {
     ) {
         layoutProfile = profile
         symbolMode = symbols
-        rows = if (symbols) {
-            KeyboardLayoutProfiles.symbolRows
-        } else {
-            profile.letterRows
-        }
-
+        theme =
+            KeyboardThemes.byId(
+                Prefs.keyboardThemeId(
+                    context
+                )
+            )
         shifted = false
+
         rebuildCells(
             width.toFloat(),
             height.toFloat()
@@ -109,51 +166,132 @@ class KeyboardSurface(context: Context) : View(context) {
         )
     }
 
+    private fun displayRows():
+        List<List<String>> {
+        val base =
+            if (symbolMode) {
+                KeyboardLayoutProfiles
+                    .symbolRows
+            } else {
+                layoutProfile
+                    .letterRows
+            }
+
+        return base
+            .mapIndexed {
+                    index,
+                    row ->
+                val tokens =
+                    row.map {
+                        it.toString()
+                    }.toMutableList()
+
+                if (
+                    index ==
+                    base.lastIndex
+                ) {
+                    tokens.add(
+                        BACKSPACE_TOKEN
+                    )
+                }
+
+                tokens
+            }
+    }
+
     private fun rebuildCells(
-        w: Float,
-        h: Float
+        widthPx: Float,
+        heightPx: Float
     ) {
         cells.clear()
-        if (w <= 0f || h <= 0f) return
+
+        if (
+            widthPx <= 0f ||
+            heightPx <= 0f
+        ) {
+            return
+        }
+
+        val rows =
+            displayRows()
 
         val gap =
-            resources.displayMetrics.density * 3f
-        val rowHeight =
-            h / rows.size.coerceAtLeast(1)
+            resources
+                .displayMetrics
+                .density *
+                3.2f
 
-        rows.forEachIndexed { rowIndex, row ->
-            val slots =
-                max(10, row.length)
+        val sidePadding =
+            resources
+                .displayMetrics
+                .density *
+                3.5f
+
+        val rowHeight =
+            heightPx /
+                rows.size
+                    .coerceAtLeast(1)
+
+        rows.forEachIndexed {
+                rowIndex,
+                row ->
+
+            val count =
+                row.size
+                    .coerceAtLeast(1)
+
+            val usableWidth =
+                widthPx -
+                    sidePadding * 2f -
+                    gap *
+                    (
+                        count -
+                            1
+                        )
+
             val keyWidth =
-                (w - gap * (slots + 1)) / slots
-            val usedWidth =
-                row.length * keyWidth +
-                    (row.length - 1).coerceAtLeast(0) * gap
-            val offset =
-                ((w - usedWidth) / 2f)
-                    .coerceAtLeast(gap)
+                usableWidth /
+                    count
 
             val top =
-                rowIndex * rowHeight + gap
-            val bottom =
-                (rowIndex + 1) *
-                    rowHeight - gap
+                rowIndex *
+                    rowHeight +
+                    gap
 
-            row.forEachIndexed { index, c ->
+            val bottom =
+                (
+                    rowIndex +
+                        1
+                    ) *
+                    rowHeight -
+                    gap
+
+            row.forEachIndexed {
+                    index,
+                    token ->
+
                 val left =
-                    offset +
+                    sidePadding +
                         index *
-                        (keyWidth + gap)
+                        (
+                            keyWidth +
+                                gap
+                            )
 
                 cells.add(
                     Cell(
-                        value = c,
-                        bounds = RectF(
-                            left,
-                            top,
-                            left + keyWidth,
-                            bottom
-                        )
+                        token = token,
+                        bounds =
+                            RectF(
+                                left,
+                                top,
+                                left +
+                                    keyWidth,
+                                bottom
+                            ),
+                        special =
+                            token ==
+                                BACKSPACE_TOKEN
                     )
                 )
             }
@@ -163,15 +301,42 @@ class KeyboardSurface(context: Context) : View(context) {
     override fun onDraw(
         canvas: Canvas
     ) {
-        super.onDraw(canvas)
+        super.onDraw(
+            canvas
+        )
+
         canvas.drawColor(
-            Color.rgb(28, 31, 38)
+            theme.background
         )
 
         val radius =
-            resources.displayMetrics.density * 7f
+            resources
+                .displayMetrics
+                .density *
+                theme.keyCornerDp
+
+        borderPaint.color =
+            theme.border
+        tracePaint.color =
+            theme.trace
+        labelPaint.color =
+            theme.textPrimary
 
         for (cell in cells) {
+            keyPaint.color =
+                when {
+                    pressedToken ==
+                        cell.token &&
+                        !dragging ->
+                        theme.keyPressed
+
+                    cell.special ->
+                        theme.keySpecial
+
+                    else ->
+                        theme.key
+                }
+
             canvas.drawRoundRect(
                 cell.bounds,
                 radius,
@@ -179,27 +344,51 @@ class KeyboardSurface(context: Context) : View(context) {
                 keyPaint
             )
 
-            val value =
+            canvas.drawRoundRect(
+                cell.bounds,
+                radius,
+                radius,
+                borderPaint
+            )
+
+            val label =
                 if (
-                    shifted &&
-                    !symbolMode &&
-                    cell.value.isLetter()
+                    cell.token ==
+                    BACKSPACE_TOKEN
                 ) {
-                    cell.value.uppercaseChar()
+                    "⌫"
                 } else {
-                    cell.value
+                    val char =
+                        cell.token
+                            .first()
+
+                    if (
+                        shifted &&
+                        !symbolMode &&
+                        char.isLetter()
+                    ) {
+                        char
+                            .uppercaseChar()
+                            .toString()
+                    } else {
+                        char.toString()
+                    }
                 }
 
             val baseline =
-                cell.bounds.centerY() -
+                cell.bounds
+                    .centerY() -
                     (
                         labelPaint.ascent() +
-                            labelPaint.descent()
-                        ) / 2f
+                            labelPaint
+                                .descent()
+                        ) /
+                        2f
 
             canvas.drawText(
-                value.toString(),
-                cell.bounds.centerX(),
+                label,
+                cell.bounds
+                    .centerX(),
                 baseline,
                 labelPaint
             )
@@ -219,7 +408,10 @@ class KeyboardSurface(context: Context) : View(context) {
     override fun onTouchEvent(
         event: MotionEvent
     ): Boolean {
-        if (event.pointerCount == 0) {
+        if (
+            event.pointerCount ==
+            0
+        ) {
             return false
         }
 
@@ -230,7 +422,8 @@ class KeyboardSurface(context: Context) : View(context) {
             if (
                 (
                     event.buttonState and
-                        MotionEvent.BUTTON_STYLUS_PRIMARY
+                        MotionEvent
+                            .BUTTON_STYLUS_PRIMARY
                     ) != 0 &&
                 event.actionMasked ==
                 MotionEvent.ACTION_DOWN
@@ -243,7 +436,8 @@ class KeyboardSurface(context: Context) : View(context) {
             if (
                 (
                     event.buttonState and
-                        MotionEvent.BUTTON_STYLUS_SECONDARY
+                        MotionEvent
+                            .BUTTON_STYLUS_SECONDARY
                     ) != 0 &&
                 event.actionMasked ==
                 MotionEvent.ACTION_DOWN
@@ -254,11 +448,18 @@ class KeyboardSurface(context: Context) : View(context) {
             }
         }
 
-        when (event.actionMasked) {
+        when (
+            event.actionMasked
+        ) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
                 downY = event.y
                 dragging = false
+                pressedToken =
+                    tokenAt(
+                        event.x,
+                        event.y
+                    )
                 traceChars.clear()
                 tracePoints.clear()
                 path.reset()
@@ -267,7 +468,14 @@ class KeyboardSurface(context: Context) : View(context) {
                     event.y
                 )
 
-                if (!symbolMode) {
+                if (
+                    !symbolMode &&
+                    tokenAt(
+                        event.x,
+                        event.y
+                    ) !=
+                    BACKSPACE_TOKEN
+                ) {
                     addTraceCharacter(
                         event.x,
                         event.y
@@ -287,37 +495,52 @@ class KeyboardSurface(context: Context) : View(context) {
                 if (!symbolMode) {
                     if (
                         hypot(
-                            event.x - downX,
-                            event.y - downY
+                            event.x -
+                                downX,
+                            event.y -
+                                downY
                         ) >
                         resources
                             .displayMetrics
-                            .density * 12f
+                            .density *
+                        12f
                     ) {
-                        dragging = true
+                        dragging =
+                            true
+                        pressedToken =
+                            null
                     }
 
                     for (
-                        i in 0 until
+                        index in 0 until
                             event.historySize
                     ) {
-                        val hx =
-                            event.getHistoricalX(i)
-                        val hy =
-                            event.getHistoricalY(i)
+                        val x =
+                            event
+                                .getHistoricalX(
+                                    index
+                                )
+                        val y =
+                            event
+                                .getHistoricalY(
+                                    index
+                                )
 
                         path.lineTo(
-                            hx,
-                            hy
+                            x,
+                            y
                         )
                         addTraceCharacter(
-                            hx,
-                            hy
+                            x,
+                            y
                         )
                         addTracePoint(
-                            hx,
-                            hy,
-                            event.getHistoricalEventTime(i)
+                            x,
+                            y,
+                            event
+                                .getHistoricalEventTime(
+                                    index
+                                )
                         )
                     }
 
@@ -356,42 +579,79 @@ class KeyboardSurface(context: Context) : View(context) {
                 if (
                     !symbolMode &&
                     dragging &&
-                    traceChars.size > 1 &&
-                    tracePoints.size > 1
+                    traceChars.size >
+                    1 &&
+                    tracePoints.size >
+                    1
                 ) {
-                    listener?.onSwipe(
-                        SwipeTrace(
-                            points =
-                                tracePoints.toList(),
-                            touchedKeys =
-                                traceChars.toList(),
-                            layoutId =
-                                layoutProfile.id
-                        )
+                    performHapticFeedback(
+                        HapticFeedbackConstants
+                            .KEYBOARD_TAP
                     )
-                } else {
-                    charAt(
-                        event.x,
-                        event.y
-                    )?.let {
-                        val value =
-                            if (
-                                shifted &&
-                                !symbolMode &&
-                                it.isLetter()
-                            ) {
-                                it.uppercaseChar()
-                            } else {
-                                it
-                            }
 
-                        listener?.onTap(
-                            value
+                    listener
+                        ?.onSwipe(
+                            SwipeTrace(
+                                points =
+                                    tracePoints
+                                        .toList(),
+                                touchedKeys =
+                                    traceChars
+                                        .toList(),
+                                layoutId =
+                                    layoutProfile.id
+                            )
                         )
+                } else {
+                    when (
+                        val token =
+                            tokenAt(
+                                event.x,
+                                event.y
+                            )
+                    ) {
+                        BACKSPACE_TOKEN -> {
+                            performHapticFeedback(
+                                HapticFeedbackConstants
+                                    .KEYBOARD_TAP
+                            )
+                            listener
+                                ?.onBackspace()
+                        }
+
+                        null ->
+                            Unit
+
+                        else -> {
+                            val char =
+                                token.first()
+
+                            val value =
+                                if (
+                                    shifted &&
+                                    !symbolMode &&
+                                    char.isLetter()
+                                ) {
+                                    char
+                                        .uppercaseChar()
+                                } else {
+                                    char
+                                }
+
+                            performHapticFeedback(
+                                HapticFeedbackConstants
+                                    .KEYBOARD_TAP
+                            )
+                            listener
+                                ?.onTap(
+                                    value
+                                )
+                        }
                     }
                 }
 
                 dragging = false
+                pressedToken = null
                 traceChars.clear()
                 tracePoints.clear()
                 path.reset()
@@ -402,6 +662,7 @@ class KeyboardSurface(context: Context) : View(context) {
 
             MotionEvent.ACTION_CANCEL -> {
                 dragging = false
+                pressedToken = null
                 traceChars.clear()
                 tracePoints.clear()
                 path.reset()
@@ -410,7 +671,9 @@ class KeyboardSurface(context: Context) : View(context) {
             }
         }
 
-        return super.onTouchEvent(event)
+        return super.onTouchEvent(
+            event
+        )
     }
 
     override fun performClick(): Boolean {
@@ -423,17 +686,22 @@ class KeyboardSurface(context: Context) : View(context) {
     ): Boolean {
         if (
             event.actionMasked ==
-            MotionEvent.ACTION_BUTTON_PRESS
+            MotionEvent
+                .ACTION_BUTTON_PRESS
         ) {
-            when (event.actionButton) {
-                MotionEvent.BUTTON_STYLUS_PRIMARY -> {
+            when (
+                event.actionButton
+            ) {
+                MotionEvent
+                    .BUTTON_STYLUS_PRIMARY -> {
                     dispatchPrimaryButton(
                         event.eventTime
                     )
                     return true
                 }
 
-                MotionEvent.BUTTON_STYLUS_SECONDARY -> {
+                MotionEvent
+                    .BUTTON_STYLUS_SECONDARY -> {
                     dispatchSecondaryButton(
                         event.eventTime
                     )
@@ -442,9 +710,10 @@ class KeyboardSurface(context: Context) : View(context) {
             }
         }
 
-        return super.onGenericMotionEvent(
-            event
-        )
+        return super
+            .onGenericMotionEvent(
+                event
+            )
     }
 
     private fun dispatchPrimaryButton(
@@ -460,7 +729,8 @@ class KeyboardSurface(context: Context) : View(context) {
 
         lastPrimaryButtonEventMs =
             eventTimeMs
-        listener?.onStylusPrimaryButton()
+        listener
+            ?.onStylusPrimaryButton()
     }
 
     private fun dispatchSecondaryButton(
@@ -476,20 +746,46 @@ class KeyboardSurface(context: Context) : View(context) {
 
         lastSecondaryButtonEventMs =
             eventTimeMs
-        listener?.onStylusSecondaryButton()
+        listener
+            ?.onStylusSecondaryButton()
     }
 
     private fun addTraceCharacter(
         x: Float,
         y: Float
     ) {
-        val c =
-            charAt(x, y) ?: return
+        val token =
+            tokenAt(
+                x,
+                y
+            ) ?: return
 
         if (
-            traceChars.lastOrNull() != c
+            token ==
+            BACKSPACE_TOKEN ||
+            token.length !=
+            1
         ) {
-            traceChars.add(c)
+            return
+        }
+
+        val char =
+            token.first()
+
+        if (
+            !char.isLetter()
+        ) {
+            return
+        }
+
+        if (
+            traceChars
+                .lastOrNull() !=
+            char
+        ) {
+            traceChars.add(
+                char
+            )
         }
     }
 
@@ -505,21 +801,49 @@ class KeyboardSurface(context: Context) : View(context) {
             return
         }
 
+        if (
+            tokenAt(
+                x,
+                y
+            ) ==
+            BACKSPACE_TOKEN
+        ) {
+            return
+        }
+
         val normalized =
             SwipePoint(
                 x =
-                    (x / width.toFloat())
-                        .coerceIn(0f, 1f),
+                    (
+                        x /
+                            width
+                                .toFloat()
+                        )
+                        .coerceIn(
+                            0f,
+                            1f
+                        ),
                 y =
-                    (y / height.toFloat())
-                        .coerceIn(0f, 1f),
-                timeMs = timeMs
+                    (
+                        y /
+                            height
+                                .toFloat()
+                        )
+                        .coerceIn(
+                            0f,
+                            1f
+                        ),
+                timeMs =
+                    timeMs
             )
 
         val previous =
-            tracePoints.lastOrNull()
+            tracePoints
+                .lastOrNull()
 
-        if (previous != null) {
+        if (
+            previous != null
+        ) {
             val distance =
                 hypot(
                     normalized.x -
@@ -527,39 +851,54 @@ class KeyboardSurface(context: Context) : View(context) {
                     normalized.y -
                         previous.y
                 )
-            val dt =
+
+            val delta =
                 normalized.timeMs -
                     previous.timeMs
 
             if (
-                distance < 0.006f &&
-                dt < 12L
+                distance <
+                0.006f &&
+                delta <
+                12L
             ) {
                 return
             }
         }
 
-        if (tracePoints.size >= 96) {
+        if (
+            tracePoints.size >=
+            96
+        ) {
             tracePoints.removeAt(
                 1.coerceAtMost(
-                    tracePoints.lastIndex
+                    tracePoints
+                        .lastIndex
                 )
             )
         }
 
-        tracePoints.add(normalized)
+        tracePoints.add(
+            normalized
+        )
     }
 
-    private fun charAt(
+    private fun tokenAt(
         x: Float,
         y: Float
-    ): Char? =
+    ): String? =
         cells
             .firstOrNull {
-                it.bounds.contains(
-                    x,
-                    y
-                )
+                it.bounds
+                    .contains(
+                        x,
+                        y
+                    )
             }
-            ?.value
+            ?.token
+
+    companion object {
+        private const val BACKSPACE_TOKEN =
+            "__BACKSPACE__"
+    }
 }

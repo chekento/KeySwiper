@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.15.0-alpha15 — 2026-09-28
+
+Daily-driver core + Matrix Cyber UI overhaul:
+
+- confirmed Android IME registration flow: KeySwiper now detects installed, enabled and currently selected states instead of showing static setup buttons
+- Settings refresh the IME state automatically after returning from Android/Samsung keyboard settings
+- step 2 refuses to open the picker prematurely and routes back to Android keyboard settings when KeySwiper is still disabled
+- Daily-driver readiness panel added with Android/API, IME, microphone, theme and one-hand status
+- concrete real-device test route added directly to Settings
+- session-local Autocorrect Timeline added for explicit prediction, swipe-candidate and voice replacements
+- dedicated ↶ Undo and ↷ Redo controls added beside the prediction strip
+- long-press ↶ opens the recent correction timeline
+- Undo/Redo validates the exact cursor-tail context before editing, preventing stale history from deleting text at the wrong location
+- new corrections clear redo history like a conventional editor timeline
+- correction history is never active in sensitive/password fields and is cleared between input sessions
+- one-hand modes added: full width, left and right
+- long-press on the keyboard toolbar icon cycles one-hand mode directly
+- one-hand mode is also configurable in Settings and persists locally
+- Developer layout added behind the </> toolbar control
+- Developer layout includes Esc, Tab, brackets, braces, parentheses, angle brackets, slash/backslash, pipe, tilde, backtick, quotes, arrows, Home/End and Ctrl+A/C/V/X/Z/Y
+- Developer layout sends normal Android InputConnection key events for app compatibility
+- Android handwriting edit gestures expanded beyond scratch-out deletion
+- circle gesture maps to Android SelectGesture when the target editor advertises support
+- long horizontal gesture maps to RemoveSpaceGesture when supported
+- long vertical gesture maps to JoinOrSplitGesture when supported
+- unsupported handwriting edit gestures remain ordinary handwriting instead of being consumed
+- Matrix Cyber introduced as the default keyboard theme through a reusable theme-profile architecture
+- theme preference infrastructure added so future visual themes can be added without rewriting keyboard logic
+- keyboard background changed to a near-black Android-compatible cyber surface with restrained neon-mint accents
+- letter keys now use rounded 12dp surfaces, subtle borders and pressed states
+- keyboard haptic feedback added through Android KEYBOARD_TAP feedback so device haptic settings remain authoritative
+- letter rows now distribute across the usable keyboard width instead of using fixed ten-slot centering
+- adaptive swipe geometry updated to the same full-width physical key centers used by the rendered keyboard
+- Backspace moved into the letter/symbol matrix at the end of the bottom character row, directly after M in QWERTZ/QWERTY layouts
+- bottom utility row no longer wastes width on a second Backspace key
+- Emoji removed from the toolbar and moved immediately left of the Space key for normal text/email/URL input
+- Toolbar redesigned as a shorter, quieter control rail with compact cyber-surface controls
+- prediction chips, Undo/Redo controls and auxiliary panels now share the rounded Matrix Cyber visual language
+- Clipboard, Translation, Emoji, Handwriting and Developer panels receive consistent themed controls instead of falling back to large default gray buttons
+- Android navigation bar beneath the IME is styled to the active keyboard background and navigation-bar contrast enforcement is disabled on supported versions
+- Settings keeps Android-style light system bars so app configuration remains native-looking
+- new unit tests cover edit timeline safety, redo invalidation, extended handwriting gestures and full-width swipe geometry
+- version advanced to 0.15.0-alpha15 / build 15
+
 ## 0.14.0-alpha14 — 2026-09-28
 
 Daily-driver hardening:

@@ -72,4 +72,40 @@ class KeyboardLayoutProfileTest {
             symbols.contains("@")
         )
     }
+    @Test
+    fun fullWidthGeometryMatchesRenderedRows() {
+        val topLeft =
+            KeyboardGeometry.center(
+                'q',
+                "en-qwerty"
+            ) ?: error(
+                "q missing"
+            )
+
+        val homeLeft =
+            KeyboardGeometry.center(
+                'a',
+                "en-qwerty"
+            ) ?: error(
+                "a missing"
+            )
+
+        val bottomLeft =
+            KeyboardGeometry.center(
+                'z',
+                "en-qwerty"
+            ) ?: error(
+                "z missing"
+            )
+
+        assertTrue(
+            topLeft.first <
+                homeLeft.first
+        )
+
+        assertTrue(
+            bottomLeft.first <
+                homeLeft.first
+        )
+    }
 }

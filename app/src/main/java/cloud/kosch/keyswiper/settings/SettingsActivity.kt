@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
@@ -28,14 +29,21 @@ import cloud.kosch.keyswiper.stylus.StylusAction
 import cloud.kosch.keyswiper.stylus.StylusActionStore
 import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
+import cloud.kosch.keyswiper.ui.KeyboardThemes
+import cloud.kosch.keyswiper.ui.OneHandMode
 
 class SettingsActivity : Activity() {
 
     private lateinit var neuralModelManager: NeuralModelManager
     private lateinit var neuralStatusText: TextView
+    private lateinit var setupStatusText: TextView
+    private lateinit var enableKeyboardButton: Button
+    private lateinit var chooseKeyboardButton: Button
+    private lateinit var dailyDriverStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        styleSystemBars()
         neuralModelManager = NeuralModelManager(this)
 
         val density = resources.displayMetrics.density
@@ -58,20 +66,60 @@ class SettingsActivity : Activity() {
             setPadding(0, dp(8), 0, dp(22))
         })
 
-        content.addView(Button(this).apply {
-            text = "1. Enable KeySwiper"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+        setupStatusText =
+            TextView(this).apply {
+                textSize = 15f
+                setPadding(
+                    0,
+                    dp(4),
+                    0,
+                    dp(12)
+                )
             }
-        })
+        content.addView(
+            setupStatusText
+        )
 
-        content.addView(Button(this).apply {
-            text = "2. Choose KeySwiper"
-            setOnClickListener {
-                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                    .showInputMethodPicker()
+        enableKeyboardButton =
+            Button(this).apply {
+                text =
+                    "1. ENABLE KEYSWIPER"
+                setOnClickListener {
+                    openInputMethodSettings()
+                }
             }
-        })
+        content.addView(
+            enableKeyboardButton
+        )
+
+        chooseKeyboardButton =
+            Button(this).apply {
+                text =
+                    "2. CHOOSE KEYSWIPER"
+                setOnClickListener {
+                    val state =
+                        ImeSetupStateReader
+                            .read(
+                                this@SettingsActivity
+                            )
+
+                    if (!state.enabled) {
+                        setupStatusText.text =
+                            "KeySwiper is installed but still disabled in Android. Turn on the KeySwiper switch, then return here."
+                        openInputMethodSettings()
+                    } else {
+                        (
+                            getSystemService(
+                                Context.INPUT_METHOD_SERVICE
+                            ) as InputMethodManager
+                            )
+                            .showInputMethodPicker()
+                    }
+                }
+            }
+        content.addView(
+            chooseKeyboardButton
+        )
 
         content.addView(Button(this).apply {
             text = if (hasMicPermission()) {
@@ -88,6 +136,44 @@ class SettingsActivity : Activity() {
                     )
                 }
             }
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Daily-driver readiness"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        dailyDriverStatusText =
+            TextView(this).apply {
+                textSize = 14f
+                setPadding(0, dp(4), 0, dp(8))
+            }
+        content.addView(
+            dailyDriverStatusText
+        )
+
+        content.addView(Button(this).apply {
+            text = "Refresh device test status"
+            setOnClickListener {
+                refreshSetupState()
+            }
+        })
+
+        content.addView(TextView(this).apply {
+            text =
+                "Real-device route:\n" +
+                    "1. Enable + select KeySwiper\n" +
+                    "2. Tap + swipe DE/EN text\n" +
+                    "3. Test context predictions and ↶/↷ correction history\n" +
+                    "4. Test clipboard + Voice Editing\n" +
+                    "5. Long-press ⌨ for one-hand mode\n" +
+                    "6. Open </> and test Tab/arrows/Ctrl shortcuts\n" +
+                    "7. Test stylus handwriting and edit gestures\n" +
+                    "8. Verify sensitive fields disable learning/voice/clipboard/transforms"
+            textSize = 13f
+            setPadding(0, dp(6), 0, dp(10))
         })
 
         content.addView(TextView(this).apply {
@@ -124,6 +210,101 @@ class SettingsActivity : Activity() {
 
         content.addView(
             keyboardLayout,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        content.addView(TextView(this).apply {
+            text = "Keyboard theme"
+            textSize = 14f
+            setPadding(0, dp(18), 0, dp(6))
+        })
+
+        val keyboardThemes =
+            KeyboardThemes.all
+
+        val keyboardTheme =
+            Spinner(this).apply {
+                adapter =
+                    ArrayAdapter(
+                        this@SettingsActivity,
+                        android.R.layout.simple_spinner_item,
+                        keyboardThemes.map {
+                            it.label
+                        }
+                    ).apply {
+                        setDropDownViewResource(
+                            android.R.layout.simple_spinner_dropdown_item
+                        )
+                    }
+
+                setSelection(
+                    keyboardThemes
+                        .indexOfFirst {
+                            it.id ==
+                                Prefs.keyboardThemeId(
+                                    this@SettingsActivity
+                                )
+                        }
+                        .coerceAtLeast(0)
+                )
+            }
+
+        content.addView(
+            keyboardTheme,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        content.addView(TextView(this).apply {
+            text =
+                "Matrix Cyber is the new default. The theme system is profile-based so additional themes can be added without rewriting the keyboard."
+            textSize = 12f
+            setPadding(0, dp(3), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
+            text =
+                "One-hand mode (also cycle with long-press on ⌨)"
+            textSize = 14f
+            setPadding(0, dp(12), 0, dp(6))
+        })
+
+        val oneHandModes =
+            OneHandMode.entries
+
+        val oneHandMode =
+            Spinner(this).apply {
+                adapter =
+                    ArrayAdapter(
+                        this@SettingsActivity,
+                        android.R.layout.simple_spinner_item,
+                        oneHandModes.map {
+                            it.label
+                        }
+                    ).apply {
+                        setDropDownViewResource(
+                            android.R.layout.simple_spinner_dropdown_item
+                        )
+                    }
+
+                setSelection(
+                    oneHandModes
+                        .indexOf(
+                            Prefs.oneHandMode(
+                                this@SettingsActivity
+                            )
+                        )
+                        .coerceAtLeast(0)
+                )
+            }
+
+        content.addView(
+            oneHandMode,
             ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -207,6 +388,26 @@ class SettingsActivity : Activity() {
                                 layoutProfiles.lastIndex
                             )
                     ].id
+                )
+                Prefs.setKeyboardThemeId(
+                    this@SettingsActivity,
+                    keyboardThemes[
+                        keyboardTheme.selectedItemPosition
+                            .coerceIn(
+                                0,
+                                keyboardThemes.lastIndex
+                            )
+                    ].id
+                )
+                Prefs.setOneHandMode(
+                    this@SettingsActivity,
+                    oneHandModes[
+                        oneHandMode.selectedItemPosition
+                            .coerceIn(
+                                0,
+                                oneHandModes.lastIndex
+                            )
+                    ]
                 )
                 Prefs.setTargetLanguage(
                     this@SettingsActivity,
@@ -426,7 +627,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "The configured handwriting language above is used for the in-keyboard pad, direct system handwriting and connectionless handwriting. A horizontal scratch-out zigzag can delete words in editors that advertise Android DeleteGesture support. Sensitive/password fields never start a KeySwiper handwriting session."
+            text = "The configured handwriting language above is used for the in-keyboard pad, direct system handwriting and connectionless handwriting. Edit gestures now include scratch-out deletion plus circle-selection, horizontal remove-space and vertical join/split where the target editor advertises Android gesture support. Sensitive/password fields never start a KeySwiper handwriting session."
             textSize = 13f
             setPadding(0, dp(2), 0, dp(8))
         })
@@ -572,6 +773,34 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
+            text = "Autocorrect timeline / Undo–Redo"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text =
+                "↶ and ↷ sit beside the prediction strip. KeySwiper records explicit swipe, prediction and voice replacements for the current input session. Undo/Redo verifies the cursor context before changing text; long-press ↶ opens the timeline."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
+            text = "Developer layout"
+            textSize = 20f
+            setTextColor(Color.rgb(22, 24, 30))
+            setPadding(0, dp(28), 0, dp(6))
+        })
+
+        content.addView(TextView(this).apply {
+            text =
+                "Tap </> in the keyboard toolbar for coding punctuation, Esc, Tab, arrows, Home/End and Ctrl+A/C/V/X/Z/Y. These use normal Android InputConnection key events, so individual apps can differ in shortcut handling."
+            textSize = 14f
+            setPadding(0, dp(4), 0, dp(8))
+        })
+
+        content.addView(TextView(this).apply {
             text = "Privacy default: surrounding context, prediction learning and neural inference are disabled in sensitive/password fields. Personal models stay local."
             textSize = 14f
             setPadding(0, dp(24), 0, 0)
@@ -582,6 +811,18 @@ class SettingsActivity : Activity() {
                 addView(content)
             }
         )
+
+        refreshSetupState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (
+            ::setupStatusText
+                .isInitialized
+        ) {
+            refreshSetupState()
+        }
     }
 
     @Deprecated("Legacy activity result API is sufficient for this internal file picker.")
@@ -617,6 +858,173 @@ class SettingsActivity : Activity() {
                 )
             }
         }.start()
+    }
+
+    private fun openInputMethodSettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_INPUT_METHOD_SETTINGS
+            )
+        )
+    }
+
+    private fun refreshSetupState() {
+        val state =
+            ImeSetupStateReader.read(
+                this
+            )
+
+        setupStatusText.text =
+            when {
+                !state.installed ->
+                    "KeySwiper IME service is not registered with Android."
+
+                !state.enabled ->
+                    "KeySwiper registered ✓ · not enabled yet. Your Samsung keyboard screen should show the KeySwiper switch; turn it on."
+
+                !state.selected ->
+                    "KeySwiper enabled ✓ · current default: " +
+                        (
+                            state.selectedImeLabel
+                                ?: "another keyboard"
+                            ) +
+                        ". Tap step 2 to choose KeySwiper."
+
+                else ->
+                    "KeySwiper enabled ✓ · selected ✓ · ready for real-device testing."
+            }
+
+        enableKeyboardButton.text =
+            if (state.enabled) {
+                "1. KEYSWIPER ENABLED ✓"
+            } else {
+                "1. ENABLE KEYSWIPER"
+            }
+
+        chooseKeyboardButton.text =
+            if (state.selected) {
+                "2. KEYSWIPER SELECTED ✓"
+            } else {
+                "2. CHOOSE KEYSWIPER"
+            }
+
+        dailyDriverStatusText.text =
+            buildString {
+                append(
+                    "Android "
+                )
+                append(
+                    Build.VERSION.RELEASE
+                )
+                append(
+                    " · API "
+                )
+                append(
+                    Build.VERSION.SDK_INT
+                )
+                append(
+                    "\nIME registered: "
+                )
+                append(
+                    if (state.installed) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                )
+                append(
+                    " · enabled: "
+                )
+                append(
+                    if (state.enabled) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                )
+                append(
+                    " · selected: "
+                )
+                append(
+                    if (state.selected) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                )
+                append(
+                    "\nMicrophone permission: "
+                )
+                append(
+                    if (hasMicPermission()) {
+                        "✓"
+                    } else {
+                        "not granted"
+                    }
+                )
+                append(
+                    "\nTheme: "
+                )
+                append(
+                    KeyboardThemes
+                        .byId(
+                            Prefs.keyboardThemeId(
+                                this@SettingsActivity
+                            )
+                        )
+                        .label
+                )
+                append(
+                    "\nOne-hand: "
+                )
+                append(
+                    Prefs.oneHandMode(
+                        this@SettingsActivity
+                    )
+                        .label
+                )
+            }
+    }
+
+    private fun styleSystemBars() {
+        window.statusBarColor =
+            Color.rgb(
+                245,
+                247,
+                249
+            )
+        window.navigationBarColor =
+            Color.rgb(
+                245,
+                247,
+                249
+            )
+
+        @Suppress("DEPRECATION")
+        val systemBars =
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.O
+            ) {
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                    View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            } else {
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
+
+        @Suppress("DEPRECATION")
+        run {
+            window.decorView.systemUiVisibility =
+                systemBars
+        }
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.Q
+        ) {
+            window.isNavigationBarContrastEnforced =
+                false
+        }
     }
 
     private fun refreshNeuralStatus() {

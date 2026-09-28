@@ -2,6 +2,8 @@ package cloud.kosch.keyswiper.ui
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +15,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import cloud.kosch.keyswiper.clipboard.ClipboardEntry
+import cloud.kosch.keyswiper.input.EditTimelineEntry
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.prediction.PredictionKind
 import cloud.kosch.keyswiper.prediction.PredictionSuggestion
@@ -39,6 +42,14 @@ class KeyboardRootView(
         fun onTranslate()
         fun onVoice()
         fun onVoiceCommand()
+        fun onUndoEdit()
+        fun onRedoEdit()
+        fun onEditTimelineRequested()
+        fun onDeveloperText(value: String)
+        fun onDeveloperKeyCode(
+            keyCode: Int,
+            ctrl: Boolean = false
+        )
         fun onClipboard()
         fun onClipboardInsert(id: String)
         fun onClipboardSearch(query: String)
@@ -61,6 +72,13 @@ class KeyboardRootView(
     private val density =
         resources.displayMetrics.density
 
+    private var theme =
+        KeyboardThemes.byId(
+            Prefs.keyboardThemeId(
+                context
+            )
+        )
+
     private fun dp(value: Int) =
         (value * density).toInt()
 
@@ -69,6 +87,12 @@ class KeyboardRootView(
 
     private val suggestions =
         LinearLayout(context)
+
+    private val undoButton =
+        Button(context)
+
+    private val redoButton =
+        Button(context)
 
     private val content =
         FrameLayout(context)
@@ -81,6 +105,8 @@ class KeyboardRootView(
 
     private var shifted = false
     private var symbolMode = false
+    private var oneHandMode =
+        Prefs.oneHandMode(context)
     private var editorMode =
         KeyboardEditorMode.TEXT
     private var layoutProfile =
@@ -91,16 +117,12 @@ class KeyboardRootView(
     init {
         orientation = VERTICAL
         setBackgroundColor(
-            Color.rgb(18, 20, 25)
+            theme.background
         )
 
         status.apply {
             setTextColor(
-                Color.rgb(
-                    214,
-                    219,
-                    230
-                )
+                theme.textSecondary
             )
             textSize = 12f
             setPadding(
@@ -124,7 +146,7 @@ class KeyboardRootView(
             buildToolbar(),
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                dp(48)
+                dp(40)
             )
         )
 
@@ -133,11 +155,7 @@ class KeyboardRootView(
                 isHorizontalScrollBarEnabled =
                     false
                 setBackgroundColor(
-                    Color.rgb(
-                        24,
-                        27,
-                        34
-                    )
+                    theme.surface
                 )
                 addView(
                     suggestions.apply {
@@ -155,16 +173,106 @@ class KeyboardRootView(
                 )
             }
 
-        addView(
+        undoButton.apply {
+            text = "↶"
+            textSize = 18f
+            isAllCaps = false
+            setTextColor(
+                theme.accent
+            )
+            background =
+                buttonBackground(
+                    special = true,
+                    subtle = true
+                )
+            minWidth = 0
+            minimumWidth = 0
+            isEnabled = false
+            contentDescription =
+                "Undo last KeySwiper correction"
+            setOnClickListener {
+                callbacks
+                    ?.onUndoEdit()
+            }
+            setOnLongClickListener {
+                callbacks
+                    ?.onEditTimelineRequested()
+                true
+            }
+        }
+
+        redoButton.apply {
+            text = "↷"
+            textSize = 18f
+            isAllCaps = false
+            setTextColor(
+                theme.accent
+            )
+            background =
+                buttonBackground(
+                    special = true,
+                    subtle = true
+                )
+            minWidth = 0
+            minimumWidth = 0
+            isEnabled = false
+            contentDescription =
+                "Redo last KeySwiper correction"
+            setOnClickListener {
+                callbacks
+                    ?.onRedoEdit()
+            }
+        }
+
+        val predictionRow =
+            LinearLayout(context).apply {
+                orientation =
+                    HORIZONTAL
+                gravity =
+                    Gravity.CENTER_VERTICAL
+                setBackgroundColor(
+                    theme.surface
+                )
+            }
+
+        predictionRow.addView(
+            undoButton,
+            LayoutParams(
+                dp(44),
+                LayoutParams.MATCH_PARENT
+            )
+        )
+
+        predictionRow.addView(
             suggestionScroll,
             LayoutParams(
+                0,
                 LayoutParams.MATCH_PARENT,
-                dp(48)
+                1f
+            )
+        )
+
+        predictionRow.addView(
+            redoButton,
+            LayoutParams(
+                dp(44),
+                LayoutParams.MATCH_PARENT
+            )
+        )
+
+        addView(
+            predictionRow,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                dp(46)
             )
         )
 
         keyboardPanel.orientation =
             VERTICAL
+        keyboardPanel.setBackgroundColor(
+            theme.background
+        )
 
         keyboardSurface.listener =
             object :
@@ -195,6 +303,11 @@ class KeyboardRootView(
                         ?.onSwipe(trace)
                 }
 
+                override fun onBackspace() {
+                    callbacks
+                        ?.onBackspace()
+                }
+
                 override fun onStylusPrimaryButton() {
                     callbacks
                         ?.onStylusPrimary()
@@ -223,10 +336,13 @@ class KeyboardRootView(
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER
                 setPadding(
-                    dp(2),
-                    0,
-                    dp(2),
-                    0
+                    dp(5),
+                    dp(3),
+                    dp(5),
+                    dp(3)
+                )
+                setBackgroundColor(
+                    theme.background
                 )
             }
 
@@ -237,7 +353,16 @@ class KeyboardRootView(
         ): Button =
             Button(context).apply {
                 text = label
-                textSize = 15f
+                textSize = 13f
+                isAllCaps = false
+                setTextColor(
+                    theme.textSecondary
+                )
+                background =
+                    buttonBackground(
+                        special = false,
+                        subtle = true
+                    )
                 minWidth = 0
                 minimumWidth = 0
                 setPadding(
@@ -259,9 +384,15 @@ class KeyboardRootView(
             }
 
         listOf(
-            tool("⌨") {
-                showKeyboard()
-            },
+            tool(
+                "⌨",
+                longAction = {
+                    cycleOneHandMode()
+                },
+                action = {
+                    showKeyboard()
+                }
+            ),
             tool("🌐") {
                 callbacks
                     ?.onTranslationPanelRequested()
@@ -278,12 +409,12 @@ class KeyboardRootView(
             tool("📋") {
                 callbacks?.onClipboard()
             },
-            tool("😀") {
-                showEmojiPanel()
-            },
             tool("✍") {
                 callbacks
                     ?.onHandwritingRequested()
+            },
+            tool("</>") {
+                showDeveloperPanel()
             },
             tool("⚙") {
                 callbacks?.onSettings()
@@ -323,7 +454,7 @@ class KeyboardRootView(
             keyboardSurface,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                dp(186)
+                dp(190)
             )
         )
 
@@ -332,7 +463,7 @@ class KeyboardRootView(
                 buildAccentAndLayoutRow(),
                 LayoutParams(
                     LayoutParams.MATCH_PARENT,
-                    dp(42)
+                    dp(38)
                 )
             )
         }
@@ -352,10 +483,13 @@ class KeyboardRootView(
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER
                 setPadding(
-                    dp(2),
+                    dp(4),
                     dp(1),
-                    dp(2),
+                    dp(4),
                     dp(1)
+                )
+                setBackgroundColor(
+                    theme.background
                 )
             }
 
@@ -368,7 +502,15 @@ class KeyboardRootView(
                 Button(context).apply {
                     text = label
                     isAllCaps = false
-                    textSize = 14f
+                    textSize = 13f
+                    setTextColor(
+                        theme.textSecondary
+                    )
+                    background =
+                        buttonBackground(
+                            special = false,
+                            subtle = true
+                        )
                     minWidth = 0
                     minimumWidth = 0
                     setPadding(
@@ -443,23 +585,46 @@ class KeyboardRootView(
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER
                 setPadding(
-                    dp(2),
-                    dp(2),
-                    dp(2),
-                    dp(2)
+                    dp(4),
+                    dp(3),
+                    dp(4),
+                    dp(4)
+                )
+                setBackgroundColor(
+                    theme.background
                 )
             }
 
         fun key(
             label: String,
             weight: Float = 1f,
+            special: Boolean = false,
             action: () -> Unit
         ) {
             row.addView(
                 Button(context).apply {
                     text = label
                     isAllCaps = false
-                    textSize = 16f
+                    textSize =
+                        if (
+                            label == "space"
+                        ) {
+                            13f
+                        } else {
+                            16f
+                        }
+                    setTextColor(
+                        if (special) {
+                            theme.accent
+                        } else {
+                            theme.textPrimary
+                        }
+                    )
+                    background =
+                        buttonBackground(
+                            special =
+                                special
+                        )
                     minWidth = 0
                     minimumWidth = 0
                     setPadding(
@@ -476,7 +641,12 @@ class KeyboardRootView(
                     0,
                     LayoutParams.MATCH_PARENT,
                     weight
-                )
+                ).apply {
+                    marginStart =
+                        dp(2)
+                    marginEnd =
+                        dp(2)
+                }
             )
         }
 
@@ -487,12 +657,14 @@ class KeyboardRootView(
             ) {
                 key(
                     "123",
-                    1.1f
+                    1.05f,
+                    true
                 ) {}
             } else {
                 key(
                     "ABC",
-                    1.1f
+                    1.05f,
+                    true
                 ) {
                     symbolMode = false
                     shifted = false
@@ -502,7 +674,8 @@ class KeyboardRootView(
         } else {
             key(
                 "?123",
-                1.1f
+                1.05f,
+                true
             ) {
                 symbolMode = true
                 shifted = false
@@ -511,9 +684,11 @@ class KeyboardRootView(
 
             key(
                 "⇧",
-                0.9f
+                0.80f,
+                shifted
             ) {
-                shifted = !shifted
+                shifted =
+                    !shifted
                 keyboardSurface.shifted =
                     shifted
             }
@@ -523,22 +698,30 @@ class KeyboardRootView(
             KeyboardEditorMode.EMAIL -> {
                 key(
                     "@",
-                    0.8f
+                    0.75f
                 ) {
                     callbacks
                         ?.onCharacter('@')
                 }
 
                 key(
-                    "space",
-                    2.2f
+                    "😀",
+                    0.78f
                 ) {
-                    callbacks?.onSpace()
+                    showEmojiPanel()
+                }
+
+                key(
+                    "space",
+                    2.55f
+                ) {
+                    callbacks
+                        ?.onSpace()
                 }
 
                 key(
                     ".",
-                    0.7f
+                    0.72f
                 ) {
                     callbacks
                         ?.onCharacter('.')
@@ -548,22 +731,30 @@ class KeyboardRootView(
             KeyboardEditorMode.URL -> {
                 key(
                     "/",
-                    0.8f
+                    0.72f
                 ) {
                     callbacks
                         ?.onCharacter('/')
                 }
 
                 key(
-                    "space",
-                    2.1f
+                    "😀",
+                    0.78f
                 ) {
-                    callbacks?.onSpace()
+                    showEmojiPanel()
+                }
+
+                key(
+                    "space",
+                    2.35f
+                ) {
+                    callbacks
+                        ?.onSpace()
                 }
 
                 key(
                     ".",
-                    0.7f
+                    0.72f
                 ) {
                     callbacks
                         ?.onCharacter('.')
@@ -573,7 +764,7 @@ class KeyboardRootView(
             KeyboardEditorMode.NUMBER -> {
                 key(
                     "-",
-                    0.9f
+                    0.85f
                 ) {
                     callbacks
                         ?.onCharacter('-')
@@ -581,7 +772,7 @@ class KeyboardRootView(
 
                 key(
                     ".",
-                    0.9f
+                    0.85f
                 ) {
                     callbacks
                         ?.onCharacter('.')
@@ -590,15 +781,31 @@ class KeyboardRootView(
 
             KeyboardEditorMode.TEXT -> {
                 key(
-                    "space",
-                    3.2f
+                    ",",
+                    0.70f
                 ) {
-                    callbacks?.onSpace()
+                    callbacks
+                        ?.onCharacter(',')
+                }
+
+                key(
+                    "😀",
+                    0.80f
+                ) {
+                    showEmojiPanel()
+                }
+
+                key(
+                    "space",
+                    3.35f
+                ) {
+                    callbacks
+                        ?.onSpace()
                 }
 
                 key(
                     ".",
-                    0.75f
+                    0.70f
                 ) {
                     callbacks
                         ?.onCharacter('.')
@@ -607,17 +814,12 @@ class KeyboardRootView(
         }
 
         key(
-            "⌫",
-            1f
-        ) {
-            callbacks?.onBackspace()
-        }
-
-        key(
             "↵",
-            1f
+            0.95f,
+            true
         ) {
-            callbacks?.onEnter()
+            callbacks
+                ?.onEnter()
         }
 
         return row
@@ -687,6 +889,74 @@ class KeyboardRootView(
             next
     }
 
+    private fun roundedDrawable(
+        color: Int,
+        radiusDp: Float,
+        strokeColor: Int? = null,
+        strokeDp: Int = 1
+    ): GradientDrawable =
+        GradientDrawable().apply {
+            shape =
+                GradientDrawable
+                    .RECTANGLE
+            cornerRadius =
+                radiusDp *
+                    density
+            setColor(
+                color
+            )
+
+            if (
+                strokeColor != null
+            ) {
+                setStroke(
+                    dp(strokeDp),
+                    strokeColor
+                )
+            }
+        }
+
+    private fun buttonBackground(
+        special: Boolean = false,
+        subtle: Boolean = false
+    ): StateListDrawable {
+        val normalColor =
+            when {
+                subtle ->
+                    theme.surfaceRaised
+                special ->
+                    theme.keySpecial
+                else ->
+                    theme.key
+            }
+
+        return StateListDrawable().apply {
+            addState(
+                intArrayOf(
+                    android.R.attr
+                        .state_pressed
+                ),
+                roundedDrawable(
+                    theme.keyPressed,
+                    theme.keyCornerDp,
+                    theme.accentSoft
+                )
+            )
+            addState(
+                intArrayOf(),
+                roundedDrawable(
+                    normalColor,
+                    theme.keyCornerDp,
+                    if (subtle) {
+                        theme.border
+                    } else {
+                        theme.border
+                    }
+                )
+            )
+        }
+    }
+
     fun setStatus(
         message: String?
     ) {
@@ -716,6 +986,16 @@ class KeyboardRootView(
                         text =
                             suggestion.display
                         isAllCaps = false
+                        setTextColor(
+                            theme.textPrimary
+                        )
+                        background =
+                            buttonBackground(
+                                special =
+                                    suggestion.kind ==
+                                        PredictionKind.SENTENCE,
+                                subtle = true
+                            )
                         minWidth =
                             when (
                                 suggestion.kind
@@ -793,6 +1073,15 @@ class KeyboardRootView(
                     Button(context).apply {
                         text = value
                         isAllCaps = false
+                        setTextColor(
+                            theme.textPrimary
+                        )
+                        background =
+                            buttonBackground(
+                                special =
+                                    index == 0,
+                                subtle = true
+                            )
                         minWidth = dp(72)
                         alpha =
                             0.75f +
@@ -819,17 +1108,515 @@ class KeyboardRootView(
     }
 
     fun showKeyboard() {
+        theme =
+            KeyboardThemes.byId(
+                Prefs.keyboardThemeId(
+                    context
+                )
+            )
+        setBackgroundColor(
+            theme.background
+        )
+        oneHandMode =
+            Prefs.oneHandMode(
+                context
+            )
         symbolMode =
             editorMode ==
                 KeyboardEditorMode.NUMBER
         shifted = false
         rebuildKeyboardPanel()
-        content.removeAllViews()
-        detachFromParent(
+        attachMainPanel(
             keyboardPanel
         )
+    }
+
+    fun setEditHistoryState(
+        canUndo: Boolean,
+        canRedo: Boolean
+    ) {
+        undoButton.isEnabled =
+            canUndo
+        redoButton.isEnabled =
+            canRedo
+        undoButton.alpha =
+            if (canUndo) 1f else 0.38f
+        redoButton.alpha =
+            if (canRedo) 1f else 0.38f
+    }
+
+    fun showEditTimeline(
+        entries: List<EditTimelineEntry>
+    ) {
+        val panel =
+            LinearLayout(context).apply {
+                orientation =
+                    VERTICAL
+                setPadding(
+                    dp(8),
+                    dp(8),
+                    dp(8),
+                    dp(8)
+                )
+            }
+
+        panel.addView(
+            TextView(context).apply {
+                text =
+                    "Autocorrect timeline · newest first"
+                textSize = 16f
+                setTextColor(
+                    Color.WHITE
+                )
+                setPadding(
+                    dp(4),
+                    dp(3),
+                    dp(4),
+                    dp(8)
+                )
+            }
+        )
+
+        if (entries.isEmpty()) {
+            panel.addView(
+                TextView(context).apply {
+                    text =
+                        "No KeySwiper correction has been recorded in this input session."
+                    setTextColor(
+                        Color.WHITE
+                    )
+                    setPadding(
+                        dp(4),
+                        dp(12),
+                        dp(4),
+                        dp(12)
+                    )
+                }
+            )
+        } else {
+            entries
+                .take(12)
+                .forEach { entry ->
+                    panel.addView(
+                        TextView(context).apply {
+                            text =
+                                "• " +
+                                    entry.source +
+                                    ": " +
+                                    entry.summary
+                            setTextColor(
+                                Color.WHITE
+                            )
+                            textSize = 13f
+                            setPadding(
+                                dp(4),
+                                dp(5),
+                                dp(4),
+                                dp(5)
+                            )
+                        }
+                    )
+                }
+        }
+
+        val actions =
+            LinearLayout(context).apply {
+                orientation =
+                    HORIZONTAL
+            }
+
+        actions.addView(
+            Button(context).apply {
+                text = "↶ Undo"
+                isAllCaps = false
+                isEnabled =
+                    undoButton.isEnabled
+                setOnClickListener {
+                    callbacks
+                        ?.onUndoEdit()
+                }
+            },
+            LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        actions.addView(
+            Button(context).apply {
+                text = "↷ Redo"
+                isAllCaps = false
+                isEnabled =
+                    redoButton.isEnabled
+                setOnClickListener {
+                    callbacks
+                        ?.onRedoEdit()
+                }
+            },
+            LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        actions.addView(
+            Button(context).apply {
+                text = "Keyboard"
+                isAllCaps = false
+                setOnClickListener {
+                    showKeyboard()
+                }
+            },
+            LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        panel.addView(actions)
+        swapContent(panel)
+    }
+
+    fun showDeveloperPanel() {
+        val panel =
+            LinearLayout(context).apply {
+                orientation =
+                    VERTICAL
+                setPadding(
+                    dp(3),
+                    dp(3),
+                    dp(3),
+                    dp(3)
+                )
+            }
+
+        fun addRow(
+            keys: List<Pair<String, () -> Unit>>
+        ) {
+            val row =
+                LinearLayout(context).apply {
+                    orientation =
+                        HORIZONTAL
+                }
+
+            keys.forEach {
+                    (label, action) ->
+                row.addView(
+                    Button(context).apply {
+                        text = label
+                        isAllCaps = false
+                        textSize =
+                            if (
+                                label.length > 4
+                            ) {
+                                11f
+                            } else {
+                                14f
+                            }
+                        minWidth = 0
+                        minimumWidth = 0
+                        setPadding(
+                            dp(1),
+                            0,
+                            dp(1),
+                            0
+                        )
+                        setOnClickListener {
+                            action()
+                        }
+                    },
+                    LayoutParams(
+                        0,
+                        dp(45),
+                        1f
+                    )
+                )
+            }
+
+            panel.addView(row)
+        }
+
+        fun textKey(
+            label: String,
+            value: String = label
+        ): Pair<String, () -> Unit> =
+            label to {
+                callbacks
+                    ?.onDeveloperText(
+                        value
+                    )
+            }
+
+        fun keyCode(
+            label: String,
+            code: Int,
+            ctrl: Boolean = false
+        ): Pair<String, () -> Unit> =
+            label to {
+                callbacks
+                    ?.onDeveloperKeyCode(
+                        code,
+                        ctrl
+                    )
+            }
+
+        addRow(
+            listOf(
+                keyCode(
+                    "ESC",
+                    android.view.KeyEvent
+                        .KEYCODE_ESCAPE
+                ),
+                keyCode(
+                    "TAB",
+                    android.view.KeyEvent
+                        .KEYCODE_TAB
+                ),
+                textKey("{"),
+                textKey("}"),
+                textKey("["),
+                textKey("]"),
+                textKey("("),
+                textKey(")")
+            )
+        )
+
+        addRow(
+            listOf(
+                textKey("<"),
+                textKey(">"),
+                textKey("/"),
+                textKey("\\"),
+                textKey("|"),
+                textKey("~"),
+                textKey("`"),
+                textKey("\""),
+                textKey("'")
+            )
+        )
+
+        addRow(
+            listOf(
+                textKey("="),
+                textKey("+"),
+                textKey("-"),
+                textKey("_"),
+                textKey(":"),
+                textKey(";"),
+                textKey("@"),
+                textKey("#"),
+                textKey("$")
+            )
+        )
+
+        addRow(
+            listOf(
+                keyCode(
+                    "←",
+                    android.view.KeyEvent
+                        .KEYCODE_DPAD_LEFT
+                ),
+                keyCode(
+                    "↑",
+                    android.view.KeyEvent
+                        .KEYCODE_DPAD_UP
+                ),
+                keyCode(
+                    "↓",
+                    android.view.KeyEvent
+                        .KEYCODE_DPAD_DOWN
+                ),
+                keyCode(
+                    "→",
+                    android.view.KeyEvent
+                        .KEYCODE_DPAD_RIGHT
+                ),
+                keyCode(
+                    "HOME",
+                    android.view.KeyEvent
+                        .KEYCODE_MOVE_HOME
+                ),
+                keyCode(
+                    "END",
+                    android.view.KeyEvent
+                        .KEYCODE_MOVE_END
+                )
+            )
+        )
+
+        addRow(
+            listOf(
+                keyCode(
+                    "Ctrl+A",
+                    android.view.KeyEvent
+                        .KEYCODE_A,
+                    true
+                ),
+                keyCode(
+                    "Ctrl+C",
+                    android.view.KeyEvent
+                        .KEYCODE_C,
+                    true
+                ),
+                keyCode(
+                    "Ctrl+V",
+                    android.view.KeyEvent
+                        .KEYCODE_V,
+                    true
+                ),
+                keyCode(
+                    "Ctrl+X",
+                    android.view.KeyEvent
+                        .KEYCODE_X,
+                    true
+                ),
+                keyCode(
+                    "Ctrl+Z",
+                    android.view.KeyEvent
+                        .KEYCODE_Z,
+                    true
+                ),
+                keyCode(
+                    "Ctrl+Y",
+                    android.view.KeyEvent
+                        .KEYCODE_Y,
+                    true
+                )
+            )
+        )
+
+        val bottom =
+            LinearLayout(context).apply {
+                orientation =
+                    HORIZONTAL
+            }
+
+        bottom.addView(
+            Button(context).apply {
+                text = "ABC"
+                isAllCaps = false
+                setOnClickListener {
+                    showKeyboard()
+                }
+            },
+            LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        bottom.addView(
+            Button(context).apply {
+                text =
+                    "↔ " +
+                        oneHandMode.label
+                isAllCaps = false
+                setOnClickListener {
+                    cycleOneHandMode()
+                    showDeveloperPanel()
+                }
+            },
+            LayoutParams(
+                0,
+                dp(48),
+                2f
+            )
+        )
+
+        panel.addView(bottom)
+
+        oneHandMode =
+            Prefs.oneHandMode(
+                context
+            )
+
+        themeAuxiliaryTree(
+            panel
+        )
+        attachMainPanel(panel)
+    }
+
+    private fun cycleOneHandMode() {
+        oneHandMode =
+            Prefs.oneHandMode(
+                context
+            ).next()
+
+        Prefs.setOneHandMode(
+            context,
+            oneHandMode
+        )
+
+        setStatus(
+            "One-hand mode: " +
+                oneHandMode.label
+        )
+        showKeyboard()
+    }
+
+    private fun attachMainPanel(
+        view: View
+    ) {
+        content.removeAllViews()
+        detachFromParent(view)
+
+        oneHandMode =
+            Prefs.oneHandMode(
+                context
+            )
+
+        val targetWidth =
+            if (
+                oneHandMode ==
+                OneHandMode.OFF
+            ) {
+                LayoutParams.MATCH_PARENT
+            } else {
+                (
+                    resources
+                        .displayMetrics
+                        .widthPixels *
+                        0.84f
+                    ).toInt()
+            }
+
+        val params =
+            FrameLayout.LayoutParams(
+                targetWidth,
+                LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity =
+                    when (oneHandMode) {
+                        OneHandMode.LEFT ->
+                            Gravity.START
+                        OneHandMode.RIGHT ->
+                            Gravity.END
+                        OneHandMode.OFF ->
+                            Gravity.CENTER_HORIZONTAL
+                    }
+            }
+
+        view.background =
+            roundedDrawable(
+                theme.background,
+                theme.panelCornerDp,
+                theme.border
+            )
+
+        content.setPadding(
+            dp(2),
+            dp(2),
+            dp(2),
+            dp(2)
+        )
+
         content.addView(
-            keyboardPanel
+            view,
+            params
         )
     }
 
@@ -1367,6 +2154,10 @@ class KeyboardRootView(
                     Button(context).apply {
                         text = emoji
                         textSize = 20f
+                        background =
+                            buttonBackground(
+                                subtle = true
+                            )
                         setPadding(
                             0,
                             0,
@@ -1394,6 +2185,14 @@ class KeyboardRootView(
         panel.addView(
             Button(context).apply {
                 text = "Back to keyboard"
+                isAllCaps = false
+                setTextColor(
+                    theme.accent
+                )
+                background =
+                    buttonBackground(
+                        special = true
+                    )
                 setOnClickListener {
                     showKeyboard()
                 }
@@ -1500,7 +2299,71 @@ class KeyboardRootView(
     ) {
         content.removeAllViews()
         detachFromParent(view)
+        themeAuxiliaryTree(
+            view
+        )
+
+        view.background =
+            roundedDrawable(
+                theme.surface,
+                theme.panelCornerDp,
+                theme.border
+            )
+
         content.addView(view)
+    }
+
+    private fun themeAuxiliaryTree(
+        view: View
+    ) {
+        when (view) {
+            is EditText -> {
+                view.setTextColor(
+                    theme.textPrimary
+                )
+                view.setHintTextColor(
+                    theme.textSecondary
+                )
+                view.backgroundTintList =
+                    android.content.res
+                        .ColorStateList
+                        .valueOf(
+                            theme.accentSoft
+                        )
+            }
+
+            is Button -> {
+                view.isAllCaps = false
+                view.setTextColor(
+                    theme.textPrimary
+                )
+                view.background =
+                    buttonBackground(
+                        subtle = true
+                    )
+            }
+
+            is TextView -> {
+                view.setTextColor(
+                    theme.textPrimary
+                )
+            }
+        }
+
+        if (
+            view is ViewGroup
+        ) {
+            for (
+                index in 0 until
+                    view.childCount
+            ) {
+                themeAuxiliaryTree(
+                    view.getChildAt(
+                        index
+                    )
+                )
+            }
+        }
     }
 
     private fun detachFromParent(

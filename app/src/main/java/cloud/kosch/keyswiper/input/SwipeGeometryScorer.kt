@@ -21,10 +21,26 @@ object KeyboardGeometry {
         profile.letterRows.forEachIndexed { rowIndex, row ->
             val index = row.indexOf(c)
             if (index >= 0) {
-                val slotWidth = 1f / 10f
-                val rowWidth = row.length * slotWidth
-                val rowStart = (1f - rowWidth) / 2f
-                val baseX = rowStart + (index + 0.5f) * slotWidth
+                val displayedKeys =
+                    row.length +
+                        if (
+                            rowIndex ==
+                            profile
+                                .letterRows
+                                .lastIndex
+                        ) {
+                            1
+                        } else {
+                            0
+                        }
+
+                val baseX =
+                    (
+                        index +
+                            0.5f
+                        ) /
+                        displayedKeys
+                            .coerceAtLeast(1)
                 val baseY = when (rowIndex) {
                     0 -> 1f / 6f
                     1 -> 0.5f

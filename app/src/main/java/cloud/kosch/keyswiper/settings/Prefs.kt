@@ -2,6 +2,8 @@ package cloud.kosch.keyswiper.settings
 
 import android.content.Context
 import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
+import cloud.kosch.keyswiper.ui.KeyboardThemes
+import cloud.kosch.keyswiper.ui.OneHandMode
 import java.util.Locale
 
 object Prefs {
@@ -12,6 +14,8 @@ object Prefs {
     private const val SEMANTIC_DEPTH = "semantic_prediction_depth"
     private const val KEYBOARD_LAYOUT = "keyboard_layout"
     private const val CLIPBOARD_EXPIRY_MINUTES = "clipboard_expiry_minutes"
+    private const val ONE_HAND_MODE = "one_hand_mode"
+    private const val KEYBOARD_THEME = "keyboard_theme"
 
     fun targetLanguage(context: Context): String =
         context.getSharedPreferences(
@@ -272,6 +276,91 @@ object Prefs {
                     10L,
                     1440L
                 )
+            )
+            .apply()
+    }
+    fun oneHandMode(
+        context: Context
+    ): OneHandMode {
+        val stored =
+            context
+                .getSharedPreferences(
+                    FILE,
+                    Context.MODE_PRIVATE
+                )
+                .getString(
+                    ONE_HAND_MODE,
+                    OneHandMode.OFF.name
+                )
+
+        return OneHandMode.entries
+            .firstOrNull {
+                it.name == stored
+            }
+            ?: OneHandMode.OFF
+    }
+
+    fun setOneHandMode(
+        context: Context,
+        mode: OneHandMode
+    ) {
+        context
+            .getSharedPreferences(
+                FILE,
+                Context.MODE_PRIVATE
+            )
+            .edit()
+            .putString(
+                ONE_HAND_MODE,
+                mode.name
+            )
+            .apply()
+    }
+    fun keyboardThemeId(
+        context: Context
+    ): String =
+        context
+            .getSharedPreferences(
+                FILE,
+                Context.MODE_PRIVATE
+            )
+            .getString(
+                KEYBOARD_THEME,
+                KeyboardThemes
+                    .matrixCyber
+                    .id
+            )
+            ?.takeIf { stored ->
+                KeyboardThemes
+                    .all
+                    .any {
+                        it.id ==
+                            stored
+                    }
+            }
+            ?: KeyboardThemes
+                .matrixCyber
+                .id
+
+    fun setKeyboardThemeId(
+        context: Context,
+        value: String
+    ) {
+        val theme =
+            KeyboardThemes
+                .byId(
+                    value
+                )
+
+        context
+            .getSharedPreferences(
+                FILE,
+                Context.MODE_PRIVATE
+            )
+            .edit()
+            .putString(
+                KEYBOARD_THEME,
+                theme.id
             )
             .apply()
     }
