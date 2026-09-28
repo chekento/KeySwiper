@@ -32,6 +32,49 @@ class CodeSwitchLanguageResolverTest {
     }
 
     @Test
+    fun predictionLocksToMostRecentInputLanguage() {
+        val lanes =
+            CodeSwitchLanguageResolver.resolveForPrediction(
+                contextText = "Das ist eine gute Tastatur und ich ",
+                detectedLanguages = listOf("en", "de"),
+                currentToken = "mö",
+                fallbackLanguage = "en"
+            )
+
+        assertEquals(1, lanes.size)
+        assertEquals("de", lanes.first().tag)
+    }
+
+    @Test
+    fun predictionCanSwitchLanguageFromRecentInput() {
+        val lanes =
+            CodeSwitchLanguageResolver.resolveForPrediction(
+                contextText = "Das Projekt is a good keyboard and this ",
+                detectedLanguages = listOf("de", "en"),
+                currentToken = "wou",
+                fallbackLanguage = "de"
+            )
+
+        assertEquals("en", lanes.first().tag)
+    }
+
+    @Test
+    fun rejectsKnownForeignSuggestionForLockedLanguage() {
+        assertTrue(
+            CodeSwitchLanguageResolver.matchesLanguage(
+                text = "keyboard suggestions",
+                languageTag = "en"
+            )
+        )
+        assertTrue(
+            !CodeSwitchLanguageResolver.matchesLanguage(
+                text = "tastatur vorschläge",
+                languageTag = "en"
+            )
+        )
+    }
+
+    @Test
     fun registryRecognizesSharedTechnicalVocabulary() {
         val languages = LanguagePackRegistry.languagesForWord("android")
 

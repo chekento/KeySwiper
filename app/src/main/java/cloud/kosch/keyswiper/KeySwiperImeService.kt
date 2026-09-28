@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.DeleteGesture
 import android.view.inputmethod.EditorInfo
@@ -58,6 +59,7 @@ import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardEditorMode
 import cloud.kosch.keyswiper.ui.KeyboardEditorModeResolver
+import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
 import cloud.kosch.keyswiper.ui.KeyboardRootView
 import cloud.kosch.keyswiper.ui.KeyboardThemes
 import cloud.kosch.keyswiper.voice.VoiceEditCommand
@@ -89,6 +91,7 @@ class KeySwiperImeService : InputMethodService() {
     private var root: KeyboardRootView? = null
     private var sensitiveField = false
     private var languageHints: List<String> = emptyList()
+    private var languageDetectionGeneration = 0L
     private var predictionInputMode = PredictionInputMode.GENERAL
     private var predictionGeneration = 0L
     private var currentPredictions: List<PredictionSuggestion> = emptyList()
@@ -322,6 +325,28 @@ class KeySwiperImeService : InputMethodService() {
             styleImeSystemBars()
             root = view
             view.callbacks = callbacks
+
+            view.setOnApplyWindowInsetsListener {
+                    _,
+                    insets ->
+                val bottom =
+                    if (
+                        Build.VERSION.SDK_INT >=
+                        Build.VERSION_CODES.R
+                    ) {
+                        insets.getInsets(
+                            WindowInsets.Type.navigationBars()
+                        ).bottom
+                    } else {
+                        @Suppress("DEPRECATION")
+                        insets.systemWindowInsetBottom
+                    }
+
+                view.setSystemBottomInset(bottom)
+                insets
+            }
+            view.requestApplyInsets()
+
             refreshPrivacyState()
             refreshPredictionBar()
             refreshEditHistoryState()
@@ -337,6 +362,7 @@ class KeySwiperImeService : InputMethodService() {
         sensitiveField = SecurityPolicy.isSensitive(attribute)
         predictionInputMode = PredictionContextClassifier.classify(attribute)
         languageHints = emptyList()
+        languageDetectionGeneration++
         predictionGeneration++
         editTimeline.clear()
         clearSwipeState()
@@ -424,6 +450,7 @@ class KeySwiperImeService : InputMethodService() {
         mainHandler.removeCallbacksAndMessages(null)
         voiceController.stop()
         languageHints = emptyList()
+        languageDetectionGeneration++
         predictionInputMode = PredictionInputMode.GENERAL
         editTimeline.clear()
         clearSwipeState()
@@ -1911,9 +1938,26 @@ class KeySwiperImeService : InputMethodService() {
         val snapshot = currentContextSnapshot()
         val before = snapshot.beforeCursor
 
+        val layoutLanguage =
+            KeyboardLayoutProfiles.byId(
+                Prefs.keyboardLayoutId(this)
+            ).languageTag
+        val inputLanguage =
+            CodeSwitchLanguageResolver.primaryInputLanguage(
+                contextText = before,
+                detectedLanguages = languageHints,
+                currentToken = currentToken(before),
+                fallbackLanguage = layoutLanguage
+            )
+
         val context = PredictionContext(
             beforeCursor = before,
-            languageHints = languageHints,
+            languageHints =
+                (
+                    listOfNotNull(inputLanguage) +
+                        languageHints
+                ).distinct(),
+            inputLanguageTag = inputLanguage,
             inputMode = predictionInputMode,
             maxSemanticTokens = Prefs.semanticPredictionDepth(this),
             surrounding = snapshot
@@ -1944,7 +1988,9 @@ class KeySwiperImeService : InputMethodService() {
                         val merged = predictionEngine.mergeNeural(
                             base = base,
                             neural = neural,
-                            maxSuggestions = 6
+                            maxSuggestions = 6,
+                            inputLanguageTag =
+                                context.inputLanguageTag
                         )
                         currentPredictions = merged
                         root?.setPredictions(merged)
@@ -2480,6 +2526,26 @@ class KeySwiperImeService : InputMethodService() {
         imeWindow.navigationBarColor =
             theme.background
 
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.P
+        ) {
+            imeWindow.navigationBarDividerColor =
+                theme.background
+        }
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.R
+        ) {
+            imeWindow.insetsController
+                ?.setSystemBarsAppearance(
+                    0,
+                    android.view.WindowInsetsController
+                        .APPEARANCE_LIGHT_NAVIGATION_BARS
+                )
+        }
+
         @Suppress("DEPRECATION")
         run {
             imeWindow.decorView.systemUiVisibility =
@@ -2507,9 +2573,27 @@ class KeySwiperImeService : InputMethodService() {
     private fun refreshLanguageHints(text: String) {
         if (sensitiveField || text.isBlank()) return
 
-        translationEngine.identifyLikelyLanguages(text) { detected ->
+        val requestGeneration =
+            ++languageDetectionGeneration
+        val sample =
+            text.takeLast(700)
+
+        translationEngine.identifyLikelyLanguages(sample) { detected ->
+            if (
+                requestGeneration !=
+                languageDetectionGeneration
+            ) {
+                return@identifyLikelyLanguages
+            }
+
             if (detected.isNotEmpty()) {
-                languageHints = detected
+                languageHints =
+                    detected
+                        .map {
+                            it.substringBefore('-')
+                                .lowercase()
+                        }
+                        .distinct()
                 refreshPredictionBar()
             }
         }

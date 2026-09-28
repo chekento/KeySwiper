@@ -40,17 +40,18 @@ class ContextPredictionEngine(
     fun predict(
         beforeCursor: String,
         languageHints: List<String>,
-        maxSuggestions: Int = 5
+        maxSuggestions: Int = 5,
+        fallbackLanguage: String? = null
     ): List<PredictionSuggestion> {
         val partial = currentToken(beforeCursor)
         val completedWords = completedWords(beforeCursor)
         val contextWords = completedWords.takeLast(5)
 
-        val lanes = CodeSwitchLanguageResolver.resolve(
+        val lanes = CodeSwitchLanguageResolver.resolveForPrediction(
             contextText = beforeCursor,
             detectedLanguages = languageHints,
             currentToken = partial,
-            maxLanes = 3
+            fallbackLanguage = fallbackLanguage
         )
 
         val scored = mutableMapOf<String, ScoredSuggestion>()
@@ -152,6 +153,9 @@ class ContextPredictionEngine(
         lanes: List<LanguageLane>
     ) {
         learningStore.learnedFollowers(contextWords, limit = 12)
+            .filter { (candidate, _) ->
+                matchesActiveLanguage(candidate, lanes)
+            }
             .forEach { (candidate, learnedScore) ->
                 add(
                     scored,
@@ -301,6 +305,18 @@ class ContextPredictionEngine(
                 )
             }
         }
+    }
+
+    private fun matchesActiveLanguage(
+        candidate: String,
+        lanes: List<LanguageLane>
+    ): Boolean {
+        val primary = lanes.firstOrNull()?.tag ?: return true
+
+        return CodeSwitchLanguageResolver.matchesLanguage(
+            text = candidate,
+            languageTag = primary
+        )
     }
 
     private fun add(

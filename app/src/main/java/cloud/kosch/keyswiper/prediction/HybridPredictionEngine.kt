@@ -1,5 +1,7 @@
 package cloud.kosch.keyswiper.prediction
 
+import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
+
 class HybridPredictionEngine(
     private val instant: ContextPredictionEngine,
     private val semantic: PredictionProvider
@@ -12,7 +14,8 @@ class HybridPredictionEngine(
         val instantSuggestions = instant.predict(
             beforeCursor = context.beforeCursor,
             languageHints = context.languageHints,
-            maxSuggestions = maxSuggestions
+            maxSuggestions = maxSuggestions,
+            fallbackLanguage = context.inputLanguageTag
         )
 
         val semanticSuggestions = semantic.predict(
@@ -40,9 +43,22 @@ class HybridPredictionEngine(
     fun mergeNeural(
         base: List<PredictionSuggestion>,
         neural: List<PredictionSuggestion>,
-        maxSuggestions: Int = 6
+        maxSuggestions: Int = 6,
+        inputLanguageTag: String? = null
     ): List<PredictionSuggestion> {
         if (neural.isEmpty()) return base.take(maxSuggestions)
+
+        val languageSafeNeural =
+            inputLanguageTag
+                ?.let { tag ->
+                    neural.filter {
+                        CodeSwitchLanguageResolver.matchesLanguage(
+                            text = it.commitText,
+                            languageTag = tag
+                        )
+                    }
+                }
+                ?: neural
 
         val words = base
             .filter {
@@ -51,7 +67,7 @@ class HybridPredictionEngine(
             }
             .take(3)
 
-        val neuralUnique = neural
+        val neuralUnique = languageSafeNeural
             .distinctBy { it.commitText.lowercase() }
             .take(2)
 

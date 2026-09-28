@@ -263,7 +263,7 @@ class SettingsActivity : Activity() {
 
         content.addView(TextView(this).apply {
             text =
-                "Matrix Cyber is the new default. The theme system is profile-based so additional themes can be added without rewriting the keyboard."
+                "Choose from Matrix Cyber, OLED Obsidian, Neon Tokyo, Aurora Glass, Ember Copper and Kawaii Cyber. Themes change visual surfaces only; input geometry and prediction logic remain consistent."
             textSize = 12f
             setPadding(0, dp(3), 0, dp(8))
         })

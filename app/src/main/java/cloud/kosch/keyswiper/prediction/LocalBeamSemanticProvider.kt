@@ -129,13 +129,13 @@ class LocalBeamSemanticProvider(
         val history = extractWords(contextSource).takeLast(5)
         if (history.isEmpty()) return emptyList()
 
-        val languages = CodeSwitchLanguageResolver.resolve(
+        val languages = CodeSwitchLanguageResolver.resolveForPrediction(
             contextText = snapshot.currentParagraph.ifBlank {
                 context.beforeCursor
             },
             detectedLanguages = context.languageHints,
             currentToken = "",
-            maxLanes = 3
+            fallbackLanguage = context.inputLanguageTag
         ).map { it.tag }
         val depth = context.maxSemanticTokens.coerceIn(2, 6)
         val afterWords = extractWords(snapshot.currentSentenceAfter).take(4)
@@ -251,6 +251,9 @@ class LocalBeamSemanticProvider(
         val scored = mutableMapOf<String, Int>()
 
         memory.learnedFollowers(history, limit = 12)
+            .filter { (word, _) ->
+                matchesPredictionLanguage(word, languages)
+            }
             .forEach { (word, score) ->
                 scored[word] = maxOf(scored[word] ?: 0, 1100 + score)
             }
@@ -278,9 +281,27 @@ class LocalBeamSemanticProvider(
         }
 
         return scored.entries
+            .filter {
+                matchesPredictionLanguage(
+                    it.key,
+                    languages
+                )
+            }
             .sortedByDescending { it.value }
             .map { it.key }
             .take(14)
+    }
+
+    private fun matchesPredictionLanguage(
+        text: String,
+        languages: List<String>
+    ): Boolean {
+        val primary = languages.firstOrNull() ?: return true
+
+        return CodeSwitchLanguageResolver.matchesLanguage(
+            text = text,
+            languageTag = primary
+        )
     }
 
     private fun normalizedScore(

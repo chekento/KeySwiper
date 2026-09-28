@@ -40,6 +40,7 @@ data class PredictionSuggestion(
 data class PredictionContext(
     val beforeCursor: String,
     val languageHints: List<String>,
+    val inputLanguageTag: String? = null,
     val inputMode: PredictionInputMode = PredictionInputMode.GENERAL,
     val maxSemanticTokens: Int = 4,
     val surrounding: SurroundingContextSnapshot = SurroundingContextSnapshot(
