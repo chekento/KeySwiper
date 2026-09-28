@@ -18,6 +18,8 @@ Compact input, language-locked prediction, stylus intent and five new themes:
 - broad multilingual lanes remain available to swipe decoding for intentional code-switching
 - added five selectable themes: OLED Obsidian, Neon Tokyo, Aurora Glass, Ember Copper and Kawaii Cyber
 - added unit tests for stylus tap-vs-swipe intent, one-third keyboard sizing and language-locked prediction
+- moved the Android 15 runtime smoke test from Google ATD to lean AOSP ATD after repeated unrelated Google/phone service ANRs stole test focus
+- hardened the debug smoke host with repeated IME show requests and focus recovery so CI tests KeySwiper rather than transient system-dialog churn
 - advanced Android package version to 0.17.0-alpha17 / build 17
 
 ## 0.16.0-alpha16 — 2026-09-28

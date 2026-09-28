@@ -66,7 +66,7 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 ### 🧪 Runtime smoke coverage
 
-- CI installs the real debug APK on an Android 15 Google ATD emulator.
+- CI installs the real debug APK on a lean Android 15 AOSP ATD emulator.
 - A shell-driven harness enables and selects KeySwiper from outside the app process, then opens a debug-only text host and confirms Android reports KeySwiper as the current visible IME.
 - The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
 - Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.

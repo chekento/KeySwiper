@@ -20,7 +20,7 @@ capture_diagnostics() {
   adb shell dumpsys window > "$OUT_DIR/dumpsys-window.txt" 2>&1 || true
   adb shell dumpsys activity activities > "$OUT_DIR/dumpsys-activity.txt" 2>&1 || true
   adb logcat -d -v threadtime > "$OUT_DIR/logcat.txt" 2>&1 || true
-  grep -E "AndroidRuntime|FATAL EXCEPTION|$PACKAGE|InputMethod|TestRunner"     "$OUT_DIR/logcat.txt" > "$OUT_DIR/logcat-keyswiper.txt" 2>/dev/null || true
+  grep -E "AndroidRuntime|FATAL EXCEPTION|ANR in|failed to complete startup|$PACKAGE|InputMethod|TestRunner"     "$OUT_DIR/logcat.txt" > "$OUT_DIR/logcat-keyswiper.txt" 2>/dev/null || true
 }
 
 if [[ ! -f "$APK_PATH" ]]; then
@@ -29,8 +29,29 @@ if [[ ! -f "$APK_PATH" ]]; then
 fi
 
 adb wait-for-device
+
+log "Waiting for Android framework readiness"
+BOOTED=""
+for _ in $(seq 1 90); do
+  BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+  [[ "$BOOTED" == "1" ]] && break
+  sleep 1
+done
+
+if [[ "$BOOTED" != "1" ]]; then
+  echo "Android did not report sys.boot_completed=1." >&2
+  exit 1
+fi
+
 adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
 adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+# Automated test images can surface unrelated framework crash/ANR dialogs while
+# background services settle. They steal focus from the text host and make IME
+# visibility assertions meaningless, so suppress system error dialogs in CI.
+adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+adb shell settings put global show_first_crash_dialog 0 >/dev/null 2>&1 || true
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
 
 log "Installing debug APK"
 adb install -r "$APK_PATH" | tee "$OUT_DIR/install.txt"
@@ -59,7 +80,7 @@ adb shell ime enable "$SERVICE" | tee "$OUT_DIR/ime-enable.txt"
 adb shell ime set "$SERVICE" | tee "$OUT_DIR/ime-set.txt"
 
 SELECTED=""
-for _ in $(seq 1 20); do
+for _ in $(seq 1 30); do
   SELECTED="$(adb shell settings get secure default_input_method | tr -d '\r' || true)"
   [[ "$SELECTED" == "$SERVICE" ]] && break
   sleep 1
@@ -71,15 +92,40 @@ if [[ "$SELECTED" != "$SERVICE" ]]; then
 fi
 
 log "Launching debug-only focused text host"
+set +e
 HOST_LAUNCH="$(adb shell am start -W -n "$HOST" 2>&1 | tr -d '\r')"
+HOST_LAUNCH_CODE=$?
+set -e
 printf '%s\n' "$HOST_LAUNCH" | tee "$OUT_DIR/host-launch.txt"
-if ! grep -q "Status: ok" "$OUT_DIR/host-launch.txt"; then
-  echo "Smoke host did not launch successfully." >&2
+printf '%s\n' "$HOST_LAUNCH_CODE" > "$OUT_DIR/host-launch-exit-code.txt"
+
+HOST_READY=0
+for attempt in $(seq 1 30); do
+  ACTIVITY_STATE="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' || true)"
+  printf '%s\n' "$ACTIVITY_STATE" > "$OUT_DIR/dumpsys-activity-live.txt"
+
+  if grep -Fq "$HOST" <<<"$ACTIVITY_STATE" &&
+     grep -Eq "topResumedActivity=.*$PACKAGE|ResumedActivity:.*$PACKAGE" <<<"$ACTIVITY_STATE"; then
+    HOST_READY=1
+    break
+  fi
+
+  # Reassert the host if a transient system window took focus during emulator startup.
+  if (( attempt % 5 == 0 )); then
+    adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+    adb shell am start -n "$HOST" >/dev/null 2>&1 || true
+  fi
+
+  sleep 1
+done
+
+if [[ "$HOST_READY" -ne 1 ]]; then
+  echo "Smoke host never became the resumed activity." >&2
   exit 1
 fi
 
 VISIBLE=0
-for _ in $(seq 1 45); do
+for attempt in $(seq 1 60); do
   STATE="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r' || true)"
   printf '%s\n' "$STATE" > "$OUT_DIR/dumpsys-input_method-live.txt"
 
@@ -87,7 +133,8 @@ for _ in $(seq 1 45); do
   CURRENT_OK=0
   VISIBLE_OK=0
 
-  if grep -Fq "mCurId=$SERVICE" <<<"$STATE" || grep -Fq "mCurMethodId=$SERVICE" <<<"$STATE"; then
+  if grep -Fq "mCurId=$SERVICE" <<<"$STATE" ||
+     grep -Fq "mCurMethodId=$SERVICE" <<<"$STATE"; then
     CURRENT_OK=1
   fi
 
@@ -101,6 +148,14 @@ for _ in $(seq 1 45); do
     VISIBLE=1
     printf '%s\n' "$PID" > "$OUT_DIR/keyswiper-pid.txt"
     break
+  fi
+
+  # The debug host independently retries showSoftInput. Reassert focus occasionally
+  # so the smoke test survives benign emulator focus churn without masking a real
+  # KeySwiper process crash.
+  if (( attempt % 10 == 0 )); then
+    adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
+    adb shell am start -n "$HOST" >/dev/null 2>&1 || true
   fi
 
   sleep 1

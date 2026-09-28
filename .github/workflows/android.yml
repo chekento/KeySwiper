@@ -65,7 +65,7 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          target: google_atd
+          target: aosp_atd
           emulator-boot-timeout: 900
           disable-spellchecker: true
           profile: pixel_2

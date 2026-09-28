@@ -11,17 +11,22 @@ import android.widget.FrameLayout
 class ImeSmokeHostActivity : Activity() {
 
     private lateinit var input: EditText
+    private var imeRequestGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+        )
 
         input = EditText(this).apply {
             id = View.generateViewId()
             hint = "KeySwiper IME smoke test"
             setSingleLine(false)
             minLines = 4
+            isFocusable = true
             isFocusableInTouchMode = true
         }
 
@@ -42,16 +47,48 @@ class ImeSmokeHostActivity : Activity() {
         input.requestFocus()
     }
 
+    override fun onResume() {
+        super.onResume()
+        requestImeRepeatedly()
+    }
+
+    override fun onPause() {
+        imeRequestGeneration++
+        super.onPause()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (!hasFocus) return
 
-        input.postDelayed(
-            {
-                getSystemService(InputMethodManager::class.java)
-                    ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
-            },
-            450L
-        )
+        if (hasFocus) {
+            requestImeRepeatedly()
+        } else {
+            imeRequestGeneration++
+        }
+    }
+
+    private fun requestImeRepeatedly() {
+        val generation = ++imeRequestGeneration
+
+        repeat(8) { attempt ->
+            input.postDelayed(
+                {
+                    if (
+                        generation != imeRequestGeneration ||
+                        !hasWindowFocus()
+                    ) {
+                        return@postDelayed
+                    }
+
+                    input.requestFocus()
+                    getSystemService(InputMethodManager::class.java)
+                        ?.showSoftInput(
+                            input,
+                            InputMethodManager.SHOW_IMPLICIT
+                        )
+                },
+                250L + attempt * 500L
+            )
+        }
     }
 }
