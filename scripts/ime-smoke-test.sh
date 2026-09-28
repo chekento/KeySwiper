@@ -50,6 +50,10 @@ trap cleanup EXIT
 
 adb logcat -c || true
 
+# Start from a stopped package before selecting it as the active IME. Force-stopping
+# an already-selected IME makes Android fall back to another keyboard.
+adb shell am force-stop "$PACKAGE" || true
+
 log "Enabling KeySwiper IME"
 adb shell ime enable "$SERVICE" | tee "$OUT_DIR/ime-enable.txt"
 adb shell ime set "$SERVICE" | tee "$OUT_DIR/ime-set.txt"
@@ -65,9 +69,6 @@ if [[ "$SELECTED" != "$SERVICE" ]]; then
   echo "KeySwiper was not selected. Current default IME: $SELECTED" >&2
   exit 1
 fi
-
-# Starting from a stopped package catches cold-start and service rebinding problems.
-adb shell am force-stop "$PACKAGE" || true
 
 log "Launching debug-only focused text host"
 HOST_LAUNCH="$(adb shell am start -W -n "$HOST" 2>&1 | tr -d '\r')"
