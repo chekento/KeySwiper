@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
@@ -72,6 +73,7 @@ class KeyboardSurface(
     private var pointerKind = PointerKind.TOUCH
     private var dragging = false
     private var gestureActive = false
+    private var activePointerId = -1
     private var gestureCancelled = false
     private var pressedToken: String? = null
     private var downToken: String? = null
@@ -355,22 +357,56 @@ class KeyboardSurface(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.pointerCount == 0) return false
         val density = resources.displayMetrics.density.coerceAtLeast(0.5f)
+        var action = event.actionMasked
+        var pointerIndex = if (action == MotionEvent.ACTION_DOWN) event.actionIndex
+            else event.findPointerIndex(activePointerId)
 
-        when (event.actionMasked) {
+        if (action == MotionEvent.ACTION_POINTER_DOWN) {
+            val incoming = event.getToolType(event.actionIndex)
+            if (incoming == MotionEvent.TOOL_TYPE_STYLUS || incoming == MotionEvent.TOOL_TYPE_ERASER) {
+                // Prefer a pen arriving while the hand is already resting on glass.
+                pointerIndex = event.actionIndex
+                action = MotionEvent.ACTION_DOWN
+            } else if (gestureActive && pointerKind == PointerKind.STYLUS) {
+                return true // Additional finger/palm contact must not break a pen swipe.
+            } else {
+                resetGestureState()
+                invalidate()
+                return true
+            }
+        }
+        if (action == MotionEvent.ACTION_POINTER_UP) {
+            if (event.getPointerId(event.actionIndex) != activePointerId) return true
+            action = MotionEvent.ACTION_UP
+        }
+        if (action == MotionEvent.ACTION_CANCEL ||
+            (action == MotionEvent.ACTION_UP && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                (event.flags and MotionEvent.FLAG_CANCELED) != 0)
+        ) {
+            resetGestureState()
+            invalidate()
+            return true
+        }
+        if (pointerIndex < 0) return false
+        val x = event.getX(pointerIndex)
+        val y = event.getY(pointerIndex)
+
+        when (action) {
             MotionEvent.ACTION_DOWN -> {
                 resetGestureState()
                 gestureActive = true
-                downX = event.x
-                downY = event.y
+                activePointerId = event.getPointerId(pointerIndex)
+                downX = x
+                downY = y
                 downTimeMs = event.eventTime
-                lastPathX = event.x
-                lastPathY = event.y
-                val tool = event.getToolType(0)
+                lastPathX = x
+                lastPathY = y
+                val tool = event.getToolType(pointerIndex)
                 pointerKind = if (
                     tool == MotionEvent.TOOL_TYPE_STYLUS ||
                     tool == MotionEvent.TOOL_TYPE_ERASER
                 ) PointerKind.STYLUS else PointerKind.TOUCH
-                downToken = tokenAt(event.x, event.y)
+                downToken = tokenAt(x, y)
                 gestureCancelled = downToken == null || tool == MotionEvent.TOOL_TYPE_ERASER
 
                 if (pointerKind == PointerKind.STYLUS) {
@@ -384,10 +420,10 @@ class KeyboardSurface(
                     }
                 }
                 pressedToken = if (gestureCancelled) null else downToken
-                path.moveTo(event.x, event.y)
+                path.moveTo(x, y)
                 if (canSwipe()) {
-                    addTraceCharacter(event.x, event.y)
-                    addTracePoint(event.x, event.y, event.eventTime)
+                    addTraceCharacter(x, y)
+                    addTracePoint(x, y, event.eventTime)
                 }
                 invalidate()
                 return true
@@ -396,21 +432,21 @@ class KeyboardSurface(
                 if (!gestureActive) return false
                 for (index in 0 until event.historySize) {
                     recordMotion(
-                        event.getHistoricalX(index),
-                        event.getHistoricalY(index),
+                        event.getHistoricalX(pointerIndex, index),
+                        event.getHistoricalY(pointerIndex, index),
                         event.getHistoricalEventTime(index),
                         density
                     )
                 }
-                recordMotion(event.x, event.y, event.eventTime, density)
-                if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                recordMotion(x, y, event.eventTime, density)
+                if (action == MotionEvent.ACTION_MOVE) {
                     invalidate()
                     return true
                 }
 
                 val sample = GestureIntentSample(
                     pointerKind,
-                    hypot(event.x - downX, event.y - downY) / density,
+                    hypot(x - downX, y - downY) / density,
                     pathLengthPx / density,
                     traceChars.distinct().size,
                     (event.eventTime - downTimeMs).coerceAtLeast(0L)
@@ -444,17 +480,12 @@ class KeyboardSurface(
                 performClick()
                 return true
             }
-            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> {
-                resetGestureState()
-                invalidate()
-                return true
-            }
         }
         return super.onTouchEvent(event)
     }
 
     private fun canSwipe(): Boolean =
-        pointerKind == PointerKind.TOUCH && !symbolMode &&
+        !symbolMode &&
             downToken?.let { it.length == 1 && it.first().isLetter() } == true
 
     private fun recordMotion(x: Float, y: Float, timeMs: Long, density: Float) {
@@ -466,8 +497,7 @@ class KeyboardSurface(
         }
         val displacementDp = hypot(x - downX, y - downY) / density
         if (!canSwipe()) {
-            // Dragging a pen away from a key cancels the tap; it never creates ink
-            // or a word. The original key remains stable for normal pen jitter.
+            // Symbols and command keys remain buttons for both tools.
             if (displacementDp > 12f) {
                 gestureCancelled = true
                 pressedToken = null
@@ -488,6 +518,7 @@ class KeyboardSurface(
 
     private fun resetGestureState() {
         gestureActive = false
+        activePointerId = -1
         gestureCancelled = false
         dragging = false
         pressedToken = null
@@ -511,6 +542,8 @@ class KeyboardSurface(
             MotionEvent
                 .ACTION_BUTTON_PRESS
         ) {
+            resetGestureState()
+            invalidate()
             when (
                 event.actionButton
             ) {

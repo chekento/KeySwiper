@@ -116,6 +116,9 @@ class SystemHandwritingInkView(context: Context) : View(context) {
     fun hasInk(): Boolean =
         strokes.isNotEmpty() || strokeBuilder != null
 
+    val isStrokeInProgress: Boolean
+        get() = strokeBuilder != null
+
     fun discardLastStroke(): Boolean {
         if (strokes.isEmpty()) return false
 
@@ -131,7 +134,10 @@ class SystemHandwritingInkView(context: Context) : View(context) {
         val builder = Ink.builder()
         strokes.forEach { builder.addStroke(it) }
         val result = builder.build()
-        clearInk()
+        // Completed ink can be drained without erasing a newly started stroke.
+        strokes.clear()
+        paths.clear()
+        invalidate()
         return result
     }
 

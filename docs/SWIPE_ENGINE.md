@@ -51,13 +51,14 @@ Planned extensions:
 - larger modular multilingual dictionaries.
 
 
-## Pen selection and finger swipes (0.18)
+## Finger and pen handling (0.18)
 
-- word swipes are accepted only for finger input starting on the letter surface;
+- both finger and pen word swipes must start on the letter surface;
 - touch enters swipe mode after 12 dp displacement and commits after an 18 dp path across at least two keys;
-- a finger path may end on its starting key, supporting words such as “test”;
-- pen taps commit the pen-down key; moving a pen more than 12 dp cancels the tap;
-- pen movement on keys never becomes handwriting or word swipe;
+- either tool may end a swipe on its starting key, supporting words such as “test”;
+- pen taps commit the pen-down key; 16 dp deliberate displacement starts a swipe and a 24 dp path across two keys commits it, without a minimum duration;
+- pen paths on keys never become handwriting, and menu/symbol controls remain normal buttons;
+- extra palm/finger contacts do not replace an active pen pointer, and Android canceled contacts never commit input;
 - leaving the letter surface cancels the current input, including excursions in historical samples;
 - the separate handwriting pad is displayed above the letter keys.
 

@@ -31,13 +31,16 @@ CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs
 ## 3. Tap and swipe
 
 - Tap at least 20 keys with S Pen/stylus and verify normal pen jitter never starts a swipe.
-- Drag the stylus across several letter keys and verify no word, ink or unintended character is committed.
+- Swipe several words with the pen and verify it commits words, just like finger swiping. Verify small pen jitter still types only the starting key.
+- Rest a hand on the screen before/during a pen swipe and lift it before/after the pen; verify the pen word commits only once.
+- Perform fast pen swipes and closed-loop pen swipes such as “test”; neither should be rejected by speed or final displacement.
 - Tap menus, predictions, clipboard search and Settings fields with the pen; they must select/focus normally without starting handwriting.
 - Open the handwriting panel and verify it stays above the visible letter keys; its buttons select normally.
 - Start a stroke in the writing area and cross onto the keyboard; it must cancel rather than type a key or continue ink.
-- Finger-swipe “hallo”, “danke”, “morgen”, “tastatur” on QWERTZ and “hello”, “world”, “thanks” on QWERTY.
+- With both finger and pen, swipe “hallo”, “danke”, “morgen”, “tastatur” on QWERTZ and “hello”, “world”, “thanks” on QWERTY.
 - Swipe “test” and “dad” back to the starting key and verify they remain word swipes.
-- In a compatible editor above the keyboard, write text and circle existing text to check handwriting/selection.
+- With the keyboard open, write directly in a compatible editor above it and circle existing text to check handwriting/selection.
+- Write multiple strokes with short pauses and one long stroke; recognition must wait for pen-up and preserve all strokes.
 - On Android 16 verify native handwriting does not capture keyboard/menu touches. On Android 13–15 verify intercepted keyboard taps reach the original control.
 - Type German umlauts and ß.
 - Type English and German mixed text.

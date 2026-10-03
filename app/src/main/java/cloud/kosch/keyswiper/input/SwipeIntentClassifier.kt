@@ -18,9 +18,10 @@ object SwipeIntentClassifier {
         pointerKind: PointerKind,
         displacementDp: Float
     ): Boolean {
-        // Word swipes belong to finger input on the letter surface. Pen input
-        // on keys is always a tap; handwriting has its own view above the keys.
-        return pointerKind == PointerKind.TOUCH && displacementDp >= 12f
+        // A small pen-specific dead zone keeps tip jitter from starting a word.
+        // Once deliberate movement begins, both tools use the same decoder.
+        val threshold = if (pointerKind == PointerKind.STYLUS) 16f else 12f
+        return displacementDp >= threshold
     }
 
     fun shouldCommitSwipe(
@@ -31,6 +32,8 @@ object SwipeIntentClassifier {
                 sample.pathLengthDp >= 18f &&
                     sample.distinctKeys >= 2
 
-            PointerKind.STYLUS -> false
+            PointerKind.STYLUS ->
+                sample.pathLengthDp >= 24f &&
+                    sample.distinctKeys >= 2
         }
 }

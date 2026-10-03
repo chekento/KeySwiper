@@ -2,16 +2,18 @@
 
 ## 0.18.0-alpha18 — 2026-10-03
 
-Separate pen selection from handwriting, enlarge letter keys and improve word swipes:
+Finger and pen typing/swiping, separate upper handwriting, larger keys and better word recognition:
 
-- pen taps on letter keys type one character; dragging a pen across keys cancels the tap and never creates a swipe word
+- both fingers and pens can tap or swipe words on letter keys; a small pen-specific movement allowance keeps normal tip jitter as a tap
+- follow the active pen pointer through extra finger/palm contacts and respect Android canceled-contact flags
+- handwriting recognition waits until pen-up and preserves a new active stroke while draining completed ink
 - menus, settings and keyboard controls opt out of Android automatic handwriting, so pen input selects controls normally
 - the optional handwriting pad opens above the still-visible keyboard; leaving either input surface cancels that stroke
 - native handwriting and editor selection gestures stay above the keyboard, with screen-to-view coordinate conversion and Android 16 handwriting-region passthrough
 - older Android handwriting callbacks route keyboard-origin pen sequences to their original keyboard controls
 - increased letter-key space inside the existing one-third normal keyboard height, narrowed visual gaps and made gaps part of the touch target
 - aligned drawn key centers with decoder geometry, preserved historical samples and the beginning of long traces
-- finger swipes can return to their starting key, as in “test” or “dad”
+- finger and pen swipes can return to their starting key, as in “test” or “dad”; fast pen swipes have no artificial minimum duration
 - geometry and endpoints now dominate swipe ranking; crossed intermediate letters and repeated letters no longer overpower the intended path
 - expanded everyday vocabulary across all five language packs and included locally learned words outside sensitive/no-learning fields
 - resample the observed path once per decode, then shortlist candidates by endpoints before geometric comparison

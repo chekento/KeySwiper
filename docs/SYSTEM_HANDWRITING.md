@@ -8,7 +8,7 @@ The area above the visible keyboard is the native writing/selection area. Stroke
 
 On Android 16+, `setStylusHandwritingRegion` excludes the keyboard/system bars and narrows the session to existing ink plus a margin after a stroke. Android passes strokes outside that region back to the target app. Rotation finishes the session so old coordinates cannot affect the new layout. Ink is transformed from screen coordinates into the overlay's local coordinates.
 
-The manual handwriting pad opens above the visible keyboard. KeySwiper menus and Settings fields opt out of automatic handwriting. Native circle selection, scratch-out and whitespace gestures still depend on the editor advertising the corresponding Android gesture support.
+Both fingers and pens can type/swipe on letter keys. With the keyboard open, Android can start handwriting directly in compatible editors above it; no manual handwriting panel is required. The optional manual handwriting pad opens above the visible keyboard. Recognition is paused during an active stroke, and draining completed ink preserves any new active stroke. KeySwiper menus and Settings fields opt out of automatic handwriting. Native circle selection, scratch-out and whitespace gestures still depend on the editor advertising the corresponding Android gesture support.
 
 ## Regular system handwriting
 

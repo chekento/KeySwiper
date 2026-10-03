@@ -300,8 +300,9 @@ class KeySwiperImeService : InputMethodService() {
         val action = motionEvent.actionMasked
         if (action == MotionEvent.ACTION_DOWN) {
             mainHandler.removeCallbacks(finishConnectionlessHandwritingRunnable)
+            mainHandler.removeCallbacks(systemHandwritingRecognitionRunnable)
             handwritingGesturePoints.clear()
-            val keyboard = root?.takeIf { it.isShown }
+            val keyboard = root?.takeIf { isInputViewShown && it.isShown }
             val location = IntArray(2)
             keyboard?.getLocationOnScreen(location)
             handwritingKeyboardTarget = keyboard?.takeIf {
@@ -356,6 +357,7 @@ class KeySwiperImeService : InputMethodService() {
             }
             handwritingGesturePoints.clear()
             if (action == MotionEvent.ACTION_DOWN) finishStylusHandwriting()
+            else if (systemHandwritingView?.hasInk() == true) scheduleSystemHandwritingRecognition()
             return
         }
 
@@ -400,6 +402,7 @@ class KeySwiperImeService : InputMethodService() {
         if (action == MotionEvent.ACTION_UP) {
             if (tryPerformHandwritingEditGesture()) {
                 mainHandler.removeCallbacks(systemHandwritingRecognitionRunnable)
+                if (systemHandwritingView?.hasInk() == true) scheduleSystemHandwritingRecognition()
             }
             updateSystemHandwritingRegion()
             handwritingStrokeBoundary.reset()
@@ -416,7 +419,7 @@ class KeySwiperImeService : InputMethodService() {
         val width = metrics?.bounds?.width() ?: resources.displayMetrics.widthPixels
         val height = metrics?.bounds?.height() ?: resources.displayMetrics.heightPixels
         val location = IntArray(2)
-        val keyboard = root?.takeIf { it.isShown && it.height > 0 }
+        val keyboard = root?.takeIf { isInputViewShown && it.isShown && it.height > 0 }
         keyboard?.getLocationOnScreen(location)
         val bottom = if (keyboard != null) location[1] else height - (bars?.bottom ?: 0)
         return StylusWritingArea(
@@ -2238,6 +2241,7 @@ class KeySwiperImeService : InputMethodService() {
         mainHandler.removeCallbacks(
             systemHandwritingRecognitionRunnable
         )
+        if (systemHandwritingView?.isStrokeInProgress == true) return
         mainHandler.postDelayed(
             systemHandwritingRecognitionRunnable,
             650L
@@ -2256,7 +2260,7 @@ class KeySwiperImeService : InputMethodService() {
         val view =
             systemHandwritingView ?: return
 
-        if (!view.hasInk()) {
+        if (!view.hasInk() || view.isStrokeInProgress) {
             return
         }
 

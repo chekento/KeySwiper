@@ -20,8 +20,8 @@ class SwipeIntentClassifierTest {
     }
 
     @Test
-    fun deliberateStylusPathNeverBecomesAWordSwipe() {
-        assertFalse(
+    fun deliberateStylusPathCommitsAWordSwipe() {
+        assertTrue(
             SwipeIntentClassifier.shouldCommitSwipe(
                 GestureIntentSample(
                     PointerKind.STYLUS,64f,91f,4,120L
@@ -52,6 +52,17 @@ class SwipeIntentClassifierTest {
     fun stationaryFingerJitterIsNotAWord() {
         assertFalse(SwipeIntentClassifier.shouldCommitSwipe(
             GestureIntentSample(PointerKind.TOUCH, 2f, 8f, 2, 180L)
+        ))
+    }
+
+    @Test
+    fun fastPenStrokeAndClosedPenLoopAreAccepted() {
+        assertTrue(SwipeIntentClassifier.shouldStartDrag(PointerKind.STYLUS, 18f))
+        assertTrue(SwipeIntentClassifier.shouldCommitSwipe(
+            GestureIntentSample(PointerKind.STYLUS, 26f, 28f, 2, 20L)
+        ))
+        assertTrue(SwipeIntentClassifier.shouldCommitSwipe(
+            GestureIntentSample(PointerKind.STYLUS, 0f, 110f, 3, 180L)
         ))
     }
 }

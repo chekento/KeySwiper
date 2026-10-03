@@ -12,6 +12,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.handwriting.SystemHandwritingInkView
 import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
 import cloud.kosch.keyswiper.ui.KeyboardRootView
@@ -39,7 +40,8 @@ object InputRegressionChecks {
         taps.clear()
         stroke(surface, MotionEvent.TOOL_TYPE_STYLUS,
             listOf(450f to 100f, 250f to 100f, 166f to 300f, 450f to 100f))
-        check(taps.isEmpty() && swipes.isEmpty()) { "Pen drag on keys must neither type nor swipe" }
+        check(taps.isEmpty() && swipes.size == 1) { "Pen loop must commit a swipe without a tap" }
+        swipes.clear()
 
         stroke(surface, MotionEvent.TOOL_TYPE_FINGER,
             listOf(450f to 100f, 250f to 100f, 166f to 300f, 450f to 100f))
@@ -48,6 +50,35 @@ object InputRegressionChecks {
         stroke(surface, MotionEvent.TOOL_TYPE_FINGER,
             listOf(450f to 100f, 250f to -20f, 450f to 100f))
         check(swipes.isEmpty() && taps.isEmpty()) { "Crossing surface boundary must cancel input" }
+        stroke(surface, MotionEvent.TOOL_TYPE_STYLUS,
+            listOf(450f to 100f, 250f to -20f, 450f to 100f))
+        check(swipes.isEmpty() && taps.isEmpty()) { "Pen cannot turn into handwriting by leaving keys" }
+
+        // A pen can take over from palm contact and survive the palm lifting first.
+        val palm = Contact(7, MotionEvent.TOOL_TYPE_FINGER, 800f, 550f)
+        val pen = Contact(9, MotionEvent.TOOL_TYPE_STYLUS, 450f, 100f)
+        contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(palm))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(palm, pen))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(palm, pen.copy(x = 250f)))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_UP, listOf(palm, pen.copy(x = 250f)))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(pen.copy(x = 166f, y = 300f)))
+        contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen))
+        check(swipes.size == 1 && taps.isEmpty()) { "Palm contact must not corrupt the active pen path" }
+        swipes.clear()
+
+        contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(pen, palm))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(pen.copy(x = 250f), palm))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_UP, listOf(pen.copy(x = 166f, y = 300f), palm))
+        contactEvent(surface, MotionEvent.ACTION_UP, listOf(palm))
+        check(swipes.size == 1 && taps.isEmpty()) { "Pen lift must finish once even while palm stays down" }
+        swipes.clear()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
+            contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen), MotionEvent.FLAG_CANCELED)
+            check(swipes.isEmpty() && taps.isEmpty()) { "Canceled contacts must not type" }
+        }
 
         // A visual gap between keys remains tappable rather than dropping pen taps.
         stroke(surface, MotionEvent.TOOL_TYPE_STYLUS, listOf(101f to 100f, 101f to 100f))
@@ -78,11 +109,21 @@ object InputRegressionChecks {
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         root.layout(0, 0, root.measuredWidth, root.measuredHeight)
         val letterSurface = descendants(root).filterIsInstance<KeyboardSurface>().single()
-        check(pad != null && pad!!.height > 0 && letterSurface.height > 0)
-        check(topInRoot(pad!!, root) + pad!!.height <= topInRoot(letterSurface, root)) {
+        val writingPad = checkNotNull(pad)
+        check(writingPad.height > 0 && letterSurface.height > 0)
+        check(topInRoot(writingPad, root) + writingPad.height <= topInRoot(letterSurface, root)) {
             "Handwriting pad must stay above the visible letter keyboard"
         }
-        Log.i("KeySwiperInputChecks", "PASS: pen taps, menu selection, finger swipe, boundaries, upper handwriting pad")
+        val ink = SystemHandwritingInkView(context)
+        contactEvent(ink, MotionEvent.ACTION_DOWN, listOf(pen), inkTarget = true)
+        contactEvent(ink, MotionEvent.ACTION_UP, listOf(pen.copy(x = 480f)), inkTarget = true)
+        contactEvent(ink, MotionEvent.ACTION_DOWN, listOf(pen.copy(x = 510f)), inkTarget = true)
+        check(ink.isStrokeInProgress && ink.hasInk())
+        ink.drainInk()
+        check(ink.isStrokeInProgress && ink.hasInk()) { "Recognition must preserve an active new stroke" }
+        contactEvent(ink, MotionEvent.ACTION_CANCEL, listOf(pen), inkTarget = true)
+        check(!ink.isStrokeInProgress && !ink.hasInk())
+        Log.i("KeySwiperInputChecks", "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting")
     }
 
     private fun descendants(view: View): List<View> = listOf(view) +
@@ -123,5 +164,23 @@ object InputRegressionChecks {
                 else InputDevice.SOURCE_TOUCHSCREEN, 0)
             try { view.dispatchTouchEvent(event) } finally { event.recycle() }
         }
+    }
+
+    private data class Contact(val id: Int, val tool: Int, val x: Float, val y: Float)
+
+    private fun contactEvent(view: View, action: Int, contacts: List<Contact>, flags: Int = 0, inkTarget: Boolean = false) {
+        val now = SystemClock.uptimeMillis()
+        val properties = contacts.map { contact -> MotionEvent.PointerProperties().apply {
+            id = contact.id; toolType = contact.tool
+        } }.toTypedArray()
+        val coordinates = contacts.map { contact -> MotionEvent.PointerCoords().apply {
+            x = contact.x; y = contact.y; pressure = 1f; size = 1f
+        } }.toTypedArray()
+        val event = MotionEvent.obtain(now, now, action, contacts.size, properties, coordinates,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, flags)
+        try {
+            if (inkTarget) (view as SystemHandwritingInkView).consumeStylusEvent(event)
+            else view.dispatchTouchEvent(event)
+        } finally { event.recycle() }
     }
 }

@@ -2,9 +2,9 @@
 
 ## Input areas in 0.18
 
-On letter keys, S Pen is a pointer: a short tap types the selected key, while a drag cancels it. Pen strokes never create word swipes on the keyboard. Finger word swipes remain available on the letter surface.
+On letter keys, both fingers and S Pen can type and swipe words. A short pen tap types the selected key; small jitter remains a tap, while deliberate movement starts a word swipe. Fast strokes and closed paths are accepted. Additional palm/finger contacts do not interrupt an active pen path. Android canceled contacts never commit a key or word.
 
-Menus, predictions, settings and other keyboard controls retain normal selection behavior and opt out of Android automatic handwriting. The manual handwriting panel sits above the still-visible keyboard. Native handwriting and editor gestures are restricted to the area above the keyboard; circles select text where the target editor supports selection gestures. A stroke crossing an input-area boundary is canceled rather than changing modes halfway through.
+Menus, predictions, settings and other keyboard controls retain normal selection behavior and opt out of Android automatic handwriting. With the keyboard open, native handwriting and selection remain available in compatible editors above it, without opening a separate keyboard panel. The optional manual handwriting panel also sits above the still-visible keyboard. Native handwriting and editor gestures are restricted to the area above the keyboard; circles select text where the target editor supports selection gestures. A stroke crossing an input-area boundary is canceled rather than changing modes halfway through.
 
 Android 16 uses an explicit handwriting region so outside strokes pass through to their original target. Earlier versions route intercepted keyboard strokes back to the keyboard controls. Physical S Pen and third-party editor behavior still require device testing.
 

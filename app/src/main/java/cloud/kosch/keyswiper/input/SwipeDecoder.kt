@@ -115,7 +115,7 @@ class SwipeDecoder {
                     // context are only tie-breakers for geometrically close words.
                     SwipeGeometryScorer.score(prepared, form, motorOffset) +
                         distance * 0.6f - languageBoost * 1.2f -
-                        contextBoost * 1.0f - learnedBoost * 0.7f
+                        contextBoost * 1.0f - learnedBoost * 0.2f
                 } else {
                     val endpointPenalty =
                         (if (compactForm.firstOrNull() == first) 0 else 5) +
