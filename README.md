@@ -69,6 +69,7 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - CI installs the real debug APK on a lean Android 15 AOSP ATD emulator.
 - A shell-driven harness enables and selects KeySwiper from outside the app process, then opens a debug-only text host and confirms Android reports KeySwiper as the current visible IME.
 - The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
+- Debug Android input checks exercise pen taps, menu selection, canceled pen drags, finger loops, surface boundaries and handwriting-pad placement using real `MotionEvent` objects.
 - Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.
 - The host exists only in the `debug` source set and is never included in the release APK.
 
@@ -90,12 +91,13 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - status feedback uses transient toasts instead of adding a persistent bar above the keys
 - controls scale proportionally on shorter displays
 
-### 🖊 Tap-first stylus intent
+### 🖊 Pen selection and separate handwriting
 
-- S Pen/stylus input uses a larger motion threshold than finger input
-- small pen jitter remains a tap
-- deliberate stylus paths can still swipe
-- non-swipe taps commit the pen-down key for stability
+- pen taps on keys type the selected character; small jitter keeps the pen-down key stable
+- pen drags on keys never create word swipes or handwriting
+- menu buttons and settings fields use normal pen selection with automatic handwriting disabled
+- the manual writing pad opens above the visible keyboard; native handwriting and editor selection gestures stay above keyboard controls
+- letter keys have more space and narrower gaps within the normal one-third height budget
 
 ### 🌐 Input-language-locked prediction
 
@@ -210,7 +212,9 @@ This lets suggestions fit the current thought and avoid blindly duplicating text
 
 ### ✨ Adaptive Swipe v3
 
-- real X/Y/time swipe traces instead of touched-letter sequences only
+- real X/Y/time swipe traces, including historical samples and preserved long-path geometry
+- shape and endpoints dominate ranking, with transit keys treated as weak evidence
+- common everyday words and local user vocabulary can be swiped; closed paths such as “test” remain swipes
 - Dynamic Time Warping against ideal keyboard paths
 - path-length similarity
 - direction-change scoring
@@ -450,3 +454,4 @@ Next milestones:
 ## License
 
 Apache-2.0
+

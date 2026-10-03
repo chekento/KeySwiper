@@ -42,6 +42,18 @@ class HandwritingPadView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.pointerCount == 0) return false
+        val outside = event.x < 0f || event.y < 0f || event.x >= width || event.y >= height ||
+            (0 until event.historySize).any {
+                event.getHistoricalX(it) < 0f || event.getHistoricalY(it) < 0f ||
+                    event.getHistoricalX(it) >= width || event.getHistoricalY(it) >= height
+            }
+        if (outside) {
+            strokeBuilder = null
+            activePath = null
+            invalidate()
+            return event.actionMasked != MotionEvent.ACTION_DOWN
+        }
         if (
             event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS &&
             event.actionMasked == MotionEvent.ACTION_DOWN
@@ -56,6 +68,13 @@ class HandwritingPadView(context: Context) : View(context) {
                 (event.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY) != 0
             ) {
                 dispatchSecondaryButton(event.eventTime)
+            }
+            if ((event.buttonState and (MotionEvent.BUTTON_STYLUS_PRIMARY or
+                    MotionEvent.BUTTON_STYLUS_SECONDARY)) != 0) {
+                strokeBuilder = null
+                activePath = null
+                invalidate()
+                return true
             }
         }
 
@@ -129,13 +148,13 @@ class HandwritingPadView(context: Context) : View(context) {
     }
 
     private fun dispatchPrimaryButton(eventTimeMs: Long) {
-        if (eventTimeMs - lastPrimaryButtonEventMs < 80L) return
+        if (lastPrimaryButtonEventMs != Long.MIN_VALUE && eventTimeMs - lastPrimaryButtonEventMs < 80L) return
         lastPrimaryButtonEventMs = eventTimeMs
         onStylusPrimaryButton?.invoke()
     }
 
     private fun dispatchSecondaryButton(eventTimeMs: Long) {
-        if (eventTimeMs - lastSecondaryButtonEventMs < 80L) return
+        if (lastSecondaryButtonEventMs != Long.MIN_VALUE && eventTimeMs - lastSecondaryButtonEventMs < 80L) return
         lastSecondaryButtonEventMs = eventTimeMs
         onStylusSecondaryButton?.invoke()
     }

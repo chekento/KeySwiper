@@ -60,36 +60,57 @@ object KeyboardGeometry {
 
 object SwipeGeometryScorer {
 
-    fun score(
+    class PreparedTrace internal constructor(
+        internal val trace: SwipeTrace,
+        internal val observed: List<Pair<Float, Float>>
+    )
+
+    fun prepare(trace: SwipeTrace): PreparedTrace =
+        PreparedTrace(trace, resample(trace.points.map { Pair(it.x, it.y) }, 32))
+
+    fun endpointDistance(
         trace: SwipeTrace,
         word: String,
         offsetFor: (Char) -> KeyOffset = { KeyOffset() }
     ): Float {
+        if (trace.points.isEmpty() || word.isEmpty()) return 0f
+        val first = KeyboardGeometry.center(word.first(), trace.layoutId, offsetFor(word.first()))
+            ?: return 2f
+        val last = KeyboardGeometry.center(word.last(), trace.layoutId, offsetFor(word.last()))
+            ?: return 2f
+        val start = trace.points.first()
+        val end = trace.points.last()
+        return hypot(start.x - first.first, start.y - first.second) +
+            hypot(end.x - last.first, end.y - last.second)
+    }
+
+    fun score(
+        trace: SwipeTrace,
+        word: String,
+        offsetFor: (Char) -> KeyOffset = { KeyOffset() }
+    ): Float = score(prepare(trace), word, offsetFor)
+
+    fun score(
+        prepared: PreparedTrace,
+        word: String,
+        offsetFor: (Char) -> KeyOffset = { KeyOffset() }
+    ): Float {
+        val trace = prepared.trace
         if (trace.points.size < 2 || word.isBlank()) return 0f
-
-        val observed = trace.points.map { Pair(it.x, it.y) }
         val ideal = word.mapNotNull { c ->
-            KeyboardGeometry.center(
-                character = c,
-                layoutId = trace.layoutId,
-                offset = offsetFor(c)
-            )
+            KeyboardGeometry.center(c, trace.layoutId, offsetFor(c))
         }
-
         if (ideal.size < 2) return 0f
-
-        val observedResampled = resample(observed, 32)
+        val observed = prepared.observed
         val idealResampled = resample(ideal, 32)
-
-        val shape = dtwDistance(observedResampled, idealResampled)
-        val lengthPenalty = abs(pathLength(observed) - pathLength(ideal))
-        val directionPenalty = directionPenalty(observedResampled, idealResampled)
-        val velocityPenalty = velocityCornerPenalty(trace, ideal)
-
-        return shape * 100f +
-            lengthPenalty * 28f +
-            directionPenalty * 24f +
-            velocityPenalty * 18f
+        val idealLength = pathLength(ideal)
+        val lengthPenalty = abs(pathLength(observed) - idealLength) /
+            idealLength.coerceAtLeast(0.5f)
+        return dtwDistance(observed, idealResampled) * 160f +
+            endpointDistance(trace, word, offsetFor) * 80f +
+            lengthPenalty.coerceAtMost(3f) * 10f +
+            directionPenalty(observed, idealResampled) * 14f +
+            velocityCornerPenalty(trace, ideal) * 10f
     }
 
     fun estimateLetterOffsets(
@@ -323,3 +344,4 @@ object SwipeGeometryScorer {
         }
     }
 }
+

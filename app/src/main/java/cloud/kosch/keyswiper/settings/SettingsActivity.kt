@@ -32,6 +32,7 @@ import cloud.kosch.keyswiper.stylus.StylusTrigger
 import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
 import cloud.kosch.keyswiper.ui.KeyboardThemes
 import cloud.kosch.keyswiper.ui.OneHandMode
+import cloud.kosch.keyswiper.ui.StylusUi
 
 class SettingsActivity : Activity() {
 
@@ -807,6 +808,7 @@ class SettingsActivity : Activity() {
             setPadding(0, dp(24), 0, 0)
         })
 
+        StylusUi.usePointerInput(content)
         setContentView(
             ScrollView(this).apply {
                 addView(content)
@@ -1069,3 +1071,4 @@ class SettingsActivity : Activity() {
         private const val REQUEST_IMPORT_MODEL = 81
     }
 }
+

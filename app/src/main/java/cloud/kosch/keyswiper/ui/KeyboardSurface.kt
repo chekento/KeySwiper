@@ -15,6 +15,7 @@ import cloud.kosch.keyswiper.input.SwipePoint
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.settings.Prefs
 import kotlin.math.hypot
+import kotlin.math.min
 
 class KeyboardSurface(
     context: Context
@@ -70,6 +71,8 @@ class KeyboardSurface(
     private var pathLengthPx = 0f
     private var pointerKind = PointerKind.TOUCH
     private var dragging = false
+    private var gestureActive = false
+    private var gestureCancelled = false
     private var pressedToken: String? = null
     private var downToken: String? = null
 
@@ -112,7 +115,7 @@ class KeyboardSurface(
                 resources
                     .displayMetrics
                     .scaledDensity *
-                    19f
+                    20f
             typeface =
                 android.graphics.Typeface
                     .create(
@@ -208,103 +211,38 @@ class KeyboardSurface(
             }
     }
 
-    private fun rebuildCells(
-        widthPx: Float,
-        heightPx: Float
-    ) {
+    private fun rebuildCells(widthPx: Float, heightPx: Float) {
         cells.clear()
+        if (widthPx <= 0f || heightPx <= 0f) return
 
-        if (
-            widthPx <= 0f ||
-            heightPx <= 0f
-        ) {
-            return
-        }
+        val rows = displayRows()
+        val rowHeight = heightPx / rows.size.coerceAtLeast(1)
+        val density = resources.displayMetrics.density
+        val horizontalInset = min(1.2f * density, widthPx / 100f)
+        val verticalInset = min(2f * density, rowHeight / 10f)
 
-        val rows =
-            displayRows()
-
-        val gap =
-            resources
-                .displayMetrics
-                .density *
-                3.2f
-
-        val sidePadding =
-            resources
-                .displayMetrics
-                .density *
-                3.5f
-
-        val rowHeight =
-            heightPx /
-                rows.size
-                    .coerceAtLeast(1)
-
-        rows.forEachIndexed {
-                rowIndex,
-                row ->
-
-            val count =
-                row.size
-                    .coerceAtLeast(1)
-
-            val usableWidth =
-                widthPx -
-                    sidePadding * 2f -
-                    gap *
-                    (
-                        count -
-                            1
-                        )
-
-            val keyWidth =
-                usableWidth /
-                    count
-
-            val top =
-                rowIndex *
-                    rowHeight +
-                    gap
-
-            val bottom =
-                (
-                    rowIndex +
-                        1
-                    ) *
-                    rowHeight -
-                    gap
-
-            row.forEachIndexed {
-                    index,
-                    token ->
-
-                val left =
-                    sidePadding +
-                        index *
-                        (
-                            keyWidth +
-                                gap
-                            )
-
-                cells.add(
-                    Cell(
-                        token = token,
-                        bounds =
-                            RectF(
-                                left,
-                                top,
-                                left +
-                                    keyWidth,
-                                bottom
-                            ),
-                        special =
-                            token ==
-                                BACKSPACE_TOKEN
-                    )
-                )
+        rows.forEachIndexed { rowIndex, row ->
+            val slotWidth = widthPx / row.size.coerceAtLeast(1)
+            row.forEachIndexed { index, token ->
+                // Slot centers exactly match KeyboardGeometry. Visual gaps are
+                // included in the touch target, so narrow pen taps never vanish.
+                cells.add(Cell(
+                    token = token,
+                    bounds = RectF(
+                        index * slotWidth + horizontalInset,
+                        rowIndex * rowHeight + verticalInset,
+                        (index + 1) * slotWidth - horizontalInset,
+                        (rowIndex + 1) * rowHeight - verticalInset
+                    ),
+                    special = token == BACKSPACE_TOKEN
+                ))
             }
         }
+        labelPaint.textSize = min(
+            resources.displayMetrics.scaledDensity * 20f,
+            cells.minOf { min(it.bounds.height() * 0.72f, it.bounds.width() * 0.78f) }
+        )
+        StylusUi.usePointerInput(this)
     }
 
     override fun onDraw(
@@ -414,217 +352,143 @@ class KeyboardSurface(
         }
     }
 
-    override fun onTouchEvent(
-        event: MotionEvent
-    ): Boolean {
-        if (event.pointerCount == 0) {
-            return false
-        }
-
-        val toolType = event.getToolType(0)
-        val isStylus =
-            toolType == MotionEvent.TOOL_TYPE_STYLUS ||
-                toolType == MotionEvent.TOOL_TYPE_ERASER
-
-        if (isStylus) {
-            if (
-                (event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0 &&
-                event.actionMasked == MotionEvent.ACTION_DOWN
-            ) {
-                dispatchPrimaryButton(event.eventTime)
-            }
-
-            if (
-                (event.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY) != 0 &&
-                event.actionMasked == MotionEvent.ACTION_DOWN
-            ) {
-                dispatchSecondaryButton(event.eventTime)
-            }
-        }
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.pointerCount == 0) return false
+        val density = resources.displayMetrics.density.coerceAtLeast(0.5f)
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                resetGestureState()
+                gestureActive = true
                 downX = event.x
                 downY = event.y
                 downTimeMs = event.eventTime
                 lastPathX = event.x
                 lastPathY = event.y
-                pathLengthPx = 0f
-                pointerKind =
-                    if (isStylus) PointerKind.STYLUS
-                    else PointerKind.TOUCH
-                dragging = false
+                val tool = event.getToolType(0)
+                pointerKind = if (
+                    tool == MotionEvent.TOOL_TYPE_STYLUS ||
+                    tool == MotionEvent.TOOL_TYPE_ERASER
+                ) PointerKind.STYLUS else PointerKind.TOUCH
                 downToken = tokenAt(event.x, event.y)
-                pressedToken = downToken
+                gestureCancelled = downToken == null || tool == MotionEvent.TOOL_TYPE_ERASER
 
-                traceChars.clear()
-                tracePoints.clear()
-                path.reset()
+                if (pointerKind == PointerKind.STYLUS) {
+                    if ((event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0) {
+                        gestureCancelled = true
+                        dispatchPrimaryButton(event.eventTime)
+                    }
+                    if ((event.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY) != 0) {
+                        gestureCancelled = true
+                        dispatchSecondaryButton(event.eventTime)
+                    }
+                }
+                pressedToken = if (gestureCancelled) null else downToken
                 path.moveTo(event.x, event.y)
-
-                if (!symbolMode && downToken != BACKSPACE_TOKEN) {
+                if (canSwipe()) {
                     addTraceCharacter(event.x, event.y)
                     addTracePoint(event.x, event.y, event.eventTime)
                 }
-
                 invalidate()
                 return true
             }
-
-            MotionEvent.ACTION_MOVE -> {
-                if (!symbolMode) {
-                    val density =
-                        resources.displayMetrics.density.coerceAtLeast(0.5f)
-                    val displacementDp =
-                        hypot(
-                            event.x - downX,
-                            event.y - downY
-                        ) / density
-
-                    if (
-                        !dragging &&
-                        SwipeIntentClassifier.shouldStartDrag(
-                            pointerKind,
-                            displacementDp
-                        )
-                    ) {
-                        dragging = true
-                        pressedToken = null
-                    }
-
-                    for (index in 0 until event.historySize) {
-                        val x = event.getHistoricalX(index)
-                        val y = event.getHistoricalY(index)
-
-                        pathLengthPx += hypot(
-                            x - lastPathX,
-                            y - lastPathY
-                        )
-                        lastPathX = x
-                        lastPathY = y
-
-                        path.lineTo(x, y)
-                        addTraceCharacter(x, y)
-                        addTracePoint(
-                            x,
-                            y,
-                            event.getHistoricalEventTime(index)
-                        )
-                    }
-
-                    pathLengthPx += hypot(
-                        event.x - lastPathX,
-                        event.y - lastPathY
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                if (!gestureActive) return false
+                for (index in 0 until event.historySize) {
+                    recordMotion(
+                        event.getHistoricalX(index),
+                        event.getHistoricalY(index),
+                        event.getHistoricalEventTime(index),
+                        density
                     )
-                    lastPathX = event.x
-                    lastPathY = event.y
-
-                    path.lineTo(event.x, event.y)
-                    addTraceCharacter(event.x, event.y)
-                    addTracePoint(event.x, event.y, event.eventTime)
+                }
+                recordMotion(event.x, event.y, event.eventTime, density)
+                if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                    invalidate()
+                    return true
                 }
 
-                invalidate()
-                return true
-            }
-
-            MotionEvent.ACTION_UP -> {
-                if (!symbolMode) {
-                    pathLengthPx += hypot(
-                        event.x - lastPathX,
-                        event.y - lastPathY
-                    )
-                    addTraceCharacter(event.x, event.y)
-                    addTracePoint(event.x, event.y, event.eventTime)
-                }
-
-                val density =
-                    resources.displayMetrics.density.coerceAtLeast(0.5f)
-                val displacementDp =
-                    hypot(
-                        event.x - downX,
-                        event.y - downY
-                    ) / density
-                val sample =
-                    GestureIntentSample(
-                        pointerKind = pointerKind,
-                        displacementDp = displacementDp,
-                        pathLengthDp = pathLengthPx / density,
-                        distinctKeys = traceChars.distinct().size,
-                        durationMs =
-                            (event.eventTime - downTimeMs)
-                                .coerceAtLeast(0L)
-                    )
-
-                val commitSwipe =
-                    !symbolMode &&
-                        dragging &&
-                        tracePoints.size > 1 &&
-                        SwipeIntentClassifier.shouldCommitSwipe(sample)
-
-                if (commitSwipe) {
-                    performHapticFeedback(
-                        HapticFeedbackConstants.KEYBOARD_TAP
-                    )
-                    listener?.onSwipe(
-                        SwipeTrace(
-                            points = tracePoints.toList(),
-                            touchedKeys = traceChars.toList(),
-                            layoutId = layoutProfile.id
-                        )
-                    )
-                } else {
-                    when (
-                        val token =
-                            downToken ?: tokenAt(event.x, event.y)
-                    ) {
-                        BACKSPACE_TOKEN -> {
-                            performHapticFeedback(
-                                HapticFeedbackConstants.KEYBOARD_TAP
-                            )
+                val sample = GestureIntentSample(
+                    pointerKind,
+                    hypot(event.x - downX, event.y - downY) / density,
+                    pathLengthPx / density,
+                    traceChars.distinct().size,
+                    (event.eventTime - downTimeMs).coerceAtLeast(0L)
+                )
+                if (!gestureCancelled && canSwipe() && dragging &&
+                    tracePoints.size > 1 && SwipeIntentClassifier.shouldCommitSwipe(sample)
+                ) {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    listener?.onSwipe(SwipeTrace(
+                        points = tracePoints.toList(),
+                        touchedKeys = traceChars.toList(),
+                        layoutId = layoutProfile.id
+                    ))
+                } else if (!gestureCancelled && !dragging) {
+                    val token = downToken
+                    if (token != null) {
+                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        if (token == BACKSPACE_TOKEN) {
                             listener?.onBackspace()
-                        }
-
-                        null -> Unit
-
-                        else -> {
-                            val char = token.first()
-                            val value =
-                                if (
-                                    shifted &&
-                                    !symbolMode &&
-                                    char.isLetter()
-                                ) {
-                                    char.uppercaseChar()
-                                } else {
-                                    char
-                                }
-
-                            performHapticFeedback(
-                                HapticFeedbackConstants.KEYBOARD_TAP
+                        } else {
+                            val character = token.first()
+                            listener?.onTap(
+                                if (shifted && !symbolMode && character.isLetter())
+                                    character.uppercaseChar() else character
                             )
-                            listener?.onTap(value)
                         }
                     }
                 }
-
                 resetGestureState()
                 invalidate()
                 performClick()
                 return true
             }
-
-            MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> {
                 resetGestureState()
                 invalidate()
                 return true
             }
         }
-
         return super.onTouchEvent(event)
     }
 
+    private fun canSwipe(): Boolean =
+        pointerKind == PointerKind.TOUCH && !symbolMode &&
+            downToken?.let { it.length == 1 && it.first().isLetter() } == true
+
+    private fun recordMotion(x: Float, y: Float, timeMs: Long, density: Float) {
+        if (gestureCancelled) return
+        if (x < 0f || y < 0f || x >= width || y >= height) {
+            gestureCancelled = true
+            pressedToken = null
+            return
+        }
+        val displacementDp = hypot(x - downX, y - downY) / density
+        if (!canSwipe()) {
+            // Dragging a pen away from a key cancels the tap; it never creates ink
+            // or a word. The original key remains stable for normal pen jitter.
+            if (displacementDp > 12f) {
+                gestureCancelled = true
+                pressedToken = null
+            }
+            return
+        }
+        if (SwipeIntentClassifier.shouldStartDrag(pointerKind, displacementDp)) {
+            dragging = true
+            pressedToken = null
+        }
+        pathLengthPx += hypot(x - lastPathX, y - lastPathY)
+        lastPathX = x
+        lastPathY = y
+        path.lineTo(x, y)
+        addTraceCharacter(x, y)
+        addTracePoint(x, y, timeMs)
+    }
+
     private fun resetGestureState() {
+        gestureActive = false
+        gestureCancelled = false
         dragging = false
         pressedToken = null
         downToken = null
@@ -678,7 +542,7 @@ class KeyboardSurface(
         eventTimeMs: Long
     ) {
         if (
-            eventTimeMs -
+            lastPrimaryButtonEventMs != Long.MIN_VALUE && eventTimeMs -
                 lastPrimaryButtonEventMs <
             80L
         ) {
@@ -695,7 +559,7 @@ class KeyboardSurface(
         eventTimeMs: Long
     ) {
         if (
-            eventTimeMs -
+            lastSecondaryButtonEventMs != Long.MIN_VALUE && eventTimeMs -
                 lastSecondaryButtonEventMs <
             80L
         ) {
@@ -824,16 +688,13 @@ class KeyboardSurface(
             }
         }
 
-        if (
-            tracePoints.size >=
-            96
-        ) {
-            tracePoints.removeAt(
-                1.coerceAtMost(
-                    tracePoints
-                        .lastIndex
-                )
-            )
+        if (tracePoints.size >= 192) {
+            // Keep the full route instead of repeatedly deleting its beginning.
+            val reduced = tracePoints.filterIndexed { index, _ ->
+                index % 2 == 0 || index == tracePoints.lastIndex
+            }
+            tracePoints.clear()
+            tracePoints.addAll(reduced)
         }
 
         tracePoints.add(
@@ -841,19 +702,12 @@ class KeyboardSurface(
         )
     }
 
-    private fun tokenAt(
-        x: Float,
-        y: Float
-    ): String? =
-        cells
-            .firstOrNull {
-                it.bounds
-                    .contains(
-                        x,
-                        y
-                    )
-            }
-            ?.token
+    private fun tokenAt(x: Float, y: Float): String? {
+        if (x < 0f || y < 0f || x >= width || y >= height) return null
+        val rows = displayRows()
+        val row = rows[(y / height * rows.size).toInt().coerceIn(0, rows.lastIndex)]
+        return row[(x / width * row.size).toInt().coerceIn(0, row.lastIndex)]
+    }
 
     companion object {
         private const val BACKSPACE_TOKEN =

@@ -93,7 +93,7 @@ fi
 
 log "Launching debug-only focused text host"
 set +e
-HOST_LAUNCH="$(adb shell am start -W -n "$HOST" 2>&1 | tr -d '\r')"
+HOST_LAUNCH="$(adb shell am start -W -n "$HOST" --ez run_input_checks true 2>&1 | tr -d '\r')"
 HOST_LAUNCH_CODE=$?
 set -e
 printf '%s\n' "$HOST_LAUNCH" | tee "$OUT_DIR/host-launch.txt"
@@ -166,4 +166,10 @@ if [[ "$VISIBLE" -ne 1 ]]; then
   exit 1
 fi
 
-log "PASS: KeySwiper is alive, selected and visible on Android 15."
+adb logcat -d -s KeySwiperInputChecks:I '*:S' > "$OUT_DIR/input-regression-checks.txt"
+if ! grep -Fq "PASS: pen taps, menu selection, finger swipe, boundaries, upper handwriting pad" "$OUT_DIR/input-regression-checks.txt"; then
+  echo "Android input regression checks did not pass." >&2
+  exit 1
+fi
+
+log "PASS: KeySwiper is alive, selected and visible; pen and swipe input checks passed on Android 15."

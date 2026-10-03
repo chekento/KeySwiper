@@ -13,6 +13,9 @@ class KeyboardSizingTest {
         assertTrue(budget.totalHeightPx <= 2340 / 3)
         assertTrue(budget.surfaceHeightPx > 0)
         assertTrue(budget.accentRowHeightPx > 0)
+        // Three letter rows should receive at least half the usable content space.
+        val usable = budget.totalHeightPx - budget.bottomInsetPx - budget.contentVerticalPaddingPx
+        assertTrue(budget.surfaceHeightPx >= usable / 2)
     }
 
     @Test

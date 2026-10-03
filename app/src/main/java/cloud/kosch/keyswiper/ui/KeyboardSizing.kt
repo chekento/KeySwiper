@@ -56,12 +56,12 @@ object KeyboardSizing {
                 .coerceAtMost(dp(capDp))
                 .coerceAtLeast(1)
 
-        val toolbar = fraction(0.12f, 30f)
-        val prediction = fraction(0.14f, 36f)
-        val bottom = fraction(0.18f, 44f)
+        val toolbar = fraction(0.10f, 26f)
+        val prediction = fraction(0.12f, 32f)
+        val bottom = fraction(0.17f, 42f)
         val accent =
             if (symbolMode) 0
-            else fraction(0.12f, 30f)
+            else fraction(0.09f, 24f)
 
         val surface =
             (usable - toolbar - prediction - bottom - accent)

@@ -2,7 +2,7 @@
 
 ## v0.3 — geometric adaptive swipe
 
-KeySwiper no longer treats a swipe as only a sequence of keys. Each gesture is represented by a `SwipeTrace` with normalized X/Y coordinates and timestamps. The UI keeps at most 96 samples so scoring remains lightweight enough for an IME.
+KeySwiper no longer treats a swipe as only a sequence of keys. Each gesture is represented by a `SwipeTrace` with normalized X/Y coordinates and timestamps. The UI keeps at most 192 samples, evenly thinning long paths while retaining their beginning and end, so scoring remains lightweight enough for an IME.
 
 ## Candidate score
 
@@ -51,13 +51,20 @@ Planned extensions:
 - larger modular multilingual dictionaries.
 
 
-## Stylus intent gate (0.17)
+## Pen selection and finger swipes (0.18)
 
-Finger and stylus movement no longer share the same swipe threshold.
+- word swipes are accepted only for finger input starting on the letter surface;
+- touch enters swipe mode after 12 dp displacement and commits after an 18 dp path across at least two keys;
+- a finger path may end on its starting key, supporting words such as “test”;
+- pen taps commit the pen-down key; moving a pen more than 12 dp cancels the tap;
+- pen movement on keys never becomes handwriting or word swipe;
+- leaving the letter surface cancels the current input, including excursions in historical samples;
+- the separate handwriting pad is displayed above the letter keys.
 
-- touch can enter swipe mode after roughly 12 dp of deliberate displacement;
-- stylus requires roughly 30 dp displacement plus a longer path, multiple touched keys and a minimum gesture duration;
-- small S Pen jitter therefore remains a tap;
-- when a stylus gesture does not qualify as a swipe, KeySwiper commits the key selected at pen-down rather than whichever key the pen drifted over at pen-up.
+## Continuous path ranking (0.18)
 
-The classifier is isolated from rendering and covered by JVM unit tests.
+The observed path is resampled once per decode. A tolerant endpoint shortlist limits expensive DTW scoring. Geometry, endpoint distance, smoothed path length, direction and velocity dominate ranking; touched-letter edit distance, context, language and correction history break closer ties. Crossing intermediate keys no longer eliminates a candidate through a hard signature-length filter. Consecutive repeated letters share a compact key signature.
+
+All five built-in packs include more everyday vocabulary. The decoder also considers frequent/pinned local user words, unless the editor is sensitive or disables personalized learning. On an empty editor the active keyboard layout supplies the primary language hint.
+
+JVM tests cover continuous sampled paths with transit keys, repeated letters, closed paths, small offsets, personal vocabulary and context interference. Debug Android checks exercise actual pen/finger events on the rendered view.

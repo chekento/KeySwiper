@@ -99,6 +99,11 @@ class KeyboardRootView(
     private val redoButton =
         Button(context)
 
+    private val handwritingPanelContainer = LinearLayout(context).apply {
+        orientation = VERTICAL
+        visibility = GONE
+    }
+
     private val content =
         FrameLayout(context)
 
@@ -125,6 +130,9 @@ class KeyboardRootView(
             theme.background
         )
 
+        addView(handwritingPanelContainer, LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT
+        ))
         toolbarView = buildToolbar()
         addView(
             toolbarView,
@@ -312,6 +320,7 @@ class KeyboardRootView(
         )
 
         showKeyboard()
+        StylusUi.usePointerInput(this)
     }
 
     private fun buildToolbar(): View {
@@ -484,6 +493,7 @@ class KeyboardRootView(
                 sizing.bottomRowHeightPx
             )
         )
+        StylusUi.usePointerInput(keyboardPanel)
     }
 
     fun setSystemBottomInset(
@@ -1129,6 +1139,8 @@ class KeyboardRootView(
     }
 
     fun showKeyboard() {
+        handwritingPanelContainer.removeAllViews()
+        handwritingPanelContainer.visibility = GONE
         theme =
             KeyboardThemes.byId(
                 Prefs.keyboardThemeId(
@@ -2251,6 +2263,7 @@ class KeyboardRootView(
             HandwritingPadView
         ) -> Unit
     ) {
+        showKeyboard()
         val panel =
             LinearLayout(context).apply {
                 orientation = VERTICAL
@@ -2279,7 +2292,7 @@ class KeyboardRootView(
             pad,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                dp(185)
+                minOf(dp(132), resources.displayMetrics.heightPixels / 6)
             )
         )
 
@@ -2297,7 +2310,7 @@ class KeyboardRootView(
             },
             LayoutParams(
                 0,
-                dp(52),
+                dp(40),
                 1f
             )
         )
@@ -2314,7 +2327,7 @@ class KeyboardRootView(
             },
             LayoutParams(
                 0,
-                dp(52),
+                dp(40),
                 1f
             )
         )
@@ -2328,19 +2341,23 @@ class KeyboardRootView(
             },
             LayoutParams(
                 0,
-                dp(52),
+                dp(40),
                 1f
             )
         )
 
         panel.addView(controls)
-        swapContent(panel)
+        themeAuxiliaryTree(panel)
+        handwritingPanelContainer.addView(panel)
+        handwritingPanelContainer.visibility = VISIBLE
         onReady(pad)
     }
 
     private fun swapContent(
         view: View
     ) {
+        handwritingPanelContainer.removeAllViews()
+        handwritingPanelContainer.visibility = GONE
         content.removeAllViews()
         detachFromParent(view)
         themeAuxiliaryTree(
@@ -2360,6 +2377,7 @@ class KeyboardRootView(
     private fun themeAuxiliaryTree(
         view: View
     ) {
+        StylusUi.usePointerInput(view)
         when (view) {
             is EditText -> {
                 view.setTextColor(
@@ -2420,3 +2438,4 @@ class KeyboardRootView(
             ?.removeView(view)
     }
 }
+

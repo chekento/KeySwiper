@@ -20,7 +20,7 @@ class SwipeDecoder {
     private val lexicon: List<Lexeme> =
         LanguagePackRegistry.all
             .flatMap { pack ->
-                (pack.words + pack.technicalTerms)
+                (pack.words + pack.technicalTerms + pack.commonNext.keys + pack.commonNext.values.flatten())
                     .asSequence()
                     .filter { it.length in 2..28 }
                     .map { word ->
@@ -57,7 +57,8 @@ class SwipeDecoder {
             previousWord: String,
             candidate: String
         ) -> Int = { _, _, _ -> 0 },
-        motorOffset: (Char) -> KeyOffset = { KeyOffset() }
+        motorOffset: (Char) -> KeyOffset = { KeyOffset() },
+        additionalWords: List<String> = emptyList()
     ): List<String> {
         val compact = trace.normalizedKeys()
         if (compact.isEmpty()) return emptyList()
@@ -78,75 +79,56 @@ class SwipeDecoder {
         val last = compact.last()
         val hasGeometry = trace.points.size >= 3
 
-        val ranked = lexicon.asSequence()
+        val personalLexemes = additionalWords.asSequence()
+            .map { it.trim().lowercase() }
+            .filter { it.length in 2..48 }
+            .distinct()
+            .map { Lexeme(it, swipeForm(it), LanguagePackRegistry.languagesForWord(it)) }
+            .filter { it.swipeForm.length >= 2 && it.swipeForm.all { c -> c in 'a'..'z' } }
+            .toList()
+        val candidates = (lexicon + personalLexemes).distinctBy { it.word }
+        val prepared = if (hasGeometry) SwipeGeometryScorer.prepare(trace) else null
+        val endpoints = if (hasGeometry) candidates.associateWith {
+            SwipeGeometryScorer.endpointDistance(trace, it.swipeForm, motorOffset)
+        } else emptyMap()
+        val nearestEndpoints = endpoints.values.minOrNull() ?: 0f
+
+        val ranked = candidates.asSequence()
             .filter {
-                abs(it.swipeForm.length - sig.length) <=
-                    maxOf(6, sig.length / 2 + 2)
+                // Crossing keys adds letters to the sampled sequence. Its length
+                // must not eliminate the correct geometric word before scoring.
+                if (hasGeometry) endpoints.getValue(it) <= nearestEndpoints + 0.40f
+                else abs(it.swipeForm.length - sig.length) <= maxOf(6, sig.length / 2 + 2)
             }
             .map { item ->
                 val form = item.swipeForm
-                val distance = levenshtein(sig, form)
-                val coverage = orderedCoverage(compact, form)
-
-                val endpointPenalty =
-                    (if (form.firstOrNull() == first) 0 else 5) +
-                        (if (form.lastOrNull() == last) 0 else 4)
-
-                val lengthPenalty =
-                    abs(form.length - sig.length) * 2
-
-                val languageBoost =
-                    languageBoost(
-                        item.languages,
-                        preferredLanguages
-                    )
-
-                val contextBoost =
-                    contextualBoost(
-                        previousWord = previousWord,
-                        candidate = item.word,
-                        languages = item.languages
-                    )
-
-                val learnedBoost =
-                    personalizationBoost(
-                        sig,
-                        previousWord,
-                        item.word
-                    ).coerceIn(0, 24)
-
-                val geometryScore = if (hasGeometry) {
-                    SwipeGeometryScorer.score(
-                        trace,
-                        form,
-                        motorOffset
-                    )
+                val compactForm = form.fold(StringBuilder()) { result, c ->
+                    if (result.lastOrNull() != c) result.append(c)
+                    result
+                }.toString()
+                val distance = levenshtein(sig, compactForm)
+                val languageBoost = languageBoost(item.languages, preferredLanguages)
+                val contextBoost = contextualBoost(previousWord, item.word, item.languages)
+                val learnedBoost = personalizationBoost(sig, previousWord, item.word).coerceIn(0, 24)
+                val score = if (prepared != null) {
+                    // Shape and endpoints dominate; transit letters and learned
+                    // context are only tie-breakers for geometrically close words.
+                    SwipeGeometryScorer.score(prepared, form, motorOffset) +
+                        distance * 0.6f - languageBoost * 1.2f -
+                        contextBoost * 1.0f - learnedBoost * 0.7f
                 } else {
-                    0f
+                    val endpointPenalty =
+                        (if (compactForm.firstOrNull() == first) 0 else 5) +
+                            (if (compactForm.lastOrNull() == last) 0 else 4)
+                    distance * 7f + abs(compactForm.length - sig.length) * 2f +
+                        endpointPenalty - orderedCoverage(compact, compactForm) * 2f -
+                        languageBoost * 4.5f - contextBoost * 5f - learnedBoost * 6f
                 }
-
-                CandidateScore(
-                    word = item.word,
-                    score =
-                        distance * 7f +
-                            lengthPenalty +
-                            endpointPenalty -
-                            coverage * 2f -
-                            languageBoost * 4.5f -
-                            contextBoost * 5f -
-                            learnedBoost * 6f +
-                            geometryScore * if (hasGeometry) 0.85f else 0f
-                )
+                CandidateScore(item.word, score)
             }
             .sortedBy { it.score }
-            .distinctBy { it.word }
-            .take(6)
-            .map {
-                applyCase(
-                    it.word,
-                    sentenceStart
-                )
-            }
+            .take(if (hasGeometry) 6 else 5)
+            .map { applyCase(it.word, sentenceStart) }
             .toMutableList()
 
         val raw = applyCase(sig, sentenceStart)
@@ -154,7 +136,7 @@ class SwipeDecoder {
         if (ranked.isEmpty()) {
             ranked.add(raw)
         } else if (
-            ranked.none {
+            !hasGeometry && ranked.none {
                 it.equals(raw, ignoreCase = true)
             }
         ) {
@@ -261,23 +243,16 @@ class SwipeDecoder {
         trace: List<Char>,
         word: String
     ): Int {
-        var wordIndex = 0
+        // Count word letters in order while ignoring keys crossed between them.
+        var traceIndex = 0
         var score = 0
-
-        for (c in trace) {
-            while (
-                wordIndex < word.length &&
-                word[wordIndex] != c
-            ) {
-                wordIndex++
-            }
-
-            if (wordIndex < word.length) {
+        for (c in word) {
+            val index = (traceIndex until trace.size).firstOrNull { trace[it] == c }
+            if (index != null) {
                 score++
-                wordIndex++
+                traceIndex = index + 1
             }
         }
-
         return score
     }
 

@@ -1,5 +1,13 @@
 # S Pen / stylus support
 
+## Input areas in 0.18
+
+On letter keys, S Pen is a pointer: a short tap types the selected key, while a drag cancels it. Pen strokes never create word swipes on the keyboard. Finger word swipes remain available on the letter surface.
+
+Menus, predictions, settings and other keyboard controls retain normal selection behavior and opt out of Android automatic handwriting. The manual handwriting panel sits above the still-visible keyboard. Native handwriting and editor gestures are restricted to the area above the keyboard; circles select text where the target editor supports selection gestures. A stroke crossing an input-area boundary is canceled rather than changing modes halfway through.
+
+Android 16 uses an explicit handwriting region so outside strokes pass through to their original target. Earlier versions route intercepted keyboard strokes back to the keyboard controls. Physical S Pen and third-party editor behavior still require device testing.
+
 ## v0.8 — configurable local stylus actions
 
 KeySwiper treats Android stylus events as first-class input and does not require Samsung-specific APIs for its core pen workflow.
@@ -66,3 +74,4 @@ For that reason:
 4. device-specific support can be enabled later only where runtime tests prove that the event is actually delivered to the IME.
 
 This keeps KeySwiper functional on Samsung and non-Samsung stylus devices without making unsupported assumptions about remote gesture routing.
+

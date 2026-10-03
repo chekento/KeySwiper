@@ -2,6 +2,14 @@
 
 KeySwiper 0.10 supports both regular Android stylus handwriting and Android 15+ connectionless handwriting.
 
+## Writing and selection areas (0.18)
+
+The area above the visible keyboard is the native writing/selection area. Strokes starting on keyboard controls are routed to those controls on older Android releases, with a screen-to-keyboard coordinate conversion. Strokes starting above the keyboard stay latched to the writing area; crossing its boundary cancels that stroke, including historical samples.
+
+On Android 16+, `setStylusHandwritingRegion` excludes the keyboard/system bars and narrows the session to existing ink plus a margin after a stroke. Android passes strokes outside that region back to the target app. Rotation finishes the session so old coordinates cannot affect the new layout. Ink is transformed from screen coordinates into the overlay's local coordinates.
+
+The manual handwriting pad opens above the visible keyboard. KeySwiper menus and Settings fields opt out of automatic handwriting. Native circle selection, scratch-out and whitespace gestures still depend on the editor advertising the corresponding Android gesture support.
+
 ## Regular system handwriting
 
 The IME advertises:
@@ -95,3 +103,4 @@ Next handwriting gestures:
 - insert / cursor placement;
 - join or split whitespace;
 - gesture preview where the editor advertises preview support.
+

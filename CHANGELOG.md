@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.18.0-alpha18 — 2026-10-03
+
+Separate pen selection from handwriting, enlarge letter keys and improve word swipes:
+
+- pen taps on letter keys type one character; dragging a pen across keys cancels the tap and never creates a swipe word
+- menus, settings and keyboard controls opt out of Android automatic handwriting, so pen input selects controls normally
+- the optional handwriting pad opens above the still-visible keyboard; leaving either input surface cancels that stroke
+- native handwriting and editor selection gestures stay above the keyboard, with screen-to-view coordinate conversion and Android 16 handwriting-region passthrough
+- older Android handwriting callbacks route keyboard-origin pen sequences to their original keyboard controls
+- increased letter-key space inside the existing one-third normal keyboard height, narrowed visual gaps and made gaps part of the touch target
+- aligned drawn key centers with decoder geometry, preserved historical samples and the beginning of long traces
+- finger swipes can return to their starting key, as in “test” or “dad”
+- geometry and endpoints now dominate swipe ranking; crossed intermediate letters and repeated letters no longer overpower the intended path
+- expanded everyday vocabulary across all five language packs and included locally learned words outside sensitive/no-learning fields
+- resample the observed path once per decode, then shortlist candidates by endpoints before geometric comparison
+- fixed first-press stylus-button debounce overflow and kept button actions separate from handwriting ink
+- added JVM regressions for continuous paths and writing boundaries, plus debug Android checks for actual pen/finger MotionEvents, menu selection and upper-pad placement
+- advanced package version to 0.18.0-alpha18 / build 18
+
 ## 0.17.0-alpha17 — 2026-09-28
 
 Compact input, language-locked prediction, stylus intent and five new themes:
@@ -393,3 +412,4 @@ Initial KeySwiper foundation:
 - sensitive-field privacy policy
 - language settings screen
 - CI debug APK build
+

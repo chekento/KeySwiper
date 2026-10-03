@@ -51,6 +51,28 @@ object LanguagePackRegistry {
             kontext korrektur leiste lernen lokal lösung modell nachricht option prediction profil projekt
             quelle satz settings sprache swipe tastatur text übersetzung version vorschlag vorschläge wort
             wörter
+            hallo danke tschüss gutenmorgen abend morgen mittag nacht gestern übermorgen wochenende
+            montag dienstag mittwoch donnerstag freitag samstag sonntag woche monat jahr zeit uhr minute
+            sekunde stunde termin treffen besuch pause urlaub ferien reise unterwegs zuhause hause haus
+            wohnung zimmer küche garten tür fenster auto bus bahn zug fahrrad flugzeug straße weg stadt
+            land adresse ort schule universität büro laden supermarkt einkaufen kaufen bezahlen geld preis
+            essen trinken frühstück kaffee tee wasser milch brot butter käse obst gemüse apfel banane
+            pizza nudeln reis salat suppe hungrig durstig lecker kochen restaurant tisch reservieren
+            familie freund freunde freundin eltern mutter vater mama papa kind kinder bruder schwester
+            geburtstag glückwunsch liebe lieber lieben vermissen glücklich traurig müde krank gesund
+            schön schöne schönen toll prima leider schade sorry entschuldigung willkommen klar stimmt
+            vergessen erinnern versuchen wissen weiß denken denke sagen sagt fragen frage antworten
+            anrufen telefonieren schreiben schreibt lesen liest hören sehen sieht schauen sprechen reden
+            schicken senden bekommen holen bringen geben nehmen finden suchen warten bleiben gehen geht
+            kommen kommt fahren läuft laufen arbeiten lernen schlafen aufstehen spielen helfen brauchen
+            öffnen schließen speichern löschen auswählen markieren suchen verbinden installieren starten
+            funktioniert funktionieren testen test stift tippen taste tasten größer kleiner besser schneller
+            langsam groß klein lang kurz alt jung früh spät warm kalt heiß viel wenig alles nichts jemand
+            niemand zusammen allein schon noch wieder bald sofort gerade eben vielleicht bestimmt wirklich
+            warum wieso weshalb wann wohin woher wieviel beide zwei drei vier fünf sechs sieben acht neun
+            zehn hundert tausend nummer telefon handy bild foto video musik film buch wetter regen sonne
+            schnee wind blau rot grün gelb schwarz weiß lila braun wichtig sicher offen zu bereit endlich
+            konnte wollte musste sollte wäre wären hast hat habt seid darf dürfen mag mögen würde
         """),
         commonNext = mapOf(
             "ich" to listOf("möchte","kann","habe","bin","würde","denke"),
@@ -87,6 +109,23 @@ object LanguagePackRegistry {
             feature file function github idea input intelligence keyboard language learning local message
             model option prediction profile project release result sentence settings source suggestion
             suggestions swipe text translation version word words
+            world thanks thank goodbye morning afternoon evening night yesterday tomorrow weekend
+            monday tuesday wednesday thursday friday saturday sunday week month year hour minute second
+            meeting appointment visit break holiday vacation travel trip home house room kitchen garden
+            door window car bus train bike bicycle plane road street city country address place school
+            university office shop store shopping buy pay money price food drink breakfast lunch dinner
+            coffee tea water milk bread butter cheese fruit vegetables apple banana pizza pasta rice
+            salad soup hungry thirsty delicious cook restaurant table family friend friends parents
+            mother father mom dad child children brother sister birthday happy congratulations love
+            lovely miss sad tired sick healthy beautiful nice amazing sorry welcome fine true wrong
+            remember forget try learn understand read write listen hear look watch speak talk tell
+            send receive call phone bring fetch find search wait stay leave come walk drive run sleep
+            wake play open close save delete select install start stop test pen key keys bigger smaller
+            faster slower large small long short old young early late warm cold hot little nothing
+            someone anyone nobody everyone alone soon immediately maybe probably always never usually
+            almost already exactly perhaps two four five six seven eight nine ten hundred thousand
+            number mobile picture photo video music movie book weather rain sun snow wind blue red
+            green yellow black white purple brown ready finally beautiful tomorrow enjoy welcome
         """),
         commonNext = mapOf(
             "i" to listOf("want","would","can","have","need","think"),
@@ -118,6 +157,11 @@ object LanguagePackRegistry {
             android app build codice contesto correzione dati dettaglio download email errore funzione github
             input intelligenza lingua messaggio modello opzione prediction progetto risultato frase settings
             suggerimento suggerimenti swipe tastiera testo traduzione versione parola parole
+            buongiorno buonasera buonanotte arrivederci domani ieri mattina sera notte settimana mese anno
+            lunedì martedì mercoledì giovedì venerdì sabato domenica casa famiglia amico amici madre padre
+            figlio lavoro scuola ufficio macchina treno acqua caffè pane mangiare bere dormire aspettare
+            scrivere leggere parlare chiamare mandare trovare salvare cancellare selezionare penna tasto
+            tasti grande piccolo veloce lento bello bella scusa prego tempo sole pioggia appuntamento
         """),
         commonNext = mapOf(
             "io" to listOf("voglio","posso","ho","sono","penso"),
@@ -144,6 +188,11 @@ object LanguagePackRegistry {
             android app build clavier code contexte correction données détail téléchargement email erreur
             fonction github intelligence langue message modèle option prediction projet résultat phrase
             settings suggestion suggestions swipe texte traduction version mot mots
+            bonjour bonsoir salut merci au revoir demain hier matin soir nuit semaine mois année lundi
+            mardi mercredi jeudi vendredi samedi dimanche maison famille ami amis mère père enfant
+            travail école bureau voiture train eau café pain manger boire dormir attendre écrire lire
+            parler appeler envoyer trouver enregistrer supprimer sélectionner stylet touche touches
+            grand petit rapide lent beau belle pardon désolé bienvenue temps soleil pluie rendezvous
         """),
         commonNext = mapOf(
             "je" to listOf("veux","peux","suis","pense","voudrais"),
@@ -170,6 +219,11 @@ object LanguagePackRegistry {
             android app build código contexto corrección datos detalle descarga email error función github
             inteligencia idioma mensaje modelo opción prediction proyecto resultado frase settings sugerencia
             sugerencias swipe teclado texto traducción versión palabra palabras
+            gracias adiós buenos buenas días tardes noches mañana ayer noche semana mes año lunes martes
+            miércoles jueves viernes sábado domingo casa familia amigo amigos madre padre hijo trabajo
+            escuela oficina coche tren agua café pan comer beber dormir esperar escribir leer hablar
+            llamar enviar encontrar guardar borrar seleccionar lápiz tecla teclas grande pequeño rápido
+            lento bonito bonita perdón disculpa tiempo sol lluvia cita feliz cumpleaños bienvenida
         """),
         commonNext = mapOf(
             "yo" to listOf("quiero","puedo","tengo","soy","pienso"),

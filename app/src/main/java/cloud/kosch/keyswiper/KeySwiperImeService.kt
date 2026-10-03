@@ -2,9 +2,12 @@ package cloud.kosch.keyswiper
 
 import android.annotation.TargetApi
 import android.content.Intent
+import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.graphics.drawable.ColorDrawable
 import android.graphics.Color
+import android.graphics.RectF
+import android.graphics.Region
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +16,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.inputmethod.CursorAnchorInfo
 import android.view.inputmethod.DeleteGesture
 import android.view.inputmethod.EditorInfo
@@ -28,6 +32,8 @@ import cloud.kosch.keyswiper.handwriting.HandwritingCommitFormatter
 import cloud.kosch.keyswiper.handwriting.ScratchDeleteGestureClassifier
 import cloud.kosch.keyswiper.handwriting.StylusScreenPoint
 import cloud.kosch.keyswiper.handwriting.SystemHandwritingInkView
+import cloud.kosch.keyswiper.handwriting.StylusStrokeBoundary
+import cloud.kosch.keyswiper.handwriting.StylusWritingArea
 import cloud.kosch.keyswiper.input.EditTimeline
 import cloud.kosch.keyswiper.input.KeyOffset
 import cloud.kosch.keyswiper.input.MotorProfileStore
@@ -148,6 +154,9 @@ class KeySwiperImeService : InputMethodService() {
     private var lastSwipeTrace: SwipeTrace? = null
 
     private var systemHandwritingView: SystemHandwritingInkView? = null
+    private val handwritingStrokeBoundary = StylusStrokeBoundary()
+    private var handwritingKeyboardTarget: KeyboardRootView? = null
+    private var handwritingStrokeBounds: RectF? = null
     private var systemHandwritingModelReady = false
     private var systemHandwritingRecognitionInFlight = false
     private var systemHandwritingGeneration = 0L
@@ -224,6 +233,10 @@ class KeySwiperImeService : InputMethodService() {
             ColorDrawable(Color.TRANSPARENT)
         )
         handwritingWindow.setContentView(view)
+        handwritingStrokeBounds = null
+        handwritingStrokeBoundary.reset()
+        handwritingKeyboardTarget = null
+        updateSystemHandwritingRegion()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             setStylusHandwritingSessionTimeout(
@@ -267,6 +280,10 @@ class KeySwiperImeService : InputMethodService() {
             ColorDrawable(Color.TRANSPARENT)
         )
         handwritingWindow.setContentView(view)
+        handwritingStrokeBounds = null
+        handwritingStrokeBoundary.reset()
+        handwritingKeyboardTarget = null
+        updateSystemHandwritingRegion()
         setStylusHandwritingSessionTimeout(
             Duration.ofSeconds(6)
         )
@@ -275,58 +292,171 @@ class KeySwiperImeService : InputMethodService() {
         return true
     }
 
-    override fun onStylusHandwritingMotionEvent(
-        motionEvent: MotionEvent
-    ) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+    override fun onStylusHandwritingMotionEvent(motionEvent: MotionEvent) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            motionEvent.pointerCount == 0
+        ) return
+
+        val action = motionEvent.actionMasked
+        if (action == MotionEvent.ACTION_DOWN) {
+            mainHandler.removeCallbacks(finishConnectionlessHandwritingRunnable)
+            handwritingGesturePoints.clear()
+            val keyboard = root?.takeIf { it.isShown }
+            val location = IntArray(2)
+            keyboard?.getLocationOnScreen(location)
+            handwritingKeyboardTarget = keyboard?.takeIf {
+                motionEvent.rawX >= location[0] &&
+                    motionEvent.rawX < location[0] + it.width &&
+                    motionEvent.rawY >= location[1] &&
+                    motionEvent.rawY < location[1] + it.height
+            }
+            handwritingStrokeBoundary.begin(
+                motionEvent.rawX, motionEvent.rawY, screenWritingArea()
+            )
+        }
+
+        // Android 16 passes touches outside our handwriting region through itself.
+        // Older versions can still deliver keyboard touches to this callback. Keep
+        // the whole sequence on the original keyboard control, in local coordinates.
+        handwritingKeyboardTarget?.let { keyboard ->
+            val location = IntArray(2)
+            keyboard.getLocationOnScreen(location)
+            val local = MotionEvent.obtain(motionEvent)
+            try {
+                local.setLocation(
+                    motionEvent.rawX - location[0], motionEvent.rawY - location[1]
+                )
+                keyboard.dispatchTouchEvent(local)
+            } finally {
+                local.recycle()
+            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                handwritingKeyboardTarget = null
+                finishStylusHandwriting()
+            }
             return
         }
 
-        if (
-            motionEvent.actionMasked == MotionEvent.ACTION_DOWN &&
-            motionEvent.pointerCount > 0
-        ) {
-            mainHandler.removeCallbacks(
-                finishConnectionlessHandwritingRunnable
-            )
-            handwritingGesturePoints.clear()
-
-            if (
-                (motionEvent.buttonState and
-                    MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
-            ) {
-                handlePrimaryStylusPress()
+        var inside = handwritingStrokeBoundary.continueAt(motionEvent.rawX, motionEvent.rawY)
+        val rawOffsetX = motionEvent.rawX - motionEvent.x
+        val rawOffsetY = motionEvent.rawY - motionEvent.y
+        for (index in 0 until motionEvent.historySize) {
+            inside = handwritingStrokeBoundary.continueAt(
+                motionEvent.getHistoricalX(index) + rawOffsetX,
+                motionEvent.getHistoricalY(index) + rawOffsetY
+            ) && inside
+        }
+        if (!inside || action == MotionEvent.ACTION_CANCEL) {
+            val cancel = MotionEvent.obtain(motionEvent)
+            try {
+                cancel.action = MotionEvent.ACTION_CANCEL
+                systemHandwritingView?.consumeStylusEvent(cancel)
+            } finally {
+                cancel.recycle()
             }
+            handwritingGesturePoints.clear()
+            if (action == MotionEvent.ACTION_DOWN) finishStylusHandwriting()
+            return
+        }
 
-            if (
-                (motionEvent.buttonState and
-                    MotionEvent.BUTTON_STYLUS_SECONDARY) != 0
-            ) {
-                executeStylusAction(
-                    stylusActionStore.actionFor(
-                        StylusTrigger.SECONDARY_SINGLE
-                    )
+        if (action == MotionEvent.ACTION_DOWN) {
+            val primary = (motionEvent.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY) != 0
+            val secondary = (motionEvent.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY) != 0
+            if (primary || secondary) {
+                handwritingStrokeBoundary.reset()
+                if (primary) handlePrimaryStylusPress()
+                if (secondary) executeStylusAction(
+                    stylusActionStore.actionFor(StylusTrigger.SECONDARY_SINGLE)
                 )
+                return
             }
         }
 
         trackHandwritingGesture(motionEvent)
+        val inkView = systemHandwritingView ?: return
+        val location = IntArray(2)
+        inkView.getLocationOnScreen(location)
+        val local = MotionEvent.obtain(motionEvent)
+        try {
+            local.setLocation(
+                motionEvent.rawX - location[0], motionEvent.rawY - location[1]
+            )
+            inkView.consumeStylusEvent(local)
+        } finally {
+            local.recycle()
+        }
+        val x = motionEvent.rawX
+        val y = motionEvent.rawY
+        val strokeBounds = handwritingStrokeBounds
+        if (strokeBounds == null) handwritingStrokeBounds = RectF(x, y, x + 1f, y + 1f)
+        else strokeBounds.union(x, y)
+        for (index in 0 until motionEvent.historySize) {
+            handwritingStrokeBounds?.union(
+                motionEvent.getHistoricalX(index) + rawOffsetX,
+                motionEvent.getHistoricalY(index) + rawOffsetY
+            )
+        }
 
-        systemHandwritingView
-            ?.consumeStylusEvent(motionEvent)
-
-        if (motionEvent.actionMasked == MotionEvent.ACTION_UP) {
-            if (
-                tryPerformHandwritingEditGesture()
-            ) {
-                mainHandler.removeCallbacks(
-                    systemHandwritingRecognitionRunnable
-                )
+        if (action == MotionEvent.ACTION_UP) {
+            if (tryPerformHandwritingEditGesture()) {
+                mainHandler.removeCallbacks(systemHandwritingRecognitionRunnable)
             }
+            updateSystemHandwritingRegion()
+            handwritingStrokeBoundary.reset()
         }
     }
 
+    private fun screenWritingArea(): StylusWritingArea {
+        val metrics = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getSystemService(WindowManager::class.java)?.maximumWindowMetrics
+        } else null
+        val bars = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            metrics?.windowInsets?.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+        } else null
+        val width = metrics?.bounds?.width() ?: resources.displayMetrics.widthPixels
+        val height = metrics?.bounds?.height() ?: resources.displayMetrics.heightPixels
+        val location = IntArray(2)
+        val keyboard = root?.takeIf { it.isShown && it.height > 0 }
+        keyboard?.getLocationOnScreen(location)
+        val bottom = if (keyboard != null) location[1] else height - (bars?.bottom ?: 0)
+        return StylusWritingArea(
+            (bars?.left ?: 0).toFloat(),
+            (bars?.top ?: 0).toFloat(),
+            (width - (bars?.right ?: 0)).toFloat(),
+            bottom.toFloat()
+        )
+    }
+
+    private fun updateSystemHandwritingRegion() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA ||
+            systemHandwritingView == null
+        ) return
+        val area = screenWritingArea()
+        val bounds = RectF(area.left, area.top, area.right, area.bottom)
+        handwritingStrokeBounds?.let { ink ->
+            val margin = resources.displayMetrics.density * 64f
+            val nearby = RectF(ink).apply { inset(-margin, -margin) }
+            if (!bounds.intersect(nearby)) bounds.setEmpty()
+        }
+        setStylusHandwritingRegion(Region(
+            bounds.left.toInt(), bounds.top.toInt(),
+            bounds.right.toInt(), bounds.bottom.toInt()
+        ))
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && systemHandwritingView != null) {
+            // A new orientation/display invalidates both the latched stroke bounds
+            // and the handwriting window's coordinate transform.
+            finishStylusHandwriting()
+        }
+        super.onConfigurationChanged(newConfig)
+    }
+
     override fun onFinishStylusHandwriting() {
+        handwritingStrokeBoundary.reset()
+        handwritingKeyboardTarget = null
+        handwritingStrokeBounds = null
         systemHandwritingGeneration++
         mainHandler.removeCallbacks(
             systemHandwritingRecognitionRunnable
@@ -348,6 +478,9 @@ class KeySwiperImeService : InputMethodService() {
             styleImeSystemBars()
             root = view
             view.callbacks = callbacks
+            view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                updateSystemHandwritingRegion()
+            }
 
             view.setOnApplyWindowInsetsListener {
                     _,
@@ -534,7 +667,12 @@ class KeySwiperImeService : InputMethodService() {
             val values = swipeDecoder.decode(
                 trace = trace,
                 context = before,
-                preferredLanguages = activeLanguageLanes.map { it.tag },
+                preferredLanguages = if (before.isBlank()) {
+                    listOf(KeyboardLayoutProfiles.byId(trace.layoutId).languageTag)
+                } else activeLanguageLanes.map { it.tag },
+                additionalWords = if (sensitiveField) emptyList() else {
+                    userVocabularyStore.frequentWords(activeLanguageLanes, 256).map { it.first }
+                },
                 personalizationBoost = { sig, previous, candidate ->
                     if (sensitiveField) 0
                     else swipeLearningStore.boost(sig, previous, candidate)

@@ -1,6 +1,6 @@
 # KeySwiper Real-device Daily-driver Test Plan
 
-CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs the debug APK, enables and selects KeySwiper from outside the app process, opens a debug-only focused text field, verifies the KeySwiper package stays alive and confirms Android reports the IME as current and visible. Failures preserve dumpsys and logcat diagnostics. This catches basic startup and service-lifecycle regressions, but it does not prove touch feel, Samsung OEM switching, stylus hardware behavior or third-party editor compatibility; those still need the real-device checks below.
+CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs the debug APK, enables and selects KeySwiper from outside the app process, opens a debug-only focused text field, verifies the KeySwiper package stays alive and confirms Android reports the IME as current and visible. Failures preserve dumpsys and logcat diagnostics. It also runs debug input checks with synthetic Android pen/finger events, menu selection and upper-pad layout assertions. This catches basic startup, input-routing and service-lifecycle regressions, but it does not prove touch feel, Samsung OEM switching, stylus hardware behavior or third-party editor compatibility; those still need the real-device checks below.
 
 ## 1. Setup and system integration
 
@@ -31,7 +31,14 @@ CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs
 ## 3. Tap and swipe
 
 - Tap at least 20 keys with S Pen/stylus and verify normal pen jitter never starts a swipe.
-- Deliberately swipe several words with the stylus and verify the higher threshold still permits intentional swipe input.
+- Drag the stylus across several letter keys and verify no word, ink or unintended character is committed.
+- Tap menus, predictions, clipboard search and Settings fields with the pen; they must select/focus normally without starting handwriting.
+- Open the handwriting panel and verify it stays above the visible letter keys; its buttons select normally.
+- Start a stroke in the writing area and cross onto the keyboard; it must cancel rather than type a key or continue ink.
+- Finger-swipe “hallo”, “danke”, “morgen”, “tastatur” on QWERTZ and “hello”, “world”, “thanks” on QWERTY.
+- Swipe “test” and “dad” back to the starting key and verify they remain word swipes.
+- In a compatible editor above the keyboard, write text and circle existing text to check handwriting/selection.
+- On Android 16 verify native handwriting does not capture keyboard/menu touches. On Android 13–15 verify intercepted keyboard taps reach the original control.
 - Type German umlauts and ß.
 - Type English and German mixed text.
 - Swipe at least 50 common words.
@@ -129,3 +136,4 @@ For each failure capture:
 - screenshot/video if visual;
 - expected behavior;
 - actual behavior.
+
