@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.graphics.drawable.ColorDrawable
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Region
 import android.os.Build
@@ -410,23 +411,24 @@ class KeySwiperImeService : InputMethodService() {
     }
 
     private fun screenWritingArea(): StylusWritingArea {
-        val metrics = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            getSystemService(WindowManager::class.java)?.maximumWindowMetrics
-        } else null
-        val bars = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            metrics?.windowInsets?.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
-        } else null
-        val width = metrics?.bounds?.width() ?: resources.displayMetrics.widthPixels
-        val height = metrics?.bounds?.height() ?: resources.displayMetrics.heightPixels
+        val bounds = Rect(0, 0, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getSystemService(WindowManager::class.java)?.maximumWindowMetrics?.let { metrics ->
+                bounds.set(metrics.bounds)
+                val bars = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+                bounds.left += bars.left
+                bounds.top += bars.top
+                bounds.right -= bars.right
+                bounds.bottom -= bars.bottom
+            }
+        }
         val location = IntArray(2)
         val keyboard = root?.takeIf { isInputViewShown && it.isShown && it.height > 0 }
         keyboard?.getLocationOnScreen(location)
-        val bottom = if (keyboard != null) location[1] else height - (bars?.bottom ?: 0)
+        if (keyboard != null) bounds.bottom = minOf(bounds.bottom, location[1])
         return StylusWritingArea(
-            (bars?.left ?: 0).toFloat(),
-            (bars?.top ?: 0).toFloat(),
-            (width - (bars?.right ?: 0)).toFloat(),
-            bottom.toFloat()
+            bounds.left.toFloat(), bounds.top.toFloat(),
+            bounds.right.toFloat(), bounds.bottom.toFloat()
         )
     }
 

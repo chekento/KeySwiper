@@ -1,5 +1,6 @@
 package cloud.kosch.keyswiper.debug
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
@@ -21,6 +22,9 @@ import cloud.kosch.keyswiper.ui.StylusUi
 
 /** Debug-only checks against Android's real MotionEvent/View implementation. */
 object InputRegressionChecks {
+    // The smoke host is a platform Activity; this detached test button only
+    // substitutes scheduling and does not use AppCompat theming or widgets.
+    @SuppressLint("AppCompatCustomView")
     fun run(context: Context) {
         val surface = KeyboardSurface(context)
         surface.setLayout(KeyboardLayoutProfiles.byId("en-qwerty"), false)
