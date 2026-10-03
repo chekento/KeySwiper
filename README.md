@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.17.0-alpha17 · Build 17 · Run 36</strong><br>
-  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 AOSP IME Smoke ✓ · Permanent Release ✓
+  <strong>Current build: 0.18.0-alpha18 · Build 18 · Run 39</strong><br>
+  Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME + Input Checks ✓ · Permanent Release ✓
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.17.0--alpha17-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.18.0--alpha18-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,7 +40,9 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current validated release: 0.17.0-alpha17 / Build 17 / Run 36.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.18.0-alpha18 / Build 18 / Run 39.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+
+**Current APK:** [KeySwiper 0.18.0-alpha18 · build 18 · run 39](https://github.com/chekento/KeySwiper/releases/download/v0.18.0-alpha18-b18-run39/KeySwiper-v0.18.0-alpha18-build18-run39.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37151306328)
 
 ## KeySwiper in action
 
