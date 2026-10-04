@@ -54,8 +54,10 @@ class WordCorrectionEngine(
             // Capitalized unknown words may be names. Only unambiguous function-word typos
             // can be corrected automatically at the beginning of a sentence.
             val safeCase = token.first().isLowerCase() || match.word in capitalizedFunctionWords
+            // A compact lexicon cannot list every valid inflection. Missing/extra letters
+            // remain explicit choices (e.g. “schreib” must not silently become “schreibt”).
             Candidate(matchCase(token, match.word), match.cost, confidence,
-                index == 0 && safeCase && match.cost <= 1.05f && gap >= 0.35f && confidence >= 0.91f)
+                index == 0 && safeCase && match.cost <= 0.75f && gap >= 0.35f && confidence >= 0.91f)
         }
     }
 

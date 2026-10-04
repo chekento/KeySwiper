@@ -74,6 +74,16 @@ object LanguagePackRegistry {
             zehn hundert tausend nummer telefon handy bild foto video musik film buch wetter regen sonne
             schnee wind blau rot grün gelb schwarz weiß lila braun wichtig sicher offen zu bereit endlich
             konnte wollte musste sollte wäre wären hast hat habt seid darf dürfen mag mögen würde mochte mochten
+            dass war waren warst wart wer wessen wem wen hatte hatten hattest hattet gewesen worden
+            esse isst aß gegessen trinke trinkst getrunken gehe gehst ging gegangen komme kommst kam
+            gekommen fahre fährst fährt fuhr gefahren lese las gelesen schreibe schreibst schrieb geschrieben
+            sehe sah gesehen höre hörst gehört sage sagst sagte gesagt frage fragst gefragt weißt wusste
+            gewusst tue tust tut getan nehme nimmst nimmt nahm genommen gebe gibst gab gegeben
+            finde findest fand gefunden bleibe bleibst blieb geblieben schlafe schläfst geschlafen
+            kaufe kaufst gekauft arbeite arbeitest gearbeitet spiele spielst gespielt lebe lebst lebt
+            heißen heißt heiße hieß genannt müsste müsstest müsste möchten möchtest wolltest willst will
+            sollst sollt dürft darfst könntest könnt kannst könnt ihr euch euer eure euren ihrer ihres
+            trotz während wegen seit seitdem sobald obwohl bevor nachdem damit deshalb deswegen trotzdem
         """),
         commonNext = mapOf(
             "ich" to listOf("möchte","kann","habe","bin","würde","denke"),

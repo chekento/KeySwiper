@@ -34,6 +34,13 @@ class WordCorrectionEngineTest {
         assertTrue(engine.candidates("Mara", emptyList(), "de").none { it.automatic })
     }
 
+    @Test fun validInflectionsAndDoubleLettersAreNotReducedToDictionaryStems() {
+        listOf("dass", "esse", "isst", "war", "wer", "hatte", "lese").forEach {
+            assertTrue(it, engine.candidates(it, listOf("ich"), "de").isEmpty())
+        }
+        assertTrue(engine.candidates("schreib", emptyList(), "de").none { it.automatic })
+    }
+
     @Test fun personalWordsAreProtectedEvenWhenTheyLookLikeTypos() {
         val vocabulary = object : UserVocabularyLookup {
             override fun contains(word: String) = word == "tastatru"
