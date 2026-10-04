@@ -15,6 +15,9 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.ui.HoldRepeater
+import cloud.kosch.keyswiper.clipboard.ClipboardEntry
+import cloud.kosch.keyswiper.clipboard.ClipboardCategory
 import cloud.kosch.keyswiper.handwriting.SystemHandwritingInkView
 import cloud.kosch.keyswiper.ui.HandwritingPadView
 import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
@@ -29,6 +32,7 @@ object InputRegressionChecks {
     @SuppressLint("AppCompatCustomView")
     fun run(context: Context) {
         WordCommitRegressionChecks.run(context)
+        checkShiftAndClipboard(context)
         val surface = KeyboardSurface(context)
         surface.setLayout(KeyboardLayoutProfiles.byId("en-qwerty"), false)
         layout(surface)
@@ -42,37 +46,37 @@ object InputRegressionChecks {
             override fun onStylusSecondaryButton() = Unit
         }
 
-        stroke(surface, MotionEvent.TOOL_TYPE_STYLUS, listOf(450f to 100f, 453f to 103f))
+        stroke(surface, MotionEvent.TOOL_TYPE_STYLUS, listOf(400f to 100f, 403f to 103f))
         check(taps == listOf('t') && swipes.isEmpty()) { "Pen tap must type exactly one key" }
         taps.clear()
         stroke(surface, MotionEvent.TOOL_TYPE_STYLUS,
-            listOf(450f to 100f, 250f to 100f, 166f to 300f, 450f to 100f))
+            listOf(400f to 100f, 222f to 100f, 166f to 300f, 400f to 100f))
         check(taps.isEmpty() && swipes.size == 1) { "Pen loop must commit a swipe without a tap" }
         swipes.clear()
 
         stroke(surface, MotionEvent.TOOL_TYPE_FINGER,
-            listOf(450f to 100f, 250f to 100f, 166f to 300f, 450f to 100f))
+            listOf(400f to 100f, 222f to 100f, 166f to 300f, 400f to 100f))
         check(swipes.size == 1 && taps.isEmpty()) { "Finger loop must commit a swipe" }
         swipes.clear()
         for (tool in listOf(MotionEvent.TOOL_TYPE_FINGER, MotionEvent.TOOL_TYPE_STYLUS)) {
-            stroke(surface, tool, listOf(450f to 100f, 250f to 100f, 250f to -20f, 166f to 300f, 450f to 100f))
+            stroke(surface, tool, listOf(400f to 100f, 222f to 100f, 222f to -20f, 166f to 300f, 400f to 100f))
             check(swipes.size == 1 && taps.isEmpty()) { "Re-entry after crossing the edge must keep the original swipe" }
             check(swipes.single().points.all { it.x in 0f..1f && it.y in 0f..1f })
             swipes.clear()
-            stroke(surface, tool, listOf(450f to 100f, 250f to 100f, 166f to 300f, -30f to 300f))
+            stroke(surface, tool, listOf(400f to 100f, 222f to 100f, 166f to 300f, -30f to 300f))
             check(swipes.size == 1 && taps.isEmpty()) { "Lifting outside must finish the valid swipe once" }
             swipes.clear()
-            stroke(surface, tool, listOf(450f to -20f, 250f to 100f, 166f to 300f))
+            stroke(surface, tool, listOf(400f to -20f, 222f to 100f, 166f to 300f))
             check(swipes.isEmpty() && taps.isEmpty()) { "Input starting outside cannot become a keyboard gesture" }
         }
 
         // A pen can take over from palm contact and survive the palm lifting first.
         val palm = Contact(7, MotionEvent.TOOL_TYPE_FINGER, 800f, 550f)
-        val pen = Contact(9, MotionEvent.TOOL_TYPE_STYLUS, 450f, 100f)
+        val pen = Contact(9, MotionEvent.TOOL_TYPE_STYLUS, 400f, 100f)
         contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(palm))
         contactEvent(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(palm, pen))
-        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(palm, pen.copy(x = 250f)))
-        contactEvent(surface, MotionEvent.ACTION_POINTER_UP, listOf(palm, pen.copy(x = 250f)))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(palm, pen.copy(x = 222f)))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_UP, listOf(palm, pen.copy(x = 222f)))
         contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(pen.copy(x = 166f, y = 300f)))
         contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen))
         check(swipes.size == 1 && taps.isEmpty()) { "Palm contact must not corrupt the active pen path" }
@@ -80,7 +84,7 @@ object InputRegressionChecks {
 
         contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
         contactEvent(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(pen, palm))
-        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(pen.copy(x = 250f), palm))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(pen.copy(x = 222f), palm))
         contactEvent(surface, MotionEvent.ACTION_POINTER_UP, listOf(pen.copy(x = 166f, y = 300f), palm))
         contactEvent(surface, MotionEvent.ACTION_UP, listOf(palm))
         check(swipes.size == 1 && taps.isEmpty()) { "Pen lift must finish once even while palm stays down" }
@@ -89,8 +93,8 @@ object InputRegressionChecks {
         val finger = pen.copy(tool = MotionEvent.TOOL_TYPE_FINGER)
         contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(finger))
         contactEvent(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(finger, palm))
-        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(finger.copy(x = 250f), palm))
-        contactEvent(surface, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(finger.copy(x = 250f), palm))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(finger.copy(x = 222f), palm))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(finger.copy(x = 222f), palm))
         contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(finger.copy(x = 166f, y = 300f)))
         contactEvent(surface, MotionEvent.ACTION_UP, listOf(finger))
         check(swipes.size == 1 && taps.isEmpty()) { "A second finger/hand contact must not cancel the first finger swipe" }
@@ -193,12 +197,102 @@ object InputRegressionChecks {
                             check(!surface.isShowingAlternatives)
                             root.removeView(surface)
                             Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
-                            onComplete()
+                            runHoldChecks(root, onComplete)
                         }
                     }
                 }
             }
         })
+    }
+
+    private fun checkShiftAndClipboard(context: Context) {
+        val root = KeyboardRootView(context)
+        val externalText = StringBuilder()
+        root.callbacks = java.lang.reflect.Proxy.newProxyInstance(
+            KeyboardRootView.Callbacks::class.java.classLoader, arrayOf(KeyboardRootView.Callbacks::class.java)
+        ) { _, method, args ->
+            if (method.name == "onCharacter") externalText.append(args!![0])
+            null
+        } as KeyboardRootView.Callbacks
+        layout(root)
+        val keys = descendants(root).filterIsInstance<KeyboardSurface>().single()
+        val shift = checkNotNull(keys.keyBounds(KeyboardLayoutProfiles.SHIFT))
+        val backspace = checkNotNull(keys.keyBounds(KeyboardLayoutProfiles.BACKSPACE))
+        val firstBottom = checkNotNull(keys.keyBounds(if (keys.currentLayoutId() == "de-qwertz") "y" else "z"))
+        check(shift.right < firstBottom.left && shift.width() > firstBottom.width())
+        check(backspace.left > checkNotNull(keys.keyBounds("p")).right)
+        fun tap(bounds: android.graphics.RectF) = stroke(keys, MotionEvent.TOOL_TYPE_STYLUS,
+            listOf(bounds.centerX() to bounds.centerY(), bounds.centerX() to bounds.centerY()))
+        tap(shift); tap(shift)
+        check(keys.shifted && keys.capsLocked) { "Two Shift taps must lock capitals" }
+        tap(checkNotNull(keys.keyBounds("a")))
+        check(externalText.toString() == "A" && keys.capsLocked)
+        tap(shift)
+        check(!keys.capsLocked && !keys.shifted)
+        externalText.setLength(0)
+        root.showClipboardPanel(listOf(ClipboardEntry("check", "Testeintrag", ClipboardCategory.TEXT, 0, null, true)))
+        root.callbacks?.onCharacter('k')
+        val search = descendants(root).filterIsInstance<EditText>().single()
+        check(search.text.toString() == "k" && externalText.isEmpty()) { "Clipboard search must never type into the external app" }
+        root.callbacks?.onBackspace()
+        check(search.text.isEmpty())
+        root.showKeyboard()
+        root.callbacks?.onCharacter('x')
+        check(externalText.toString() == "x") { "Closing clipboard must restore normal app input" }
+        val vocabulary = cloud.kosch.keyswiper.language.UserVocabularyStore(context)
+        vocabulary.rememberWord("KeySwiperProbe", "de")
+        vocabulary.observeWord("keyswiperprobe", listOf("de"))
+        check(vocabulary.prefixMatches("keysw", emptyList(), 20).any { it.first == "KeySwiperProbe" })
+        vocabulary.forgetWord("KeySwiperProbe")
+        Log.i("KeySwiperInputChecks", "PASS: Shift caps lock, command layout, clipboard input isolation and personal spelling")
+    }
+
+    private fun runHoldChecks(root: FrameLayout, onComplete: () -> Unit) {
+        val button = Button(root.context)
+        var clicks = 0
+        var repeats = 0
+        button.setOnClickListener { clicks++ }
+        HoldRepeater(button, { repeats++ }).attach()
+        root.addView(button, FrameLayout.LayoutParams(160, 100))
+        button.post {
+            val finger = Contact(0, MotionEvent.TOOL_TYPE_FINGER, 50f, 40f)
+            contactEvent(button, MotionEvent.ACTION_DOWN, listOf(finger))
+            contactEvent(button, MotionEvent.ACTION_UP, listOf(finger))
+            check(clicks == 1 && repeats == 0)
+            contactEvent(button, MotionEvent.ACTION_DOWN, listOf(finger))
+            button.postDelayed({
+                check(repeats > 0) { "Holding Space must start repeat without opening language selection" }
+                contactEvent(button, MotionEvent.ACTION_UP, listOf(finger))
+                val stopped = repeats
+                contactEvent(button, MotionEvent.ACTION_DOWN, listOf(finger))
+                contactEvent(button, MotionEvent.ACTION_CANCEL, listOf(finger))
+                button.postDelayed({
+                    check(repeats == stopped && clicks == 1) { "Release/cancel must stop repeats and must not add a tap" }
+                    root.removeView(button)
+                    checkClipboardHistory(root.context)
+                    Log.i("KeySwiperInputChecks", "PASS: held key release/cancel and clipboard delete/undo/persistence")
+                    onComplete()
+                }, 550)
+            }, 700)
+        }
+    }
+
+    @android.annotation.TargetApi(28)
+    private fun checkClipboardHistory(context: Context) {
+        val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        manager.setPrimaryClip(android.content.ClipData.newPlainText("check", "  Clipboard Probe  "))
+        val controller = cloud.kosch.keyswiper.clipboard.ClipboardController(context)
+        val entry = controller.items().first { it.text == "  Clipboard Probe  " }
+        check(controller.delete(entry.id))
+        check(controller.items().none { it.id == entry.id }) { "Deleted current clip must not reappear on opening" }
+        check(controller.undoDelete() && controller.textFor(entry.id) == "  Clipboard Probe  ")
+        controller.save(entry.id, "Bearbeiteter Textbaustein")
+        val edited = controller.items().first { it.text == "Bearbeiteter Textbaustein" }
+        controller.togglePin(edited.id)
+        val restored = cloud.kosch.keyswiper.clipboard.ClipboardController(context)
+        check(restored.textFor(edited.id) == "Bearbeiteter Textbaustein")
+        restored.delete(edited.id)
+        manager.clearPrimaryClip()
     }
 
     private fun awaitPopupLayout(surface: KeyboardSurface, onReady: (android.graphics.RectF) -> Unit) {

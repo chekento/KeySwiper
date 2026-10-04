@@ -15,7 +15,8 @@ class HybridPredictionEngine(
             beforeCursor = context.beforeCursor,
             languageHints = context.languageHints,
             maxSuggestions = maxSuggestions,
-            fallbackLanguage = context.inputLanguageTag
+            fallbackLanguage = context.inputLanguageTag,
+            afterCursor = context.surrounding.afterCursor
         ).filterNot { suggestion ->
             (context.inputMode == PredictionInputMode.CODE || context.inputMode == PredictionInputMode.EMAIL) &&
                 (suggestion.kind == PredictionKind.CORRECTION || suggestion.kind == PredictionKind.KEEP_TYPED)
@@ -106,4 +107,3 @@ class HybridPredictionEngine(
         }.take(maxSuggestions)
     }
 }
-

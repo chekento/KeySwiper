@@ -9,6 +9,20 @@ data class KeyboardLayoutProfile(
 )
 
 object KeyboardLayoutProfiles {
+    const val SHIFT = "__SHIFT__"
+    const val BACKSPACE = "__BACKSPACE__"
+    data class Slot(val token: String, val weight: Float = 1f)
+
+    fun slots(profile: KeyboardLayoutProfile, symbols: Boolean = false, page: Int = 0): List<List<Slot>> {
+        val rows = if (symbols) { if (page == 0) symbolRows else extraSymbolRows } else profile.letterRows
+        return rows.mapIndexed { index, row ->
+            buildList {
+                if (!symbols && index == rows.lastIndex) add(Slot(SHIFT, 1.55f))
+                addAll(row.map { Slot(it.toString()) })
+                if (index == 0) add(Slot(BACKSPACE, 1.25f))
+            }
+        }
+    }
     val all = listOf(
         KeyboardLayoutProfile(
             id = "de-qwertz",

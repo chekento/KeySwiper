@@ -24,6 +24,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
         prefs.edit()
             .putInt(countKey, next)
             .putString("l|$word", language)
+            .putString("v|$word", preferredSpelling(word, rawWord))
             .apply()
 
         pruneIfNeeded()
@@ -46,6 +47,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
             .putInt("c|$word", maxOf(20, prefs.getInt("c|$word", 0)))
             .putBoolean("p|$word", true)
             .putString("l|$word", language)
+            .putString("v|$word", preferredSpelling(word, rawWord))
             .apply()
     }
 
@@ -55,6 +57,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
             .remove("c|$word")
             .remove("p|$word")
             .remove("l|$word")
+            .remove("v|$word")
             .apply()
     }
 
@@ -81,7 +84,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
                     count * 4 +
                         (if (pinned) 200 else 0) +
                         (lane * 60f).toInt()
-                word to score
+                (prefs.getString("v|$word", word) ?: word) to score
             }
             .sortedByDescending { it.second }
             .take(limit)
@@ -102,7 +105,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
                 val pinned = prefs.getBoolean("p|$word", false)
                 val language = prefs.getString("l|$word", null)
                 val lane = laneScores[language] ?: 0.20f
-                word to (
+                (prefs.getString("v|$word", word) ?: word) to (
                     count * 3 +
                         (if (pinned) 180 else 0) +
                         (lane * 50f).toInt()
@@ -136,6 +139,12 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
             ?: "und"
     }
 
+    private fun preferredSpelling(word: String, raw: String): String {
+        val candidate = raw.trim { !it.isLetter() && it !in "'-" }
+        val previous = prefs.getString("v|$word", null)
+        return if (candidate.any { it.isUpperCase() } || previous == null) candidate else previous
+    }
+
     private fun normalize(value: String): String =
         value.lowercase()
             .trim { !it.isLetter() && it != '\'' && it != '-' }
@@ -157,6 +166,7 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
         removable.forEach { (word, _) ->
             editor.remove("c|$word")
             editor.remove("l|$word")
+            editor.remove("v|$word")
         }
         editor.apply()
     }

@@ -27,7 +27,7 @@ class WordCorrectionEngine(
         if (token.drop(1).any { it.isUpperCase() }) return emptyList() // Acronyms and identifiers.
         val pack = LanguagePackRegistry.get(language) ?: return emptyList()
         val next = pack.commonNext[contextWords.lastOrNull()?.lowercase()].orEmpty()
-        val personal = vocabulary?.frequentWords(listOf(LanguageLane(language, 1f)), 120).orEmpty().map { it.first }
+        val personal = vocabulary?.frequentWords(listOf(LanguageLane(language, 1f)), 120).orEmpty().map { it.first.lowercase() }
         val keys = KeyboardLayoutProfiles.forLanguage(language).letterRows.flatMapIndexed { row, letters ->
             letters.mapIndexed { column, char -> char to (column + row * 0.35f to row.toFloat()) }
         }.toMap()

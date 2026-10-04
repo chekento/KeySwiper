@@ -5,7 +5,9 @@ data class EditTimelineEntry(
     val deletedText: String,
     val insertedText: String,
     val source: String,
-    val timestampMs: Long
+    val timestampMs: Long,
+    val anchorBefore: String? = null,
+    val anchorAfter: String? = null
 ) {
     val summary: String
         get() =
@@ -49,7 +51,9 @@ class EditTimeline(
         insertedText: String,
         source: String,
         timestampMs: Long =
-            System.currentTimeMillis()
+            System.currentTimeMillis(),
+        anchorBefore: String? = null,
+        anchorAfter: String? = null
     ) {
         if (
             deletedText ==
@@ -67,7 +71,9 @@ class EditTimeline(
                     insertedText,
                 source = source,
                 timestampMs =
-                    timestampMs
+                    timestampMs,
+                anchorBefore = anchorBefore,
+                anchorAfter = anchorAfter
             )
         )
 
@@ -82,7 +88,8 @@ class EditTimeline(
     }
 
     fun planUndo(
-        beforeCursor: String
+        beforeCursor: String,
+        afterCursor: String = ""
     ): EditTimelinePlan? {
         val entry =
             undoStack.lastOrNull()
@@ -95,6 +102,9 @@ class EditTimeline(
         ) {
             return null
         }
+
+        if (entry.anchorBefore != null && beforeCursor.dropLast(entry.insertedText.length).takeLast(256) != entry.anchorBefore) return null
+        if (entry.anchorAfter != null && afterCursor.take(64) != entry.anchorAfter) return null
 
         return EditTimelinePlan(
             entry = entry,
@@ -127,7 +137,8 @@ class EditTimeline(
     }
 
     fun planRedo(
-        beforeCursor: String
+        beforeCursor: String,
+        afterCursor: String = ""
     ): EditTimelinePlan? {
         val entry =
             redoStack.lastOrNull()
@@ -140,6 +151,9 @@ class EditTimeline(
         ) {
             return null
         }
+
+        if (entry.anchorBefore != null && beforeCursor.dropLast(entry.deletedText.length).takeLast(256) != entry.anchorBefore) return null
+        if (entry.anchorAfter != null && afterCursor.take(64) != entry.anchorAfter) return null
 
         return EditTimelinePlan(
             entry = entry,
@@ -185,3 +199,4 @@ class EditTimeline(
         redoStack.clear()
     }
 }
+

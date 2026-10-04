@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.20.0-alpha21 — 2026-10-04
+
+More predictable editing, selection, dictation and clipboard management:
+
+- larger outlined/filled Shift key left of Y on QWERTZ; double-tap locks capitals, another tap unlocks; Backspace is right of P
+- one clear, equally spaced punctuation row for ! ? : ; , .; punctuation moves a still-owned automatic separator behind itself without removing manual spacing
+- hold Backspace to progress through characters, words, three-word groups, sentences and paragraphs; release/cancel stops immediately, with a context-checked undo for the held deletion
+- hold Space to repeat spaces in growing groups; language selection has its own labeled key
+- cursor-aware completion replaces both sides of the current word; suggestion ranking uses its suffix and following-word context, and personal spelling preserves names/capitalization
+- brief stationary pen contacts place the cursor instead of becoming dots; selection circles use editor gestures or text-bound selection, never OCR fallback; idle handwriting releases its window sooner
+- voice service visibility and runtime microphone permission flow; final results survive Stop, stale editor sessions cannot receive dictation, and errors have readable recovery guidance
+- live dictation transcript and recording/processing status; selected or preceding text can be read using Android text-to-speech
+- clipboard cards with search/category/pin filters, editing and new snippets, copy, multiple selection, batch deletion and undo; typed searches stay inside the panel
+- preserve clipboard whitespace; deleted current clips stay deleted, repeated panel reads do not renew expiry, and sensitive system clips are excluded
+- targeted JVM and native Android regressions cover word replacement, punctuation, acceleration, caps lock, clipboard isolation and hold cancellation
+- package version 0.20.0-alpha21 / build 21; physical microphone, S Pen and third-party editor compatibility remain device checks
+
 ## 0.19.1-alpha20 — 2026-10-04
 
 Consistent word separators after swipes and accepted suggestions:

@@ -18,6 +18,8 @@ import android.widget.Toast
 import cloud.kosch.keyswiper.clipboard.ClipboardEntry
 import cloud.kosch.keyswiper.input.EditTimelineEntry
 import cloud.kosch.keyswiper.input.SwipeTrace
+import cloud.kosch.keyswiper.input.SwipeDecoder
+import cloud.kosch.keyswiper.input.HoldAcceleration
 import cloud.kosch.keyswiper.prediction.PredictionKind
 import cloud.kosch.keyswiper.prediction.PredictionSuggestion
 import cloud.kosch.keyswiper.settings.Prefs
@@ -30,6 +32,9 @@ class KeyboardRootView(
         fun onCharacter(value: Char)
         fun onSwipe(trace: SwipeTrace)
         fun onBackspace()
+        fun onBackspaceRepeat(elapsedMs: Long) {}
+        fun onBackspaceHoldEnd() {}
+        fun onSpaceRepeat(elapsedMs: Long) {}
         fun onSpace()
         fun onEnter()
         fun onCandidate(value: String)
@@ -43,6 +48,9 @@ class KeyboardRootView(
         fun onTranslate()
         fun onVoice()
         fun onVoiceCommand()
+        fun onVoiceCancel() {}
+        fun onSpeak() {}
+        fun onStopSpeaking() {}
         fun onUndoEdit()
         fun onRedoEdit()
         fun onEditTimelineRequested()
@@ -56,6 +64,10 @@ class KeyboardRootView(
         fun onClipboardSearch(query: String)
         fun onClipboardTogglePin(id: String)
         fun onClipboardDelete(id: String)
+        fun onClipboardDeleteMany(ids: Set<String>) {}
+        fun onClipboardUndoDelete() {}
+        fun onClipboardCopy(id: String) {}
+        fun onClipboardSave(id: String?, value: String) {}
         fun onClipboardClearUnpinned()
         fun onClipboardExpiryChanged(minutes: Long)
         fun onEmoji(value: String)
@@ -68,7 +80,48 @@ class KeyboardRootView(
         fun onStylusSecondary()
     }
 
+    private var clipboardEditor: EditText? = null
+    private var clipboardPanel: ClipboardPanelView? = null
+    private val clipboardDecoder by lazy { SwipeDecoder() }
     var callbacks: Callbacks? = null
+        get() {
+            val delegate = field ?: return null
+            val panel = clipboardPanel ?: return delegate
+            val target = clipboardEditor?.takeIf { it.parent != null } ?: panel.searchEditor
+            return object : Callbacks by delegate {
+                override fun onCharacter(value: Char) = editClipboard(target, value.toString())
+                override fun onDeveloperText(value: String) = editClipboard(target, value)
+                override fun onEmoji(value: String) = editClipboard(target, value)
+                override fun onBackspace() = deleteClipboard(target, 0)
+                override fun onBackspaceRepeat(elapsedMs: Long) = deleteClipboard(target, elapsedMs)
+                override fun onBackspaceHoldEnd() = Unit
+                override fun onSpace() = editClipboard(target, " ")
+                override fun onSpaceRepeat(elapsedMs: Long) = editClipboard(target, " ".repeat(HoldAcceleration.step(elapsedMs).spaces))
+                override fun onEnter() { if (target !== panel.searchEditor) editClipboard(target, "\n") }
+                override fun onSwipe(trace: SwipeTrace) {
+                    val start = minOf(target.selectionStart, target.selectionEnd).coerceAtLeast(0)
+                    clipboardDecoder.decode(trace, target.text.take(start).toString(), listOf(layoutProfile.languageTag))
+                        .firstOrNull()?.let { editClipboard(target, "$it ") }
+                }
+                override fun onCandidate(value: String) = editClipboard(target, "$value ")
+                override fun onPrediction(suggestion: PredictionSuggestion) = editClipboard(target, "${suggestion.commitText} ")
+            }
+        }
+
+    private fun editClipboard(target: EditText, value: String) {
+        val start = minOf(target.selectionStart, target.selectionEnd).coerceAtLeast(0)
+        val end = maxOf(target.selectionStart, target.selectionEnd).coerceAtLeast(start)
+        target.text.replace(start, end, value)
+        target.setSelection(start + value.length)
+    }
+
+    private fun deleteClipboard(target: EditText, elapsedMs: Long) {
+        val start = minOf(target.selectionStart, target.selectionEnd).coerceAtLeast(0)
+        val end = maxOf(target.selectionStart, target.selectionEnd).coerceAtLeast(start)
+        val amount = if (start == end) HoldAcceleration.deleteLength(target.text.take(start).toString(), HoldAcceleration.step(elapsedMs).unit) else 0
+        target.text.delete(start - amount, end)
+        target.setSelection(start - amount)
+    }
 
     private val density =
         resources.displayMetrics.density
@@ -312,6 +365,10 @@ class KeyboardRootView(
                         ?.onBackspace()
                 }
 
+                override fun onBackspaceRepeat(elapsedMs: Long) { callbacks?.onBackspaceRepeat(elapsedMs) }
+                override fun onBackspaceHoldEnd() { callbacks?.onBackspaceHoldEnd() }
+                override fun onShift() { toggleShift() }
+
                 override fun onStylusPrimaryButton() {
                     callbacks
                         ?.onStylusPrimary()
@@ -482,6 +539,7 @@ class KeyboardRootView(
         )
         keyboardSurface.shifted =
             shifted && !symbolMode
+        keyboardSurface.capsLocked = capsLocked
 
         keyboardPanel.addView(
             keyboardSurface,
@@ -533,18 +591,15 @@ class KeyboardRootView(
             })
             return button
         }
-        shiftButton = key("⇧", 1.15f) { toggleShift() }.apply {
-            textSize = 20f
-            setOnLongClickListener {
-                capsLocked = !capsLocked
-                shifted = capsLocked
-                updateShiftAppearance()
-                true
+        listOf('!', '?', ':', ';', ',', '.').forEach { character ->
+            val button = key(character.toString()) { callbacks?.onCharacter(character) }.apply {
+                textSize = 22f
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                contentDescription = when (character) {
+                    '!' -> "Ausrufezeichen"; '?' -> "Fragezeichen"; ':' -> "Doppelpunkt"
+                    ';' -> "Semikolon"; ',' -> "Komma"; else -> "Punkt"
+                }
             }
-        }
-        updateShiftAppearance()
-        listOf('!', '?', ':', ';').forEach { character ->
-            val button = key(character.toString()) { callbacks?.onCharacter(character) }
             textAlternatives.attach(button) {
                 KeyAlternatives.forKey(character, layoutProfile.id, false, true)
             }
@@ -570,6 +625,7 @@ class KeyboardRootView(
     }
 
     private fun consumeShift(value: String) {
+        if (value.any { it.isLetter() }) lastShiftTap = 0L
         if (shifted && !capsLocked && value.any { it.isLetter() }) {
             shifted = false
             updateShiftAppearance()
@@ -581,6 +637,9 @@ class KeyboardRootView(
         if (capsLocked) {
             capsLocked = false
             shifted = false
+            lastShiftTap = 0L
+            updateShiftAppearance()
+            return
         } else if (lastShiftTap != 0L && now - lastShiftTap < 350L) {
             capsLocked = true
             shifted = true
@@ -593,6 +652,7 @@ class KeyboardRootView(
 
     private fun updateShiftAppearance() {
         keyboardSurface.shifted = shifted && !symbolMode
+        keyboardSurface.capsLocked = capsLocked
         shiftButton?.apply {
             text = if (capsLocked) "⇪" else "⇧"
             contentDescription = if (capsLocked) "Feststelltaste aktiv" else if (shifted) "Großschreibung aktiv" else "Umschalten; zweimal tippen für Feststelltaste"
@@ -637,23 +697,29 @@ class KeyboardRootView(
         if (editorMode == KeyboardEditorMode.NUMBER) {
             character('-'); character('.')
         } else {
-            character(when (editorMode) {
-                KeyboardEditorMode.EMAIL -> '@'
-                KeyboardEditorMode.URL -> '/'
-                else -> ','
-            })
-            key("😀", 0.85f) { showEmojiPanel() }.contentDescription = "Emojis und Varianten"
-            val space = key("${layoutProfile.languageTag.uppercase()}  ·  Leer", 3.35f) { callbacks?.onSpace() }
-            space.textSize = 13f
-            space.contentDescription = "Leerzeichen; gedrückt halten für Sprachwahl"
-            languageAlternatives.attach(space) {
-                listOf(layoutProfile.languageTag.uppercase()) + KeyboardLayoutProfiles.all
-                    .filter { it.id != layoutProfile.id }.map { it.languageTag.uppercase() }
+            if (editorMode == KeyboardEditorMode.EMAIL) character('@')
+            else if (editorMode == KeyboardEditorMode.URL) character('/')
+            else if (symbolMode) character(',')
+            val language = key(layoutProfile.languageTag.uppercase(), 0.85f) {}
+            language.contentDescription = "Tastatursprache auswählen"
+            language.setOnClickListener {
+                languageAlternatives.show(language, listOf(layoutProfile.languageTag.uppercase()) +
+                    KeyboardLayoutProfiles.all.filter { it.id != layoutProfile.id }.map { it.languageTag.uppercase() })
             }
-            character('.')
+            key("😀", 0.85f) { showEmojiPanel() }.contentDescription = "Emojis und Varianten"
+            val space = key("Leerzeichen", 4.2f) { callbacks?.onSpace() }
+            space.textSize = 13f
+            space.contentDescription = "Leerzeichen; halten für beschleunigte Wiederholung"
+            HoldRepeater(space, { elapsed -> callbacks?.onSpaceRepeat(elapsed) }).attach()
+            if (symbolMode || editorMode != KeyboardEditorMode.TEXT) character('.')
         }
         key("↵", 1f) { callbacks?.onEnter() }.contentDescription = "Eingabe"
         return row
+    }
+
+    fun cancelActiveGestures() {
+        keyboardSurface.cancelActiveGesture()
+        dismissAlternatives()
     }
 
     private fun dismissAlternatives() {
@@ -783,6 +849,7 @@ class KeyboardRootView(
     }
 
     private fun renderSuggestions(values: List<PredictionSuggestion>, onChoose: (PredictionSuggestion) -> Unit) {
+        if (clipboardPanel != null) { clearSuggestions(); return }
         suggestions.removeAllViews()
         suggestionScrollView.scrollTo(0, 0)
         values.take(6).forEachIndexed { index, suggestion ->
@@ -826,6 +893,8 @@ class KeyboardRootView(
     }
 
     fun showKeyboard() {
+        clipboardEditor = null
+        clipboardPanel = null
         dismissAlternatives()
         handwritingPanelContainer.removeAllViews()
         handwritingPanelContainer.visibility = GONE
@@ -1545,300 +1614,56 @@ class KeyboardRootView(
         swapContent(panel)
     }
 
-    fun showClipboardPanel(
-        items: List<ClipboardEntry>,
-        query: String = "",
-        expiryMinutes: Long = 60L
-    ) {
-        val panel =
-            LinearLayout(context).apply {
-                orientation = VERTICAL
-                setPadding(
-                    dp(6),
-                    dp(5),
-                    dp(6),
-                    dp(5)
-                )
-            }
+    private var voiceStatus: TextView? = null
+    private var voiceTranscript: TextView? = null
 
-        val searchRow =
-            LinearLayout(context).apply {
-                orientation = HORIZONTAL
-            }
-
-        val search =
-            EditText(context).apply {
-                setText(query)
-                hint = "Search clipboard"
-                maxLines = 1
-            }
-
-        searchRow.addView(
-            search,
-            LayoutParams(
-                0,
-                dp(48),
-                3f
-            )
-        )
-
-        searchRow.addView(
-            Button(context).apply {
-                text = "Search"
-                isAllCaps = false
-                setOnClickListener {
-                    callbacks
-                        ?.onClipboardSearch(
-                            search.text
-                                .toString()
-                        )
-                }
-            },
-            LayoutParams(
-                0,
-                dp(48),
-                1f
-            )
-        )
-
-        panel.addView(searchRow)
-
-        val controls =
-            LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-
-        fun expiryButton(
-            label: String,
-            minutes: Long
-        ) {
-            controls.addView(
-                Button(context).apply {
-                    text =
-                        if (
-                            expiryMinutes ==
-                            minutes
-                        ) {
-                            "✓ $label"
-                        } else {
-                            label
-                        }
-                    isAllCaps = false
-                    setOnClickListener {
-                        callbacks
-                            ?.onClipboardExpiryChanged(
-                                minutes
-                            )
-                    }
-                },
-                LayoutParams(
-                    0,
-                    dp(44),
-                    1f
-                )
-            )
+    fun showVoicePanel() {
+        val panel = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(theme.background)
         }
-
-        expiryButton(
-            "10m",
-            10L
-        )
-        expiryButton(
-            "1h",
-            60L
-        )
-        expiryButton(
-            "1d",
-            1440L
-        )
-
-        controls.addView(
-            Button(context).apply {
-                text = "Clear"
-                isAllCaps = false
-                setOnClickListener {
-                    callbacks
-                        ?.onClipboardClearUnpinned()
-                }
-            },
-            LayoutParams(
-                0,
-                dp(44),
-                1f
-            )
-        )
-
-        panel.addView(controls)
-
-        val list =
-            LinearLayout(context).apply {
-                orientation = VERTICAL
-            }
-
-        if (items.isEmpty()) {
-            list.addView(
-                TextView(context).apply {
-                    text =
-                        if (query.isBlank()) {
-                            "Clipboard is empty."
-                        } else {
-                            "No clipboard item matches this search."
-                        }
-
-                    setTextColor(
-                        Color.WHITE
-                    )
-                    setPadding(
-                        dp(8),
-                        dp(14),
-                        dp(8),
-                        dp(14)
-                    )
-                }
-            )
-        } else {
-            items
-                .take(20)
-                .forEach { entry ->
-                    val item =
-                        LinearLayout(context).apply {
-                            orientation = VERTICAL
-                            setPadding(
-                                dp(3),
-                                dp(3),
-                                dp(3),
-                                dp(5)
-                            )
-                        }
-
-                    item.addView(
-                        TextView(context).apply {
-                            text =
-                                buildString {
-                                    append(
-                                        if (
-                                            entry.pinned
-                                        ) {
-                                            "📌 "
-                                        } else {
-                                            ""
-                                        }
-                                    )
-                                    append(
-                                        entry.category.label
-                                    )
-                                    append(" · ")
-                                    append(
-                                        entry.text
-                                            .replace(
-                                                "\n",
-                                                " "
-                                            )
-                                            .take(110)
-                                    )
-                                }
-
-                            setTextColor(
-                                Color.WHITE
-                            )
-                            textSize = 13f
-                            maxLines = 2
-                            setPadding(
-                                dp(5),
-                                dp(2),
-                                dp(5),
-                                dp(2)
-                            )
-                        }
-                    )
-
-                    val actions =
-                        LinearLayout(context).apply {
-                            orientation = HORIZONTAL
-                        }
-
-                    actions.addView(
-                        Button(context).apply {
-                            text = "Paste"
-                            isAllCaps = false
-                            setOnClickListener {
-                                callbacks
-                                    ?.onClipboardInsert(
-                                        entry.id
-                                    )
-                                showKeyboard()
-                            }
-                        },
-                        LayoutParams(
-                            0,
-                            dp(42),
-                            2f
-                        )
-                    )
-
-                    actions.addView(
-                        Button(context).apply {
-                            text =
-                                if (
-                                    entry.pinned
-                                ) {
-                                    "Unpin"
-                                } else {
-                                    "Pin"
-                                }
-                            isAllCaps = false
-                            setOnClickListener {
-                                callbacks
-                                    ?.onClipboardTogglePin(
-                                        entry.id
-                                    )
-                            }
-                        },
-                        LayoutParams(
-                            0,
-                            dp(42),
-                            1f
-                        )
-                    )
-
-                    actions.addView(
-                        Button(context).apply {
-                            text = "Delete"
-                            isAllCaps = false
-                            setOnClickListener {
-                                callbacks
-                                    ?.onClipboardDelete(
-                                        entry.id
-                                    )
-                            }
-                        },
-                        LayoutParams(
-                            0,
-                            dp(42),
-                            1f
-                        )
-                    )
-
-                    item.addView(actions)
-                    list.addView(item)
-                }
+        voiceStatus = TextView(context).apply {
+            text = "Diktat · ${layoutProfile.languageTag.uppercase()}"
+            textSize = 17f; setTextColor(theme.accent)
+        }.also { panel.addView(it) }
+        voiceTranscript = TextView(context).apply {
+            text = "Sprich deinen Text. Teilresultate erscheinen hier."
+            textSize = 17f; setTextColor(theme.textPrimary)
+            setPadding(0, dp(8), 0, dp(8)); minLines = 3
+        }.also { panel.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, dp(105))) }
+        val actions = LinearLayout(context)
+        fun action(label: String, block: () -> Unit) {
+            actions.addView(compactKey(label, block), LayoutParams(0, dp(44), 1f))
         }
-
-        val scroll =
-            ScrollView(context).apply {
-                addView(list)
-            }
-
-        panel.addView(
-            scroll,
-            LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                dp(190)
-            )
-        )
-
+        action("Aufnahme / Stopp") { callbacks?.onVoice() }
+        action("Abbrechen") { callbacks?.onVoiceCancel(); showKeyboard() }
+        panel.addView(actions)
+        val speech = LinearLayout(context)
+        speech.addView(compactKey("Text vorlesen") { callbacks?.onSpeak() }, LayoutParams(0, dp(44), 1f))
+        speech.addView(compactKey("Vorlesen stoppen") { callbacks?.onStopSpeaking() }, LayoutParams(0, dp(44), 1f))
+        panel.addView(speech)
+        StylusUi.usePointerInput(panel)
         swapContent(panel)
+    }
+
+    fun updateVoicePanel(status: String? = null, transcript: String? = null) {
+        status?.let { voiceStatus?.text = it }
+        transcript?.let { voiceTranscript?.text = it }
+    }
+
+    fun showClipboardPanel(items: List<ClipboardEntry>, query: String = "", expiryMinutes: Long = 60L) {
+        clipboardPanel?.let { it.update(items, expiryMinutes); return }
+        showKeyboard()
+        val actions = callbacks ?: return
+        val panel = ClipboardPanelView(context, theme, actions,
+            onEditor = { clipboardEditor = it; clearSuggestions() },
+            onClose = { showKeyboard() })
+        clipboardPanel = panel
+        handwritingPanelContainer.addView(panel)
+        handwritingPanelContainer.visibility = VISIBLE
+        panel.update(items, expiryMinutes)
+        clearSuggestions()
     }
 
     fun showEmojiPanel() {
@@ -1974,6 +1799,8 @@ class KeyboardRootView(
     private fun swapContent(
         view: View
     ) {
+        clipboardEditor = null
+        clipboardPanel = null
         dismissAlternatives()
         handwritingPanelContainer.removeAllViews()
         handwritingPanelContainer.visibility = GONE

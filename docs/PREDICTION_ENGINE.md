@@ -126,3 +126,7 @@ Word and phrase labels contain the actual insertion text without decorative arro
 Swipe words and accepted completion/correction/phrase chips use the same batched editor transaction. It finishes an outstanding composing span, replaces only the intended prefix or selection, commits the text with a real trailing space and positions the cursor after that space. An existing ordinary space immediately after the cursor is reused rather than duplicated. Newlines and additional indentation are preserved. A new swipe after a manually typed word adds the missing boundary before the new word as well.
 
 Pure spacing tests and Android editable/cursor checks verify that a subsequent key starts the next word without pressing Space. Successful insertion is required before learning or updating the accepted-word state.
+
+## Editing inside words (0.20)
+
+The current word includes its prefix before the cursor and its suffix after it. Typo candidates consider the complete token; completions receive a preference for preserving the existing suffix and fitting the following word. Accepting a replacement removes both parts of the original token, reuses the next ordinary separator and leaves the cursor after the completed word. Explicit selections continue to take precedence. Learned vocabulary retains its preferred display spelling, including internal capitals. These are local ranking improvements; predictions can still be wrong, and ambiguous corrections remain choices.

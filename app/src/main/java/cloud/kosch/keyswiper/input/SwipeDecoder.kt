@@ -80,13 +80,13 @@ class SwipeDecoder {
         val hasGeometry = trace.points.size >= 3
 
         val personalLexemes = additionalWords.asSequence()
-            .map { it.trim().lowercase() }
+            .map { it.trim() }
             .filter { it.length in 2..48 }
             .distinct()
             .map { Lexeme(it, swipeForm(it), LanguagePackRegistry.languagesForWord(it)) }
             .filter { it.swipeForm.length >= 2 && it.swipeForm.all { c -> c in 'a'..'z' } }
             .toList()
-        val candidates = (lexicon + personalLexemes).distinctBy { it.word }
+        val candidates = (personalLexemes + lexicon).distinctBy { it.word.lowercase() }
         val prepared = if (hasGeometry) SwipeGeometryScorer.prepare(trace) else null
         val endpoints = if (hasGeometry) candidates.associateWith {
             SwipeGeometryScorer.endpointDistance(trace, it.swipeForm, motorOffset)

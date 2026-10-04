@@ -21,17 +21,19 @@ data class WordCommitPlan(
             // deleteSurroundingText excludes a selection: never also delete the
             // preceding word when the user has explicitly selected text.
             val token = if (replacesCurrentToken && selected.isEmpty()) {
-                before.takeLastWhile { it.isLetterOrDigit() || it == '\'' || it == '-' }
+                CursorWord.at(before, after).prefix
             } else ""
+            val suffix = if (replacesCurrentToken && selected.isEmpty())
+                CursorWord.at(before, after).suffix else ""
             val left = before.dropLast(token.length)
             val previous = left.lastOrNull()
             val leading = if (previous != null && !previous.isWhitespace() &&
                 !previous.isISOControl() && previous !in "([{«„“\"'") " " else ""
             // Reuse one existing ordinary separator. Newlines, tabs and
             // intentional additional indentation stay intact.
-            val existingSpace = if (after.startsWith(" ")) " " else ""
-            return WordCommitPlan(token.length, existingSpace.length,
-                token + selected + existingSpace, leading + word + " ", word)
+            val existingSpace = if (after.drop(suffix.length).startsWith(" ")) " " else ""
+            return WordCommitPlan(token.length, suffix.length + existingSpace.length,
+                token + selected + suffix + existingSpace, leading + word + " ", word)
         }
     }
 }

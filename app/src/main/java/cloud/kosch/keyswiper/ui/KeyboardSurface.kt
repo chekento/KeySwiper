@@ -27,6 +27,9 @@ class KeyboardSurface(
         fun onTap(character: Char)
         fun onText(value: String) { value.forEach { onTap(it) } }
         fun onBackspace()
+        fun onBackspaceRepeat(elapsedMs: Long) { onBackspace() }
+        fun onBackspaceHoldEnd() {}
+        fun onShift() {}
         fun onSwipe(trace: SwipeTrace)
         fun onStylusPrimaryButton()
         fun onStylusSecondaryButton()
@@ -52,6 +55,9 @@ class KeyboardSurface(
                 "en-qwerty"
             )
 
+    var capsLocked: Boolean = false
+        set(value) { field = value; invalidate() }
+    private val backspaceRepeat = HoldRepeater(this, { listener?.onBackspaceRepeat(it) }, { listener?.onBackspaceHoldEnd() })
     private var symbolMode = false
     private var symbolPage = 0
     private var alternativeGesture = false
@@ -211,38 +217,7 @@ class KeyboardSurface(
         )
     }
 
-    private fun displayRows():
-        List<List<String>> {
-        val base =
-            if (symbolMode) {
-                if (symbolPage == 0) KeyboardLayoutProfiles.symbolRows
-                else KeyboardLayoutProfiles.extraSymbolRows
-            } else {
-                layoutProfile
-                    .letterRows
-            }
-
-        return base
-            .mapIndexed {
-                    index,
-                    row ->
-                val tokens =
-                    row.map {
-                        it.toString()
-                    }.toMutableList()
-
-                if (
-                    index ==
-                    base.lastIndex
-                ) {
-                    tokens.add(
-                        BACKSPACE_TOKEN
-                    )
-                }
-
-                tokens
-            }
-    }
+    private fun displayRows() = KeyboardLayoutProfiles.slots(layoutProfile, symbolMode, symbolPage)
 
     private fun rebuildCells(widthPx: Float, heightPx: Float) {
         cells.clear()
@@ -255,22 +230,17 @@ class KeyboardSurface(
         val verticalInset = min(2f * density, rowHeight / 10f)
 
         rows.forEachIndexed { rowIndex, row ->
-            val slotWidth = widthPx / row.size.coerceAtLeast(1)
-            row.forEachIndexed { index, token ->
-                // Slot centers exactly match KeyboardGeometry. Visual gaps are
-                // included in the touch target, so narrow pen taps never vanish.
-                cells.add(Cell(
-                    token = token,
-                    bounds = RectF(
-                        index * slotWidth + horizontalInset,
-                        rowIndex * rowHeight + verticalInset,
-                        (index + 1) * slotWidth - horizontalInset,
-                        (rowIndex + 1) * rowHeight - verticalInset
-                    ),
-                    special = token == BACKSPACE_TOKEN
-                ))
+            val total = row.sumOf { it.weight.toDouble() }.toFloat()
+            var left = 0f
+            row.forEach { slot ->
+                val right = left + widthPx * slot.weight / total
+                cells.add(Cell(slot.token, RectF(left + horizontalInset,
+                    rowIndex * rowHeight + verticalInset, right - horizontalInset,
+                    (rowIndex + 1) * rowHeight - verticalInset), slot.token.length > 1))
+                left = right
             }
         }
+
         labelPaint.textSize = min(
             resources.displayMetrics.scaledDensity * 20f,
             cells.minOf { min(it.bounds.height() * 0.72f, it.bounds.width() * 0.78f) }
@@ -332,6 +302,27 @@ class KeyboardSurface(
                 borderPaint
             )
 
+            if (cell.token == KeyboardLayoutProfiles.SHIFT) {
+                val b = cell.bounds
+                val size = min(b.height() * 0.55f, b.width() * 0.55f)
+                val cx = b.centerX(); val cy = b.centerY() - if (capsLocked) size * 0.10f else 0f
+                val arrow = Path().apply {
+                    moveTo(cx, cy - size * 0.5f); lineTo(cx + size * 0.5f, cy)
+                    lineTo(cx + size * 0.22f, cy); lineTo(cx + size * 0.22f, cy + size * 0.42f)
+                    lineTo(cx - size * 0.22f, cy + size * 0.42f); lineTo(cx - size * 0.22f, cy)
+                    lineTo(cx - size * 0.5f, cy); close()
+                }
+                val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = if (shifted) theme.accent else theme.textPrimary
+                    style = if (shifted) Paint.Style.FILL else Paint.Style.STROKE
+                    strokeWidth = 2f * resources.displayMetrics.density
+                    strokeJoin = Paint.Join.ROUND
+                }
+                canvas.drawPath(arrow, icon)
+                if (capsLocked) canvas.drawLine(cx - size * 0.25f, cy + size * 0.67f,
+                    cx + size * 0.25f, cy + size * 0.67f, icon)
+                continue
+            }
             val label =
                 if (
                     cell.token ==
@@ -461,7 +452,10 @@ class KeyboardSurface(
                     addTraceCharacter(x, y)
                     addTracePoint(x, y, event.eventTime)
                 }
-                if (!gestureCancelled) postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+                if (!gestureCancelled) {
+                    if (downToken == BACKSPACE_TOKEN) backspaceRepeat.start()
+                    else postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+                }
                 invalidate()
                 return true
             }
@@ -484,6 +478,9 @@ class KeyboardSurface(
                         event.getHistoricalEventTime(index),
                         density
                     )
+                }
+                if (downToken == BACKSPACE_TOKEN && tokenAt(x, y) != BACKSPACE_TOKEN) {
+                    backspaceRepeat.stop(); gestureCancelled = true
                 }
                 recordMotion(x, y, event.eventTime, density)
                 if (action == MotionEvent.ACTION_MOVE) {
@@ -512,7 +509,9 @@ class KeyboardSurface(
                     if (token != null) {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         if (token == BACKSPACE_TOKEN) {
-                            listener?.onBackspace()
+                            if (!backspaceRepeat.repeated) listener?.onBackspace()
+                        } else if (token == KeyboardLayoutProfiles.SHIFT) {
+                            listener?.onShift()
                         } else {
                             val character = token.first()
                             listener?.onTap(
@@ -544,6 +543,7 @@ class KeyboardSurface(
             // Symbols and command keys remain buttons for both tools.
             if (outside || displacementDp > 12f) {
                 gestureCancelled = true
+                backspaceRepeat.stop()
                 pressedToken = null
             }
             return
@@ -563,8 +563,11 @@ class KeyboardSurface(
         addTracePoint(x, y, timeMs)
     }
 
+    fun cancelActiveGesture() { resetGestureState(); invalidate() }
+
     private fun resetGestureState() {
         removeCallbacks(longPress)
+        backspaceRepeat.stop()
         alternatives.dismiss()
         alternativeGesture = false
         parent?.requestDisallowInterceptTouchEvent(false)
@@ -712,15 +715,7 @@ class KeyboardSurface(
             return
         }
 
-        if (
-            tokenAt(
-                x,
-                y
-            ) ==
-            BACKSPACE_TOKEN
-        ) {
-            return
-        }
+        if (tokenAt(x, y)?.length != 1) return
 
         val normalized =
             SwipePoint(
@@ -791,11 +786,13 @@ class KeyboardSurface(
         )
     }
 
+    internal fun keyBounds(token: String): RectF? = cells.firstOrNull { it.token == token }?.bounds?.let { RectF(it) }
+
     private fun tokenAt(x: Float, y: Float): String? {
         if (x < 0f || y < 0f || x >= width || y >= height) return null
-        val rows = displayRows()
-        val row = rows[(y / height * rows.size).toInt().coerceIn(0, rows.lastIndex)]
-        return row[(x / width * row.size).toInt().coerceIn(0, row.lastIndex)]
+        val rowIndex = (y / height * 3).toInt().coerceIn(0, 2)
+        val row = cells.filter { (it.bounds.centerY() / height * 3).toInt() == rowIndex }
+        return row.minByOrNull { kotlin.math.abs(it.bounds.centerX() - x) }?.token
     }
 
     companion object {

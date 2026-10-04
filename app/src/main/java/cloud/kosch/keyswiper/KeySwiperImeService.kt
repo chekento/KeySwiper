@@ -46,6 +46,8 @@ import cloud.kosch.keyswiper.input.SwipeLearningStore
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.input.TextBoundaryUtils
 import cloud.kosch.keyswiper.input.WordCommitter
+import cloud.kosch.keyswiper.input.AutomaticSpace
+import cloud.kosch.keyswiper.input.HoldAcceleration
 import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.language.UserVocabularyStore
@@ -81,6 +83,10 @@ import java.time.Duration
 import java.util.Locale
 
 class KeySwiperImeService : InputMethodService() {
+    private var inputSession = 0L
+    private var editorAnchor: CursorAnchorInfo? = null
+    private var automaticSpace: AutomaticSpace? = null
+    private val heldDeletion = StringBuilder()
     private val swipeDecoder = SwipeDecoder()
     private val surroundingContextReader = SurroundingContextReader()
 
@@ -131,6 +137,7 @@ class KeySwiperImeService : InputMethodService() {
     private val voiceController: VoiceInputController
         get() = voiceControllerDelegate.value
 
+    private val speechOutput by lazy { cloud.kosch.keyswiper.voice.SpeechOutputController(this) }
     private lateinit var stylusActionStore: StylusActionStore
 
     private var root: KeyboardRootView? = null
@@ -420,6 +427,21 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         if (action == MotionEvent.ACTION_UP) {
+            if (cloud.kosch.keyswiper.handwriting.StylusTapClassifier.isTap(handwritingGesturePoints, resources.displayMetrics.density)) {
+                inkView.discardLastStroke()
+                mainHandler.removeCallbacks(systemHandwritingRecognitionRunnable)
+                handwritingGesturePoints.clear()
+                val connection = currentInputConnection
+                val session = inputSession
+                if (!connectionlessHandwriting && connection != null && Build.VERSION.SDK_INT >= 34) {
+                    val r = 18f * resources.displayMetrics.density
+                    cloud.kosch.keyswiper.handwriting.StylusEditorBridge.select(connection,
+                        RectF(x - r, y - r, x + r, y + r), true, mainExecutor,
+                        { inputSession == session && !sensitiveField }) { }
+                }
+                finishStylusHandwriting()
+                return
+            }
             if (tryPerformHandwritingEditGesture()) {
                 mainHandler.removeCallbacks(systemHandwritingRecognitionRunnable)
                 if (systemHandwritingView?.hasInk() == true) scheduleSystemHandwritingRecognition()
@@ -457,6 +479,11 @@ class KeySwiperImeService : InputMethodService() {
         ) return
         val area = screenWritingArea()
         val bounds = RectF(area.left, area.top, area.right, area.bottom)
+        editorAnchor?.editorBoundsInfo?.editorBounds?.let { editor ->
+            val screen = RectF(editor)
+            editorAnchor?.matrix?.mapRect(screen)
+            if (!bounds.intersect(screen)) bounds.setEmpty()
+        }
         handwritingStrokeBounds?.let { ink ->
             val margin = resources.displayMetrics.density * 64f
             val nearby = RectF(ink).apply { inset(-margin, -margin) }
@@ -539,6 +566,12 @@ class KeySwiperImeService : InputMethodService() {
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        inputSession++
+        if (voiceControllerDelegate.isInitialized()) voiceControllerDelegate.value.cancel()
+        speechOutput.stop()
+        editorAnchor = null
+        automaticSpace = null
+        heldDeletion.setLength(0)
         sensitiveField = SecurityPolicy.isSensitive(attribute)
         predictionInputMode = PredictionContextClassifier.classify(attribute)
         languageHints = emptyList()
@@ -552,6 +585,7 @@ class KeySwiperImeService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        currentInputConnection?.requestCursorUpdates(android.view.inputmethod.InputConnection.CURSOR_UPDATE_MONITOR)
         styleImeSystemBars()
         sensitiveField = SecurityPolicy.isSensitive(info)
         predictionInputMode =
@@ -587,6 +621,12 @@ class KeySwiperImeService : InputMethodService() {
         }
     }
 
+    override fun onUpdateCursorAnchorInfo(info: CursorAnchorInfo?) {
+        super.onUpdateCursorAnchorInfo(info)
+        editorAnchor = info
+        updateSystemHandwritingRegion()
+    }
+
     override fun onUpdateSelection(
         oldSelStart: Int,
         oldSelEnd: Int,
@@ -616,8 +656,17 @@ class KeySwiperImeService : InputMethodService() {
         }
     }
 
+    override fun onFinishInputView(finishingInput: Boolean) {
+        root?.cancelActiveGestures()
+        if (voiceControllerDelegate.isInitialized()) voiceControllerDelegate.value.cancel()
+        speechOutput.stop()
+        super.onFinishInputView(finishingInput)
+    }
+
     override fun onFinishInput() {
         super.onFinishInput()
+        inputSession++
+        editorAnchor = null
         predictionGeneration++
         systemHandwritingGeneration++
         systemHandwritingModelReady = false
@@ -630,7 +679,7 @@ class KeySwiperImeService : InputMethodService() {
         stylusClickInterpreter.clear()
         mainHandler.removeCallbacksAndMessages(null)
         if (voiceControllerDelegate.isInitialized()) {
-            voiceControllerDelegate.value.stop()
+            voiceControllerDelegate.value.cancel()
         }
         languageHints = emptyList()
         languageDetectionGeneration++
@@ -667,12 +716,25 @@ class KeySwiperImeService : InputMethodService() {
             digitalInkEngineDelegate.value.close()
         }
 
+        speechOutput.destroy()
         super.onDestroy()
+    }
+
+    private fun rememberAutomaticSpace() {
+        val connection = currentInputConnection ?: return
+        automaticSpace = AutomaticSpace.capture(
+            connection.getTextBeforeCursor(256, 0)?.toString().orEmpty(),
+            connection.getTextAfterCursor(64, 0)?.toString().orEmpty())
+    }
+
+    private fun commitCharacterText(value: String) {
+        val connection = currentInputConnection ?: return
+        automaticSpace = cloud.kosch.keyswiper.input.PunctuationCommitter.commit(connection, value, automaticSpace)
     }
 
     private val callbacks = object : KeyboardRootView.Callbacks {
         override fun onCharacter(value: Char) {
-            currentInputConnection?.commitText(value.toString(), 1)
+            commitCharacterText(value.toString())
             clearSwipeState()
             refreshPredictionBar()
             updateAutoShift()
@@ -716,6 +778,7 @@ class KeySwiperImeService : InputMethodService() {
             val connection = currentInputConnection ?: return
             val committed = WordCommitter.commit(connection, casedValues.first()) ?: return
             val word = committed.plan.word
+            rememberAutomaticSpace()
             updateAutoShift()
 
             lastSwipeWord = word
@@ -731,6 +794,7 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onBackspace() {
+            automaticSpace = null
             val connection =
                 currentInputConnection
                     ?: return
@@ -772,19 +836,6 @@ class KeySwiperImeService : InputMethodService() {
                     clearSwipeState()
                 }
 
-                lastSwipeWord != null && textBeforeCursor().endsWith(lastSwipeWord + " ") -> {
-                    val swipeWord =
-                        lastSwipeWord
-                            ?: return
-
-                    connection
-                        .deleteSurroundingText(
-                            swipeWord.length + 1,
-                            0
-                        )
-                    clearSwipeState()
-                }
-
                 else -> {
                     val before =
                         connection
@@ -816,7 +867,42 @@ class KeySwiperImeService : InputMethodService() {
             updateAutoShift()
         }
 
+        override fun onBackspaceRepeat(elapsedMs: Long) {
+            val connection = currentInputConnection ?: return
+            automaticSpace = null
+            val selected = connection.getSelectedText(0)?.toString().orEmpty()
+            val before = connection.getTextBeforeCursor(8192, 0)?.toString().orEmpty()
+            val count = HoldAcceleration.deleteLength(before, HoldAcceleration.step(elapsedMs).unit)
+            val deleted = if (selected.isNotEmpty()) selected else before.takeLast(count)
+            if (deleted.isEmpty()) return
+            val success = if (selected.isNotEmpty()) connection.commitText("", 1)
+                else connection.deleteSurroundingText(count, 0)
+            if (success) {
+                heldDeletion.insert(0, deleted)
+                clearSwipeState(); refreshPredictionBar(); updateAutoShift()
+            }
+        }
+
+        override fun onBackspaceHoldEnd() {
+            if (heldDeletion.isNotEmpty()) {
+                editTimeline.record(heldDeletion.toString(), "", "Gedrückt löschen",
+                    anchorBefore = currentInputConnection?.getTextBeforeCursor(256, 0)?.toString().orEmpty(),
+                    anchorAfter = currentInputConnection?.getTextAfterCursor(64, 0)?.toString().orEmpty())
+                heldDeletion.setLength(0)
+                refreshEditHistoryState()
+            }
+        }
+
+        override fun onSpaceRepeat(elapsedMs: Long) {
+            if (elapsedMs < 600) { onSpace(); return }
+            val connection = currentInputConnection ?: return
+            automaticSpace = null
+            connection.commitText(" ".repeat(HoldAcceleration.step(elapsedMs).spaces), 1)
+            clearSwipeState(); refreshPredictionBar()
+        }
+
         override fun onSpace() {
+            automaticSpace = null
             val connection = currentInputConnection ?: return
             val before = connection.getTextBeforeCursor(1600, 0)?.toString().orEmpty()
             val after = connection.getTextAfterCursor(64, 0)?.toString()
@@ -856,6 +942,7 @@ class KeySwiperImeService : InputMethodService() {
                 }
             }
             if (!corrected) connection.commitText(" ", 1)
+            else rememberAutomaticSpace()
             val updated = textBeforeCursor()
             // Automatic replacements must not teach themselves as confirmed user choices.
             if (!sensitiveField && !corrected) {
@@ -869,6 +956,7 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onEnter() {
+            automaticSpace = null
             val action =
                 currentInputEditorInfo
                     ?.imeOptions
@@ -924,6 +1012,7 @@ class KeySwiperImeService : InputMethodService() {
             val committed = WordCommitter.commit(connection, suggestion.commitText,
                 suggestion.replacesCurrentToken) ?: return
             val plan = committed.plan
+            rememberAutomaticSpace()
             val contextWords = extractWords(committed.beforeCursor.dropLast(plan.deleteBefore)).takeLast(5)
 
             if (plan.deletedText.isNotEmpty()) {
@@ -1044,57 +1133,46 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onVoice() {
-            if (sensitiveField) {
-                root?.setStatus(
-                    "Voice input is disabled in sensitive fields."
-                )
+            if (sensitiveField) return
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startActivity(Intent(this@KeySwiperImeService, cloud.kosch.keyswiper.voice.VoicePermissionActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return
             }
-
-            voiceController.toggle(
-                languageTag =
-                    languageHints.firstOrNull()
-                        ?: Locale.getDefault()
-                            .toLanguageTag(),
-                onPartial = {
-                    root?.setStatus(it)
-                },
-                onFinal = {
-                    currentInputConnection
-                        ?.commitText(
-                            it + " ",
-                            1
-                        )
-                    root?.setStatus(null)
-
-                    val before =
-                        textBeforeCursor()
-
-                    predictionLearningStore
-                        .learnTransition(
-                            extractWords(before)
-                                .takeLast(5)
-                        )
-
-                    extractWords(it)
-                        .forEach { word ->
-                            userVocabularyStore
-                                .observeWord(
-                                    word,
-                                    languageHints
-                                )
+            if (voiceController.isListening()) { voiceController.stop(); return }
+            speechOutput.stop()
+            root?.showVoicePanel()
+            val session = inputSession
+            val connection = currentInputConnection ?: return
+            val language = KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag
+            voiceController.toggle(languageTag = language,
+                onPartial = { if (session == inputSession) root?.updateVoicePanel(transcript = it) },
+                onState = { if (session == inputSession) root?.updateVoicePanel(status = it) },
+                onFinal = { spoken ->
+                    if (session == inputSession && !sensitiveField) {
+                        val committed = WordCommitter.commit(connection, spoken)
+                        if (committed != null) {
+                            clearSwipeState(); rememberAutomaticSpace()
+                            predictionLearningStore.learnTransition(extractWords(textBeforeCursor()).takeLast(5))
+                            root?.updateVoicePanel(status = "Text eingefügt · bereit für das nächste Diktat", transcript = spoken)
+                            refreshLanguageHints(textBeforeCursor()); refreshPredictionBar(); updateAutoShift()
                         }
-
-                    refreshLanguageHints(
-                        before
-                    )
-                    refreshPredictionBar()
+                    }
                 },
-                onError = {
-                    root?.setStatus(it)
-                }
-            )
+                onError = { if (session == inputSession) root?.updateVoicePanel(status = it) })
         }
+
+        override fun onVoiceCancel() { voiceController.cancel() }
+        override fun onSpeak() {
+            if (sensitiveField) return
+            voiceController.cancel()
+            val connection = currentInputConnection ?: return
+            val text = connection.getSelectedText(0)?.toString()?.takeIf { it.isNotBlank() }
+                ?: connection.getTextBeforeCursor(4000, 0)?.toString().orEmpty()
+            val language = KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag
+            speechOutput.speak(text, language) { root?.updateVoicePanel(status = it) }
+        }
+        override fun onStopSpeaking() { speechOutput.stop(); root?.updateVoicePanel(status = "Vorlesen gestoppt") }
 
         override fun onVoiceCommand() {
             if (sensitiveField) {
@@ -1104,18 +1182,19 @@ class KeySwiperImeService : InputMethodService() {
                 return
             }
 
-            root?.setStatus(
-                "Voice command mode…"
-            )
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startActivity(Intent(this@KeySwiperImeService, cloud.kosch.keyswiper.voice.VoicePermissionActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            }
+            root?.showVoicePanel()
+            root?.updateVoicePanel(status = "Sprachbefehl …")
 
             voiceController.toggle(
                 languageTag =
-                    Locale.getDefault()
-                        .toLanguageTag(),
+                    KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag,
                 onPartial = {
-                    root?.setStatus(
-                        "Command: " + it
-                    )
+                    root?.updateVoicePanel(transcript = it)
                 },
                 onFinal = { spoken ->
                     val command =
@@ -1162,6 +1241,13 @@ class KeySwiperImeService : InputMethodService() {
         override fun onDeveloperText(
             value: String
         ) {
+            if (AutomaticSpace.isPunctuation(value)) {
+                commitCharacterText(value)
+                clearSwipeState(); refreshPredictionBar(); updateAutoShift()
+                return
+            }
+            automaticSpace = null
+
             currentInputConnection
                 ?.commitText(
                     value,
@@ -1282,6 +1368,30 @@ class KeySwiperImeService : InputMethodService() {
             clipboardController
                 .delete(id)
 
+            showClipboardPanel()
+        }
+
+        override fun onClipboardDeleteMany(ids: Set<String>) {
+            if (sensitiveField) return
+            clipboardController.deleteMany(ids)
+            showClipboardPanel()
+        }
+
+        override fun onClipboardUndoDelete() {
+            if (sensitiveField) return
+            clipboardController.undoDelete()
+            showClipboardPanel()
+        }
+
+        override fun onClipboardCopy(id: String) {
+            if (sensitiveField) return
+            clipboardController.copy(id)
+            root?.setStatus("In die Zwischenablage kopiert")
+        }
+
+        override fun onClipboardSave(id: String?, value: String) {
+            if (sensitiveField) return
+            clipboardController.save(id, value)
             showClipboardPanel()
         }
 
@@ -1788,8 +1898,9 @@ class KeySwiperImeService : InputMethodService() {
 
         val plan =
             editTimeline.planUndo(
-                textBeforeCursor()
-            )
+                connection.getTextBeforeCursor(65536, 0)?.toString().orEmpty(),
+                connection.getTextAfterCursor(64, 0)?.toString().orEmpty()
+            ).takeIf { connection.getSelectedText(0).isNullOrEmpty() }
 
         if (plan == null) {
             root?.setStatus(
@@ -1858,8 +1969,9 @@ class KeySwiperImeService : InputMethodService() {
 
         val plan =
             editTimeline.planRedo(
-                textBeforeCursor()
-            )
+                connection.getTextBeforeCursor(65536, 0)?.toString().orEmpty(),
+                connection.getTextAfterCursor(64, 0)?.toString().orEmpty()
+            ).takeIf { connection.getSelectedText(0).isNullOrEmpty() }
 
         if (plan == null) {
             root?.setStatus(
@@ -2119,6 +2231,7 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         lastSwipeWord = value
+        rememberAutomaticSpace()
         root?.setStatus(
             if (learn) {
                 "Adaptive swipe learned this correction locally."
@@ -2451,6 +2564,8 @@ class KeySwiperImeService : InputMethodService() {
                         ?.hasInk() == true
                 ) {
                     scheduleSystemHandwritingRecognition()
+                } else if (!connectionlessHandwriting && systemHandwritingView?.isStrokeInProgress != true) {
+                    finishStylusHandwriting()
                 }
             }
         }
@@ -2461,7 +2576,6 @@ class KeySwiperImeService : InputMethodService() {
         event: MotionEvent
     ) {
         if (
-            connectionlessHandwriting ||
             event.pointerCount == 0 ||
             event.getToolType(0) != MotionEvent.TOOL_TYPE_STYLUS
         ) {
@@ -2521,6 +2635,15 @@ class KeySwiperImeService : InputMethodService() {
 
     @TargetApi(34)
     private fun tryPerformHandwritingEditGesture(): Boolean {
+        if (Build.VERSION.SDK_INT == 33 && !connectionlessHandwriting &&
+            ExtendedHandwritingGestureClassifier.classify(handwritingGesturePoints, resources.displayMetrics.density)
+                is ExtendedHandwritingGesture.SelectArea) {
+            systemHandwritingView?.discardLastStroke()
+            handwritingGesturePoints.clear()
+            root?.setStatus("Kreisauswahl benötigt Android 14 oder neuer und eine unterstützte App.")
+            finishStylusHandwriting()
+            return true
+        }
         if (
             Build.VERSION.SDK_INT <
                 Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
@@ -2596,12 +2719,19 @@ class KeySwiperImeService : InputMethodService() {
         val gesture: HandwritingGesture =
             when (extended) {
                 is ExtendedHandwritingGesture.SelectArea -> {
-                    if (
-                        !supported.contains(
-                            SelectGesture::class.java
-                        )
-                    ) {
-                        return false
+                    if (!supported.contains(SelectGesture::class.java)) {
+                        // A deliberate selection circle must never fall through to OCR as "o".
+                        systemHandwritingView?.discardLastStroke()
+                        mainHandler.removeCallbacks(systemHandwritingRecognitionRunnable)
+                        val connection = currentInputConnection
+                        val session = inputSession
+                        if (connection != null) cloud.kosch.keyswiper.handwriting.StylusEditorBridge.select(
+                            connection, extended.bounds, false, mainExecutor,
+                            { inputSession == session && !sensitiveField }) { success ->
+                            root?.setStatus(if (success) "Text ausgewählt" else "Diese App unterstützt die Kreisauswahl nicht.")
+                        }
+                        finishStylusHandwriting()
+                        return true
                     }
 
                     SelectGesture.Builder()
@@ -2677,10 +2807,13 @@ class KeySwiperImeService : InputMethodService() {
         systemHandwritingView
             ?.discardLastStroke()
 
+        val session = inputSession
         connection.performHandwritingGesture(
             gesture,
             mainExecutor
         ) { result ->
+            if (session != inputSession) return@performHandwritingGesture
+            if (systemHandwritingView?.hasInk() != true) finishStylusHandwriting()
             root?.setStatus(
                 when (result) {
                     android.view.inputmethod
@@ -2743,9 +2876,7 @@ class KeySwiperImeService : InputMethodService() {
 
         root?.showClipboardPanel(
             items =
-                clipboardController.items(
-                    clipboardQuery
-                ),
+                clipboardController.items(),
             query =
                 clipboardQuery,
             expiryMinutes =

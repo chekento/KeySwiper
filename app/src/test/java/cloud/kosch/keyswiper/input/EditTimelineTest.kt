@@ -99,4 +99,16 @@ class EditTimelineTest {
             timeline.canRedo
         )
     }
+    @Test fun deletingUndoRequiresBothCursorAnchors() {
+        val timeline = EditTimeline()
+        timeline.record("drei Worte weg", "", "Gedrückt löschen", anchorBefore = "Davor ", anchorAfter = "danach")
+        assertNull(timeline.planUndo("Anders ", "danach"))
+        assertNull(timeline.planUndo("Davor ", "anderer Text"))
+        val undo = checkNotNull(timeline.planUndo("Davor ", "danach"))
+        assertEquals("drei Worte weg", undo.insertText)
+        timeline.completeUndo(undo.entry.id)
+        assertNotNull(timeline.planRedo("Davor drei Worte weg", "danach"))
+        assertNull(timeline.planRedo("Woanders drei Worte weg", "danach"))
+    }
 }
+

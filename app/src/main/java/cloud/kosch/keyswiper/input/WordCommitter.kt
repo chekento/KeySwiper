@@ -18,7 +18,7 @@ object WordCommitter {
             // completion token or swallow the next typed character.
             connection.finishComposingText()
             val before = connection.getTextBeforeCursor(1600, 0)?.toString().orEmpty()
-            val after = connection.getTextAfterCursor(1, 0)?.toString().orEmpty()
+            val after = connection.getTextAfterCursor(256, 0)?.toString().orEmpty()
             val selected = connection.getSelectedText(0)?.toString().orEmpty()
             val plan = WordCommitPlan.create(value, before, after, selected, replacesCurrentToken)
                 ?: return null

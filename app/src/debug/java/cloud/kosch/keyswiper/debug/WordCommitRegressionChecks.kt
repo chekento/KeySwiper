@@ -6,6 +6,8 @@ import android.util.Log
 import android.view.inputmethod.BaseInputConnection
 import android.widget.EditText
 import cloud.kosch.keyswiper.input.WordCommitter
+import cloud.kosch.keyswiper.input.AutomaticSpace
+import cloud.kosch.keyswiper.input.PunctuationCommitter
 
 /** Exercises the shared IME insertion path with Android's real editable/cursor. */
 object WordCommitRegressionChecks {
@@ -51,6 +53,24 @@ object WordCommitRegressionChecks {
         reset("Hallo")
         checkNotNull(WordCommitter.commit(connection, "  Welt  "))
         assertText("Hallo Welt ")
+
+        reset("Guten Mrogen Welt", 8)
+        checkNotNull(WordCommitter.commit(connection, "Morgen", true))
+        assertText("Guten Morgen Welt", 13)
+
+        reset("Hallo ")
+        var automatic = AutomaticSpace.capture("Hallo ", "")
+        automatic = PunctuationCommitter.commit(connection, ",", automatic)
+        assertText("Hallo, ")
+        automatic = PunctuationCommitter.commit(connection, "!", automatic)
+        assertText("Hallo,! ")
+        checkNotNull(automatic)
+        reset("Hallo ")
+        PunctuationCommitter.commit(connection, ",", null)
+        assertText("Hallo ,")
+        reset("Anders ")
+        PunctuationCommitter.commit(connection, ".", AutomaticSpace.capture("Hallo ", ""))
+        assertText("Anders .")
 
         // Invalid connections must not turn failed deletions into appended words.
         reset("Hal")

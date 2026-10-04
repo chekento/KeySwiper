@@ -23,7 +23,7 @@ CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs
 - Confirm Matrix Cyber is the default theme.
 - Confirm all three character rows use the available keyboard width.
 - Confirm rounded key surfaces and pressed-state feedback.
-- Confirm Backspace is the rightmost key on the third character row, after M on DE/EN layouts.
+- Confirm Backspace is right of P and the wider Shift is left of Y on QWERTZ. Double-tap Shift for Caps Lock, type several letters, then tap Shift to unlock.
 - Confirm Emoji is immediately left of Space and is no longer in the toolbar.
 - Confirm toolbar remains compact and does not dominate the keyboard.
 - Rotate portrait/landscape and verify no clipped keys.
@@ -48,7 +48,7 @@ CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs
 - Correct deliberately wrong swipe candidates.
 - Verify corrected candidates train the local swipe model.
 - Verify swipe path still follows the visible full-width key geometry.
-- Verify Backspace immediately after a swipe removes the whole swiped word.
+- Verify a Backspace tap removes one grapheme (or reverses an immediate autocorrection); holding progresses through words, sentences and paragraphs. Release, slide off the key and cancel separately; deletion must stop. Undo must restore the held deletion at the original cursor context.
 - Swipe two words, then tap a letter without pressing Space: both words must remain separated and the letter must start the next word.
 - Type a word without a final space, then swipe a new word: the two words must not join.
 
@@ -159,3 +159,14 @@ For each failure capture:
 - Check names, personal words, URLs, passwords, code fields, cursor movement and selected text for unwanted replacements.
 - Type “ich mo” and inspect contextual umlaut completions; word labels must remain readable and select normally with the pen.
 - Above the open keyboard, verify native editor selection and handwriting independently on the physical OEM device.
+
+## 0.20 interaction checks
+
+- After swiping/accepting “Hallo”, type comma: expect “Hallo, ”. Repeat with `. : ; ! ?` and the cluster `!?`. Manually typed spaces must remain unchanged.
+- Put the cursor inside “Tastatru”, accept “Tastatur” and check that no old suffix remains; surrounding words must survive.
+- Hold Space for 1, 4 and 10 seconds, then release: repetition accelerates in groups and stops immediately. Change language with the separate language key.
+- With the keyboard open, use the pen to tap the cursor, app controls and menus. No unwanted dot may appear. Circle existing text in supported editors; unsupported circles must not insert “o”. Write a normal small “o” in the manual handwriting pad.
+- Test voice permission first granted, denied and later re-enabled. Watch partial text, press Stop, and verify one final insertion. Switch fields or hide the keyboard during recognition; no late text may enter another field. Check offline/missing recognizer errors and real audio on a physical phone.
+- Read selected text aloud, stop playback, then switch languages. Check missing TTS language handling.
+- Search clipboard with keys and pen; the target app text must remain untouched. Add/edit a snippet, pin it, copy/insert it, delete several cards and undo. Delete the current system clip from history and reopen: it must stay deleted.
+- Rotate/open/close panels during a held key and verify no stuck repeat or delayed action.

@@ -77,6 +77,12 @@ An additional finger/hand contact does not reset a finger swipe. The initial act
 
 Holding a stationary character key opens alternatives; movement before the hold timeout chooses normal swipe intent instead. Once the popup opens, sliding selects a variant and releasing inserts it once. Leaving the popup selection area or canceling the touch inserts nothing. Surface detach/layout changes cancel timers and dismiss windows. Letters, both number/symbol pages, bottom-row punctuation and emoji families share this interaction.
 
-Shift occupies the old language-button position. Tap toggles one-shot case, double-tap or hold toggles Caps Lock. Language selection is on a long press of the spacebar. Umlauts are first alternatives on a/o/u, and ß/ẞ is on s/S.
+The wider Shift key sits left of Y on QWERTZ; Backspace sits right of P. Tap toggles one-shot case and double-tap enables Caps Lock. A separate language key opens language selection; holding Space repeats spaces. Umlauts are first alternatives on a/o/u, and ß/ẞ is on s/S.
 
 Real Android debug checks cover finger/pen edge re-entry, release beyond the boundary, extra hand contacts and attached popup insertion. Physical stylus/OEM palm-rejection behavior still needs device validation.
+
+## Accelerated editing and punctuation
+
+Backspace repeats after 420 ms. At 1.5 s it removes words, at 3.5 s groups of three words, at 6 s sentences, and at 9.5 s paragraphs. It operates on the selection or text before the cursor. Space repeats with group sizes 1/1/2/4/8 at the same stages. Both stop on release, cancellation, leaving the command key, hiding or detaching. Held deletion is one undo entry guarded by the surrounding cursor context.
+
+Automatic separators keep a before/after snapshot. Punctuation moves that separator behind itself only when the snapshot and empty selection still match. Manual spaces are not altered.

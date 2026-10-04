@@ -98,5 +98,15 @@ class ContextPredictionEngineTest {
             }
         )
     }
+    @Test fun suggestionsUseTheWholeMisspelledWordAtTheCursor() {
+        val suggestions = engine.predict("ta", listOf("de"), afterCursor = "statru ist gut")
+        assertTrue(suggestions.any { it.commitText == "tastatur" && it.replacesCurrentToken })
+        assertTrue(suggestions.any { it.kind == PredictionKind.KEEP_TYPED && it.commitText == "tastatru" })
+    }
+
+    @Test fun matchingRightHandSuffixSupportsTheIntendedCompletion() {
+        val suggestions = engine.predict("ich mö", listOf("de"), afterCursor = "chte gerne")
+        org.junit.Assert.assertEquals("möchte", suggestions.first().commitText)
+    }
 }
 

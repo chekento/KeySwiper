@@ -48,4 +48,11 @@ class WordCommitPlanTest {
         assertEquals("Hallo \nWelt" to 6, apply("Hallo", after = "\nWelt"))
         assertEquals("Hallo  Welt" to 6, apply("Hallo", after = "  Welt"))
     }
+    @Test fun completionReplacesBothSidesOfTheCursor() {
+        assertEquals("Guten Morgen Welt" to 13, apply("Morgen", "Guten Mo", "rgen Welt", completion = true))
+        assertEquals("Tastatur " to 9, apply("Tastatur", "Ta", "statru", completion = true))
+        assertEquals("Hallo Welt" to 6, apply("Hallo", "", "Hal Welt", completion = true))
+        val plan = checkNotNull(WordCommitPlan.create("Tastatur", "Ta", "statru", replacesCurrentToken = true))
+        assertEquals("Tastatru", plan.deletedText)
+    }
 }

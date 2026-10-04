@@ -171,7 +171,9 @@ for _ in $(seq 1 40); do
   adb logcat -d -s KeySwiperInputChecks:I '*:S' > "$OUT_DIR/input-regression-checks.txt"
   if grep -Fq "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt" &&
-     grep -Fq "PASS: word spacing, completion, composition, selection and cursor position" "$OUT_DIR/input-regression-checks.txt"; then
+     grep -Fq "PASS: word spacing, completion, composition, selection and cursor position" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: Shift caps lock, command layout, clipboard input isolation and personal spelling" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: held key release/cancel and clipboard delete/undo/persistence" "$OUT_DIR/input-regression-checks.txt"; then
     INPUT_CHECKS_OK=1
     break
   fi

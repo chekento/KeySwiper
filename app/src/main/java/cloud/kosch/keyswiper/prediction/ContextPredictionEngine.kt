@@ -43,9 +43,11 @@ class ContextPredictionEngine(
         beforeCursor: String,
         languageHints: List<String>,
         maxSuggestions: Int = 5,
-        fallbackLanguage: String? = null
+        fallbackLanguage: String? = null,
+        afterCursor: String = ""
     ): List<PredictionSuggestion> {
-        val partial = currentToken(beforeCursor)
+        val cursorWord = cloud.kosch.keyswiper.input.CursorWord.at(beforeCursor, afterCursor)
+        val partial = cursorWord.prefix.ifEmpty { cursorWord.suffix }.lowercase()
         val completedWords = completedWords(beforeCursor)
         val contextWords = completedWords.takeLast(5)
 
@@ -59,7 +61,7 @@ class ContextPredictionEngine(
         val scored = mutableMapOf<String, ScoredSuggestion>()
 
         if (partial.isNotBlank()) {
-            val raw = beforeCursor.takeLast(partial.length)
+            val raw = cursorWord.whole
             val language = lanes.firstOrNull()?.tag ?: fallbackLanguage ?: "de"
             val choices = corrections.candidates(raw, contextWords, language)
             choices.forEachIndexed { index, choice ->
@@ -101,7 +103,17 @@ class ContextPredictionEngine(
         }
 
         return scored.values
-            .sortedByDescending { it.score }
+            .sortedByDescending { entry ->
+                val candidate = entry.suggestion.commitText.lowercase()
+                val suffix = cursorWord.suffix.lowercase()
+                val suffixScore = if (suffix.isNotEmpty() && candidate.endsWith(suffix)) 320 else 0
+                val following = afterCursor.drop(cursorWord.suffix.length).trimStart()
+                    .takeWhile { it.isLetter() }.lowercase()
+                val bridge = lanes.any { lane ->
+                    following.isNotBlank() && following in LanguagePackRegistry.get(lane.tag)?.commonNext?.get(candidate).orEmpty()
+                }
+                entry.score + suffixScore + if (bridge) 220 else 0
+            }
             .map { it.suggestion }
             .take(maxSuggestions)
             .map { suggestion ->
@@ -399,4 +411,3 @@ class ContextPredictionEngine(
             .toList()
     }
 }
-

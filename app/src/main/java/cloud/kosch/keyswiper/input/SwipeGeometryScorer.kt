@@ -18,38 +18,14 @@ object KeyboardGeometry {
         val profile = KeyboardLayoutProfiles.byId(layoutId)
         val c = character.lowercaseChar()
 
-        profile.letterRows.forEachIndexed { rowIndex, row ->
-            val index = row.indexOf(c)
+        KeyboardLayoutProfiles.slots(profile).forEachIndexed { rowIndex, row ->
+            val index = row.indexOfFirst { it.token == c.toString() }
             if (index >= 0) {
-                val displayedKeys =
-                    row.length +
-                        if (
-                            rowIndex ==
-                            profile
-                                .letterRows
-                                .lastIndex
-                        ) {
-                            1
-                        } else {
-                            0
-                        }
-
-                val baseX =
-                    (
-                        index +
-                            0.5f
-                        ) /
-                        displayedKeys
-                            .coerceAtLeast(1)
-                val baseY = when (rowIndex) {
-                    0 -> 1f / 6f
-                    1 -> 0.5f
-                    else -> 5f / 6f
-                }
-
+                val total = row.sumOf { it.weight.toDouble() }.toFloat()
+                val left = row.take(index).sumOf { it.weight.toDouble() }.toFloat()
                 return Pair(
-                    (baseX + offset.dx).coerceIn(0f, 1f),
-                    (baseY + offset.dy).coerceIn(0f, 1f)
+                    ((left + row[index].weight / 2f) / total + offset.dx).coerceIn(0f, 1f),
+                    ((rowIndex + 0.5f) / 3f + offset.dy).coerceIn(0f, 1f)
                 )
             }
         }

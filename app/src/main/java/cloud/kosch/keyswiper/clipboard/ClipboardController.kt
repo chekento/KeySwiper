@@ -1,417 +1,111 @@
 package cloud.kosch.keyswiper.clipboard
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.util.Base64
 import java.security.MessageDigest
 
-enum class ClipboardCategory(
-    val label: String
-) {
-    LINK("Link"),
-    EMAIL("Email"),
-    PHONE("Phone"),
-    ADDRESS("Address"),
-    CODE("Code"),
-    TEXT("Text")
+enum class ClipboardCategory(val label: String) {
+    LINK("Links"), EMAIL("E-Mail"), PHONE("Telefon"), ADDRESS("Adressen"), CODE("Code"), TEXT("Text")
 }
+data class ClipboardEntry(val id: String, val text: String, val category: ClipboardCategory,
+    val createdAtMs: Long, val expiresAtMs: Long?, val pinned: Boolean)
 
-data class ClipboardEntry(
-    val id: String,
-    val text: String,
-    val category: ClipboardCategory,
-    val createdAtMs: Long,
-    val expiresAtMs: Long?,
-    val pinned: Boolean
-)
-
-class ClipboardController(
-    private val context: Context
-) {
-    private val clipboard =
-        context.getSystemService(
-            Context.CLIPBOARD_SERVICE
-        ) as ClipboardManager
-
-    private val preferences =
-        context.getSharedPreferences(
-            "keyswiper_clipboard",
-            Context.MODE_PRIVATE
-        )
-
-    private val history =
-        mutableListOf<ClipboardEntry>()
-
-    private var defaultExpiryMinutes =
-        60L
-
-    private val listener =
-        ClipboardManager.OnPrimaryClipChangedListener {
-            capturePrimary()
-        }
-
-    init {
-        loadPinned()
-    }
+class ClipboardController(private val context: Context) {
+    private val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    private val preferences = context.getSharedPreferences("keyswiper_clipboard", Context.MODE_PRIVATE)
+    private val history = mutableListOf<ClipboardEntry>()
+    private var removed = emptyList<ClipboardEntry>()
+    private var defaultExpiryMinutes = 60L
+    private var started = false
+    private var lastCapturedId: String? = null
+    private val listener = ClipboardManager.OnPrimaryClipChangedListener { capturePrimary(newCopy = true) }
+    init { preferences.getStringSet("pinned_entries", emptySet()).orEmpty().mapNotNull(::decode).forEach(history::add) }
 
     fun start() {
-        clipboard.addPrimaryClipChangedListener(
-            listener
-        )
+        if (!started) { clipboard.addPrimaryClipChangedListener(listener); started = true }
         capturePrimary()
     }
-
-    fun stop() {
-        clipboard.removePrimaryClipChangedListener(
-            listener
-        )
+    fun stop() { clipboard.removePrimaryClipChangedListener(listener); started = false }
+    fun setDefaultExpiryMinutes(minutes: Long) { defaultExpiryMinutes = minutes.coerceIn(10, 1440) }
+    fun items(query: String = ""): List<ClipboardEntry> {
+        capturePrimary(); purge()
+        return history.filter { query.isBlank() || it.text.contains(query.trim(), true) || it.category.label.contains(query.trim(), true) }
+            .sortedWith(compareByDescending<ClipboardEntry> { it.pinned }.thenByDescending { it.createdAtMs })
     }
-
-    fun setDefaultExpiryMinutes(
-        minutes: Long
-    ) {
-        defaultExpiryMinutes =
-            minutes.coerceIn(
-                10L,
-                1440L
-            )
-    }
-
-    fun items(
-        query: String = ""
-    ): List<ClipboardEntry> {
-        capturePrimary()
-        purgeExpired()
-
-        val normalized =
-            query.trim().lowercase()
-
-        return history
-            .asSequence()
-            .filter {
-                normalized.isBlank() ||
-                    it.text
-                        .lowercase()
-                        .contains(normalized) ||
-                    it.category
-                        .label
-                        .lowercase()
-                        .contains(normalized)
-            }
-            .sortedWith(
-                compareByDescending<ClipboardEntry> {
-                    it.pinned
-                }.thenByDescending {
-                    it.createdAtMs
-                }
-            )
-            .toList()
-    }
-
-    fun togglePin(
-        id: String
-    ): Boolean {
-        purgeExpired()
-
-        val index =
-            history.indexOfFirst {
-                it.id == id
-            }
-
+    fun textFor(id: String): String? { purge(); return history.firstOrNull { it.id == id }?.text }
+    fun togglePin(id: String): Boolean {
+        purge()
+        val index = history.indexOfFirst { it.id == id }
         if (index < 0) return false
-
-        val current =
-            history[index]
-
-        history[index] =
-            current.copy(
-                pinned = !current.pinned,
-                expiresAtMs =
-                    if (current.pinned) {
-                        System.currentTimeMillis() +
-                            defaultExpiryMinutes *
-                            60_000L
-                    } else {
-                        null
-                    }
-            )
-
-        persistPinned()
-        return true
+        val old = history[index]
+        history[index] = old.copy(pinned = !old.pinned, expiresAtMs = if (old.pinned) expiry() else null)
+        persist(); return true
     }
-
-    fun delete(
-        id: String
-    ): Boolean {
-        val removed =
-            history.removeAll {
-                it.id == id
-            }
-
-        if (removed) {
-            persistPinned()
+    fun delete(id: String): Boolean = deleteMany(setOf(id)) > 0
+    fun deleteMany(ids: Set<String>): Int {
+        removed = history.filter { it.id in ids }
+        history.removeAll { it.id in ids }
+        persist(); return removed.size
+    }
+    fun clearUnpinned() { deleteMany(history.filter { !it.pinned }.map { it.id }.toSet()) }
+    fun undoDelete(): Boolean {
+        if (removed.isEmpty()) return false
+        removed.forEach { entry ->
+            history.removeAll { it.id == entry.id }
+            history.add(entry.copy(expiresAtMs = if (entry.pinned) null else expiry()))
         }
-
-        return removed
+        removed = emptyList(); trim(); persist(); return true
     }
-
-    fun clearUnpinned() {
-        history.removeAll {
-            !it.pinned
-        }
-    }
-
-    fun textFor(
-        id: String
-    ): String? {
-        purgeExpired()
-
-        return history
-            .firstOrNull {
-                it.id == id
-            }
-            ?.text
-    }
-
-    private fun capturePrimary() {
-        purgeExpired()
-
-        val clip =
-            try {
-                clipboard.primaryClip
-            } catch (_: SecurityException) {
-                null
-            } ?: return
-
-        if (clip.itemCount == 0) {
-            return
-        }
-
-        val value =
-            clip.getItemAt(0)
-                .coerceToText(context)
-                ?.toString()
-                ?.trim()
-                .orEmpty()
-
+    fun copy(id: String) { textFor(id)?.let { clipboard.setPrimaryClip(ClipData.newPlainText("KeySwiper", it)) } }
+    fun save(id: String?, value: String) {
         if (value.isBlank()) return
-
-        val text =
-            value.take(
-                MAX_ENTRY_CHARS
-            )
-
-        val id =
-            stableId(text)
-
-        val existing =
-            history.firstOrNull {
-                it.id == id
-            }
-
-        history.removeAll {
-            it.id == id
-        }
-
-        val now =
-            System.currentTimeMillis()
-
-        history.add(
-            0,
-            ClipboardEntry(
-                id = id,
-                text = text,
-                category =
-                    ClipboardTextClassifier
-                        .category(text),
-                createdAtMs =
-                    existing
-                        ?.createdAtMs
-                        ?: now,
-                expiresAtMs =
-                    if (
-                        existing?.pinned ==
-                        true
-                    ) {
-                        null
-                    } else {
-                        now +
-                            defaultExpiryMinutes *
-                            60_000L
-                    },
-                pinned =
-                    existing?.pinned
-                        ?: false
-            )
-        )
-
-        trimHistory()
+        val text = value.take(MAX_ENTRY_CHARS)
+        val old = history.firstOrNull { it.id == id }
+        val next = entry(text, old?.pinned ?: true)
+        history.removeAll { it.id == id || it.id == next.id }
+        history.add(0, next); trim(); persist()
     }
-
-    private fun purgeExpired() {
-        val now =
-            System.currentTimeMillis()
-
-        history.removeAll {
-            !it.pinned &&
-                it.expiresAtMs != null &&
-                it.expiresAtMs <= now
-        }
+    private fun expiry() = System.currentTimeMillis() + defaultExpiryMinutes * 60_000L
+    private fun entry(text: String, pinned: Boolean) = ClipboardEntry(stableId(text), text,
+        ClipboardTextClassifier.category(text), System.currentTimeMillis(), if (pinned) null else expiry(), pinned)
+    private fun capturePrimary(newCopy: Boolean = false) {
+        purge()
+        val clip = try { clipboard.primaryClip } catch (_: SecurityException) { null } ?: return
+        if (clip.itemCount == 0 || clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE", false) == true) return
+        val text = clip.getItemAt(0).coerceToText(context)?.toString()?.take(MAX_ENTRY_CHARS).orEmpty()
+        if (text.isBlank()) return
+        val id = stableId(text)
+        // Reading the same system clip is not a new copy. Deleted/expired cards
+        // must stay gone and merely opening the panel must not renew expiry.
+        if (!newCopy && id == lastCapturedId) return
+        lastCapturedId = id
+        val pinned = history.firstOrNull { it.id == id }?.pinned ?: false
+        history.removeAll { it.id == id }
+        history.add(0, entry(text, pinned)); trim()
+        if (pinned) persist()
     }
-
-    private fun trimHistory() {
-        if (
-            history.size <=
-            MAX_ENTRIES
-        ) {
-            return
-        }
-
-        val removable =
-            history
-                .withIndex()
-                .filter {
-                    !it.value.pinned
-                }
-                .map {
-                    it.index
-                }
-                .sortedDescending()
-
-        var size =
-            history.size
-
-        for (index in removable) {
-            if (
-                size <=
-                MAX_ENTRIES
-            ) {
-                break
-            }
-
+    private fun purge() { val now = System.currentTimeMillis(); history.removeAll { !it.pinned && (it.expiresAtMs ?: Long.MAX_VALUE) <= now } }
+    private fun trim() {
+        while (history.size > 80) {
+            val index = history.indexOfLast { !it.pinned }
+            if (index < 0) break
             history.removeAt(index)
-            size--
         }
     }
-
-    private fun stableId(
-        text: String
-    ): String {
-        val digest =
-            MessageDigest
-                .getInstance("SHA-256")
-                .digest(
-                    text.toByteArray()
-                )
-
-        return digest
-            .take(10)
-            .joinToString("") {
-                "%02x".format(it)
-            }
+    private fun stableId(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray())
+        .take(10).joinToString("") { "%02x".format(it) }
+    private fun persist() {
+        preferences.edit().putStringSet("pinned_entries", history.filter { it.pinned }.map { entry ->
+            listOf(entry.id, entry.createdAtMs.toString(), entry.category.name,
+                Base64.encodeToString(entry.text.toByteArray(), Base64.NO_WRAP or Base64.URL_SAFE)).joinToString("|")
+        }.toSet()).apply()
     }
-
-    private fun loadPinned() {
-        val encoded =
-            preferences
-                .getStringSet(
-                    KEY_PINNED,
-                    emptySet()
-                )
-                .orEmpty()
-
-        encoded.forEach {
-            decodePinned(it)
-                ?.let(history::add)
-        }
-    }
-
-    private fun persistPinned() {
-        val encoded =
-            history
-                .filter {
-                    it.pinned
-                }
-                .map {
-                    encodePinned(it)
-                }
-                .toSet()
-
-        preferences
-            .edit()
-            .putStringSet(
-                KEY_PINNED,
-                encoded
-            )
-            .apply()
-    }
-
-    private fun encodePinned(
-        entry: ClipboardEntry
-    ): String {
-        val payload =
-            Base64.encodeToString(
-                entry.text.toByteArray(),
-                Base64.NO_WRAP or
-                    Base64.URL_SAFE
-            )
-
-        return listOf(
-            entry.id,
-            entry.createdAtMs
-                .toString(),
-            entry.category.name,
-            payload
-        ).joinToString("|")
-    }
-
-    private fun decodePinned(
-        raw: String
-    ): ClipboardEntry? =
-        runCatching {
-            val parts =
-                raw.split(
-                    "|",
-                    limit = 4
-                )
-
-            require(
-                parts.size == 4
-            )
-
-            val text =
-                String(
-                    Base64.decode(
-                        parts[3],
-                        Base64.NO_WRAP or
-                            Base64.URL_SAFE
-                    )
-                )
-
-            ClipboardEntry(
-                id = parts[0],
-                text = text,
-                category =
-                    ClipboardCategory
-                        .valueOf(
-                            parts[2]
-                        ),
-                createdAtMs =
-                    parts[1]
-                        .toLong(),
-                expiresAtMs = null,
-                pinned = true
-            )
-        }.getOrNull()
-
-    companion object {
-        private const val KEY_PINNED =
-            "pinned_entries"
-
-        private const val MAX_ENTRIES =
-            40
-
-        private const val MAX_ENTRY_CHARS =
-            12_000
-    }
+    private fun decode(raw: String): ClipboardEntry? = runCatching {
+        val p = raw.split("|", limit = 4); require(p.size == 4)
+        ClipboardEntry(p[0], String(Base64.decode(p[3], Base64.NO_WRAP or Base64.URL_SAFE)),
+            ClipboardCategory.valueOf(p[2]), p[1].toLong(), null, true)
+    }.getOrNull()
+    companion object { private const val MAX_ENTRY_CHARS = 12_000 }
 }

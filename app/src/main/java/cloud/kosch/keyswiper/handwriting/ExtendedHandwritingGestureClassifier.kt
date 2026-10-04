@@ -71,11 +71,11 @@ object ExtendedHandwritingGestureClassifier {
             )
 
         val minCircleSize =
-            38f * density
+            22f * density
 
         if (
             width >= minCircleSize &&
-            height >= minCircleSize &&
+            height >= 14f * density &&
             endpointDistance <=
                 maxOf(
                     width,
@@ -150,3 +150,4 @@ object ExtendedHandwritingGestureClassifier {
         return null
     }
 }
+
