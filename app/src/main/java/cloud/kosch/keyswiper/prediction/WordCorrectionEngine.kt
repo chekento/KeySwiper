@@ -54,10 +54,14 @@ class WordCorrectionEngine(
             // Capitalized unknown words may be names. Only unambiguous function-word typos
             // can be corrected automatically at the beginning of a sentence.
             val safeCase = token.first().isLowerCase() || match.word in capitalizedFunctionWords
+            // Common German short imperatives can themselves look like transpositions
+            // of a past-tense verb: schreib/schrieb. Keep derived stems explicit.
+            val possibleGermanStem = language == "de" && lower.length >= 4 &&
+                listOf("e", "en", "n").any { lower + it in lexicons[language].orEmpty() }
             // A compact lexicon cannot list every valid inflection. Missing/extra letters
             // remain explicit choices (e.g. “schreib” must not silently become “schreibt”).
             Candidate(matchCase(token, match.word), match.cost, confidence,
-                index == 0 && safeCase && match.cost <= 0.75f && gap >= 0.35f && confidence >= 0.91f)
+                index == 0 && safeCase && !possibleGermanStem && match.cost <= 0.75f && gap >= 0.35f && confidence >= 0.91f)
         }
     }
 
