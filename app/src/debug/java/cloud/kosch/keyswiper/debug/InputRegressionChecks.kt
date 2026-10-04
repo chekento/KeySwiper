@@ -164,7 +164,11 @@ object InputRegressionChecks {
         root.addView(surface, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (180 * density).toInt()).apply {
             topMargin = (80 * density).toInt()
         })
-        surface.post {
+        surface.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                if (surface.width <= 0 || surface.height <= 0) return
+                surface.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                surface.post {
             val pen = Contact(0, MotionEvent.TOOL_TYPE_STYLUS, surface.width / 18f, surface.height / 2f)
             contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
             surface.postDelayed({
@@ -184,7 +188,9 @@ object InputRegressionChecks {
                     onComplete()
                 }, ViewConfiguration.getLongPressTimeout().toLong() + 120L)
             }, ViewConfiguration.getLongPressTimeout().toLong() + 120L)
-        }
+                }
+            }
+        })
     }
 
     private fun descendants(view: View): List<View> = listOf(view) +
