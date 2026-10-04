@@ -57,6 +57,7 @@ class KeyboardSurface(
     private var alternativeGesture = false
     private val alternatives = KeyAlternativesPopup(context) { listener?.onText(it) }
     internal val isShowingAlternatives: Boolean get() = alternatives.isShowing
+    internal val alternativesBoundsOnScreen: RectF? get() = alternatives.boundsOnScreen
     private val longPress = Runnable {
         if (gestureActive && !gestureCancelled && !dragging) {
             val cell = cells.firstOrNull { it.token == downToken }

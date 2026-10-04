@@ -25,6 +25,14 @@ class KeyAlternativesPopup(private val context: Context, private val onCommit: (
     private var selecting = false
     private var owner: View? = null
     val isShowing: Boolean get() = window?.isShowing == true
+    internal val boundsOnScreen: RectF?
+        get() {
+            val panel = row ?: return null
+            if (!isShowing || panel.width <= 0) return null
+            val location = IntArray(2).also { panel.getLocationOnScreen(it) }
+            return RectF(location[0].toFloat(), location[1].toFloat(),
+                (location[0] + panel.width).toFloat(), (location[1] + panel.height).toFloat())
+        }
 
     fun show(anchor: View, alternatives: List<String>, bounds: RectF? = null): Boolean {
         dismiss()
@@ -66,8 +74,13 @@ class KeyAlternativesPopup(private val context: Context, private val onCommit: (
         window = popup
         val x = (initialX - width / 2).toInt().coerceIn(0, (context.resources.displayMetrics.widthPixels - width).coerceAtLeast(0))
         val y = (location[1] + rect.top - height - 6 * density).toInt().coerceAtLeast(0)
+        // showAtLocation uses parent-window coordinates; selection uses screen coordinates.
+        // IME windows can begin far below the display origin, unlike a full-screen Activity.
+        val inWindow = IntArray(2).also { anchor.getLocationInWindow(it) }
+        val windowOriginX = location[0] - inWindow[0]
+        val windowOriginY = location[1] - inWindow[1]
         try {
-            popup.showAtLocation(anchor, Gravity.TOP or Gravity.LEFT, x, y)
+            popup.showAtLocation(anchor, Gravity.TOP or Gravity.LEFT, x - windowOriginX, y - windowOriginY)
         } catch (_: WindowManager.BadTokenException) {
             dismiss()
             return false

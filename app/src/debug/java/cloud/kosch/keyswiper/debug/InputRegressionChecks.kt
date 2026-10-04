@@ -173,6 +173,11 @@ object InputRegressionChecks {
             contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
             surface.postDelayed({
                 check(surface.isShowingAlternatives) { "Attached pen long press must display alternatives" }
+                val screen = IntArray(2).also { surface.getLocationOnScreen(it) }
+                val vowelPopup = checkNotNull(surface.alternativesBoundsOnScreen)
+                check(vowelPopup.bottom <= screen[1] + surface.height / 3f + 3 * density) {
+                    "Alternatives must appear above their key, in the correct window coordinates"
+                }
                 contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen))
                 check(commits == listOf("ä")) { "Holding a vowel must commit only its umlaut" }
                 surface.setLayout(profile, true)
@@ -180,8 +185,13 @@ object InputRegressionChecks {
                 contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(finger))
                 surface.postDelayed({
                     check(surface.isShowingAlternatives) { "Numbers need long-press variants for fingers too" }
-                    contactEvent(surface, MotionEvent.ACTION_UP, listOf(finger))
-                    check(commits == listOf("ä", "¹")) { "Long press must never also type the base key" }
+                    val numberPopup = checkNotNull(surface.alternativesBoundsOnScreen)
+                    check(numberPopup.bottom <= screen[1] + 3 * density)
+                    val choice = finger.copy(x = numberPopup.left + numberPopup.width() * 0.3f - screen[0],
+                        y = numberPopup.centerY() - screen[1])
+                    contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(choice))
+                    contactEvent(surface, MotionEvent.ACTION_UP, listOf(choice))
+                    check(commits == listOf("ä", "½")) { "Sliding into a popup must select the variant without the base key" }
                     check(!surface.isShowingAlternatives)
                     root.removeView(surface)
                     Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
