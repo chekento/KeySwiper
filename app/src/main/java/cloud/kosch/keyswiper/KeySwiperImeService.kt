@@ -2095,6 +2095,12 @@ class KeySwiperImeService : InputMethodService() {
         val signature = lastSwipeSignature
         val trace = lastSwipeTrace
 
+        if (!connection.getSelectedText(0).isNullOrEmpty() || !textBeforeCursor().endsWith(previous + " ")) {
+            clearSwipeState()
+            refreshPredictionBar()
+            return
+        }
+
         val deletedText =
             previous +
                 " "
@@ -2102,14 +2108,14 @@ class KeySwiperImeService : InputMethodService() {
             value +
                 " "
 
-        connection.deleteSurroundingText(
-            deletedText.length,
-            0
-        )
-        connection.commitText(
-            insertedText,
-            1
-        )
+        connection.beginBatchEdit()
+        try {
+            if (!connection.deleteSurroundingText(deletedText.length, 0)) return
+            if (!connection.commitText(insertedText, 1)) {
+                connection.commitText(deletedText, 1)
+                return
+            }
+        } finally { connection.endBatchEdit() }
 
         if (
             !sensitiveField &&
@@ -2176,6 +2182,17 @@ class KeySwiperImeService : InputMethodService() {
                 emptyList()
             root?.clearSuggestions()
             return
+        }
+
+        // Language detection and selection callbacks may arrive after a swipe.
+        // Keep its alternatives available until the user actually changes input.
+        lastSwipeWord?.let { word ->
+            if (textBeforeCursor().endsWith(word + " ") && currentInputConnection?.getSelectedText(0).isNullOrEmpty()) {
+                currentPredictions = emptyList()
+                root?.setSwipeCandidates(lastSwipeCandidates)
+                return
+            }
+            clearSwipeState()
         }
 
         if (
