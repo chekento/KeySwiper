@@ -166,14 +166,20 @@ if [[ "$VISIBLE" -ne 1 ]]; then
   exit 1
 fi
 
-adb logcat -d -s KeySwiperInputChecks:I '*:S' > "$OUT_DIR/input-regression-checks.txt"
-if ! grep -Fq "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting" "$OUT_DIR/input-regression-checks.txt"; then
-  echo "Android input regression checks did not pass." >&2
-  exit 1
-fi
+INPUT_CHECKS_OK=0
+for _ in $(seq 1 40); do
+  adb logcat -d -s KeySwiperInputChecks:I '*:S' > "$OUT_DIR/input-regression-checks.txt"
+  if grep -Fq "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt"; then
+    INPUT_CHECKS_OK=1
+    break
+  fi
+  sleep 0.25
+done
 
-if ! grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt"; then
-  echo "Attached long-press popup regression checks did not pass." >&2
+if [[ "$INPUT_CHECKS_OK" -ne 1 ]]; then
+  echo "Android input/attached popup regression checks did not pass." >&2
+  adb logcat -d -s AndroidRuntime:E KeySwiperInputChecks:I '*:S'
   exit 1
 fi
 

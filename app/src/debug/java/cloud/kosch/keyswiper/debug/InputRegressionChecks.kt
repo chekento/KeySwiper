@@ -169,38 +169,53 @@ object InputRegressionChecks {
                 if (surface.width <= 0 || surface.height <= 0) return
                 surface.viewTreeObserver.removeOnGlobalLayoutListener(this)
                 surface.post {
-            val pen = Contact(0, MotionEvent.TOOL_TYPE_STYLUS, surface.width / 18f, surface.height / 2f)
-            contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
-            surface.postDelayed({
-                check(surface.isShowingAlternatives) { "Attached pen long press must display alternatives" }
-                val screen = IntArray(2).also { surface.getLocationOnScreen(it) }
-                val vowelPopup = checkNotNull(surface.alternativesBoundsOnScreen)
-                check(vowelPopup.bottom <= screen[1] + surface.height / 3f + 3 * density) {
-                    "Alternatives must appear above their key, in the correct window coordinates"
-                }
-                contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen))
-                check(commits == listOf("ä")) { "Holding a vowel must commit only its umlaut" }
-                surface.setLayout(profile, true)
-                val finger = Contact(0, MotionEvent.TOOL_TYPE_FINGER, surface.width / 20f, surface.height / 6f)
-                contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(finger))
-                surface.postDelayed({
-                    check(surface.isShowingAlternatives) { "Numbers need long-press variants for fingers too" }
-                    val numberPopup = checkNotNull(surface.alternativesBoundsOnScreen)
-                    check(numberPopup.bottom <= screen[1] + 3 * density)
-                    val choice = finger.copy(x = numberPopup.left + numberPopup.width() * 0.3f - screen[0],
-                        y = numberPopup.centerY() - screen[1])
-                    contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(choice))
-                    contactEvent(surface, MotionEvent.ACTION_UP, listOf(choice))
-                    check(commits == listOf("ä", "½")) { "Sliding into a popup must select the variant without the base key" }
-                    check(!surface.isShowingAlternatives)
-                    root.removeView(surface)
-                    Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
-                    onComplete()
-                }, ViewConfiguration.getLongPressTimeout().toLong() + 120L)
-            }, ViewConfiguration.getLongPressTimeout().toLong() + 120L)
+                    val pen = Contact(0, MotionEvent.TOOL_TYPE_STYLUS, surface.width / 18f, surface.height / 2f)
+                    contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
+                    awaitPopupLayout(surface) { vowelPopup ->
+                        val screen = IntArray(2).also { surface.getLocationOnScreen(it) }
+                        check(vowelPopup.bottom <= screen[1] + surface.height / 3f + 3 * density) {
+                            "Alternatives must appear above their key, in the correct window coordinates"
+                        }
+                        contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen))
+                        check(commits == listOf("ä")) { "Holding a vowel must commit only its umlaut" }
+                        surface.setLayout(profile, true)
+                        val finger = Contact(0, MotionEvent.TOOL_TYPE_FINGER, surface.width / 20f, surface.height / 6f)
+                        contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(finger))
+                        awaitPopupLayout(surface) { numberPopup ->
+                            surface.getLocationOnScreen(screen)
+                            check(numberPopup.bottom <= screen[1] + 3 * density)
+                            val choice = finger.copy(x = numberPopup.left + numberPopup.width() * 0.3f - screen[0],
+                                y = numberPopup.centerY() - screen[1])
+                            contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(choice))
+                            contactEvent(surface, MotionEvent.ACTION_UP, listOf(choice))
+                            check(commits == listOf("ä", "½")) { "Sliding into a popup must select the variant without the base key" }
+                            check(!surface.isShowingAlternatives)
+                            root.removeView(surface)
+                            Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
+                            onComplete()
+                        }
+                    }
                 }
             }
         })
+    }
+
+    private fun awaitPopupLayout(surface: KeyboardSurface, onReady: (android.graphics.RectF) -> Unit) {
+        val deadline = SystemClock.uptimeMillis() + ViewConfiguration.getLongPressTimeout() + 10_000L
+        val checkLayout = object : Runnable {
+            override fun run() {
+                val bounds = surface.alternativesBoundsOnScreen
+                if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
+                    onReady(bounds)
+                    return
+                }
+                check(SystemClock.uptimeMillis() < deadline) { "Long-press popup did not become laid out" }
+                // Showing a PopupWindow is asynchronous. A fixed sleep after long-press
+                // can expire before its first layout on a busy emulator.
+                surface.postDelayed(this, 32L)
+            }
+        }
+        surface.post(checkLayout)
     }
 
     private fun descendants(view: View): List<View> = listOf(view) +
