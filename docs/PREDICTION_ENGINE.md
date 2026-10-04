@@ -109,3 +109,14 @@ For word/sentence prediction, KeySwiper resolves one primary input language from
 Swipe decoding keeps broader language lanes so deliberate code-switching can still work without forcing a layout change.
 
 Asynchronous language-identification results are generation-guarded: an older detector callback cannot replace the language state of newer text.
+
+
+## Contextual corrections and completions (0.19)
+
+Local typo candidates use a weighted edit distance with adjacent-key substitutions, transposed letters, accents and German ae/oe/ue transliterations. Preceding-word transitions and bounded personal context break close ties. Prefix completion can find umlauts from a plain vowel, and candidate text follows the capitalization already typed.
+
+Only an unambiguous, high-confidence transposition, adjacent-key or accent/transliteration candidate is applied on space. Insertion/deletion suggestions remain explicit choices so an unlisted valid inflection is not silently changed to a dictionary stem. Known words across the built-in languages and personal vocabulary are preserved; capitalized unknown words are not silently treated as typos unless the result is an unambiguous common function word. Acronyms, identifiers, URLs, email/number fields, search/code modes, sensitive fields and editors requesting no suggestions are excluded from automatic changes. This is a compact local dictionary and heuristic ranker, not a guarantee that every word or name is understood.
+
+The strip keeps the original spelling as an explicit option. Immediate Backspace restores the original text only if the before/after cursor context and selection still match. Undo suppresses that correction for the rest of the input session. Automatic replacements never train themselves; explicitly selected suggestions and intentionally retained words can still be learned. Autocorrection can be disabled in Settings.
+
+Word and phrase labels contain the actual insertion text without decorative arrow/star prefixes. Corrections use an accent border and an accessible correction label. Unavailable Undo/Redo controls leave room for the words.

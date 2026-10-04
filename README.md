@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.18.0-alpha18 · Build 18 · Run 39</strong><br>
+  <strong>Current build: 0.19.0-alpha19 · Build 19 · Run 46</strong><br>
   Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME + Input Checks ✓ · Permanent Release ✓
 </p>
 
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.18.0--alpha18-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.19.0--alpha19-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,9 +40,9 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current validated release: 0.18.0-alpha18 / Build 18 / Run 39.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.19.0-alpha19 / Build 19 / Run 46.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
-**Current APK:** [KeySwiper 0.18.0-alpha18 · build 18 · run 39](https://github.com/chekento/KeySwiper/releases/download/v0.18.0-alpha18-b18-run39/KeySwiper-v0.18.0-alpha18-build18-run39.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37151306328)
+**Current APK:** [KeySwiper 0.19.0-alpha19 · build 19 · run 46](https://github.com/chekento/KeySwiper/releases/download/v0.19.0-alpha19-b19-run46/KeySwiper-v0.19.0-alpha19-build19-run46.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37210045480)
 
 ## KeySwiper in action
 
@@ -71,7 +71,7 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - CI installs the real debug APK on a lean Android 15 AOSP ATD emulator.
 - A shell-driven harness enables and selects KeySwiper from outside the app process, then opens a debug-only text host and confirms Android reports KeySwiper as the current visible IME.
 - The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
-- Debug Android input checks exercise pen taps, menu selection, pen/finger loops, palm contacts, surface boundaries and handwriting-pad placement using real `MotionEvent` objects.
+- Debug Android input checks exercise pen taps, menu selection, pen/finger loops, palm contacts, edge excursions/re-entry, release outside the keys and handwriting-pad placement using real `MotionEvent` objects. Attached popup checks verify placement and actual hold–slide–release insertion for both pen and finger input.
 - Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.
 - The host exists only in the `debug` source set and is never included in the release APK.
 
@@ -97,7 +97,8 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 - pen taps on keys type the selected character; small jitter keeps the pen-down key stable
 - both finger and pen can swipe words on the letter keys; handwriting belongs to the area above the keyboard
-- added palm contacts do not interrupt an active pen swipe; canceled contacts cannot type phantom keys
+- added finger/hand contacts do not interrupt an active finger or pen swipe; canceled contacts cannot type phantom keys
+- swipes keep their original owner beyond the keyboard edge, resume on re-entry, and finish once if released outside
 - menu buttons and settings fields use normal pen selection with automatic handwriting disabled
 - with the keyboard open, compatible editors support native handwriting and selection gestures above it; the optional manual pad also opens above the visible keys
 - handwriting recognition waits for pen-up and keeps an active new stroke intact
@@ -163,13 +164,24 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 ### ⌨️ Daily typing layouts
 
 - German QWERTZ, English QWERTY, French AZERTY, Italian and Spanish QWERTY
-- direct umlaut/accent row for DE/FR/IT/ES
-- in-keyboard language/layout cycling
+- umlauts and accents on vowel long presses; alternatives on every letter, digit and both symbol pages
+- Shift in the old DE-button position, Caps Lock by double-tap/hold, language selection by holding the labeled spacebar
+- in-keyboard language/layout picker
 - dedicated ?123 numbers and symbols page
 - layout-aware geometric swipe recognition
 - Android Search/Send/Go/Done/Next editor actions
 - 🌐 translation target picker with recent languages and source-language hints
 
+
+### Hold-to-select layers and autocorrection (0.19)
+
+- hold a letter, number, punctuation mark or emoji, slide to its alternative, and release to insert it once
+- ä/ö/ü are the first alternatives on a/o/u; ß is on s, with uppercase variants under Shift
+- local corrections consider transpositions, nearby keys, accents and preceding-word context
+- high-confidence corrections apply on space; immediate Backspace restores the original spelling and stops repeated correction
+- known/personal words and sensitive, numeric, URL and code input are protected from automatic changes
+- the original spelling stays selectable, and Settings can disable automatic correction
+- larger word labels show the actual text without decorative arrow/star prefixes
 
 ### 🧠 Intelligent word & sentence prediction
 
@@ -318,7 +330,7 @@ Samsung remote Air Actions remain a device/foreground-specific optional adapter 
 
 ### 😀 Emoji
 
-- built-in emoji panel
+- six emoji categories with related variants and skin tones on long press
 - direct insertion into the target editor
 
 ### 🤖 Optional local neural models
@@ -458,4 +470,3 @@ Next milestones:
 ## License
 
 Apache-2.0
-

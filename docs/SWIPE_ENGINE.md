@@ -59,7 +59,7 @@ Planned extensions:
 - pen taps commit the pen-down key; 16 dp deliberate displacement starts a swipe and a 24 dp path across two keys commits it, without a minimum duration;
 - pen paths on keys never become handwriting, and menu/symbol controls remain normal buttons;
 - extra palm/finger contacts do not replace an active pen pointer, and Android canceled contacts never commit input;
-- leaving the letter surface cancels the current input, including excursions in historical samples;
+- as of 0.19, a swipe that starts on the letter surface retains ownership beyond its edges; off-surface samples are ignored and release outside finishes the last valid path;
 - the separate handwriting pad is displayed above the letter keys.
 
 ## Continuous path ranking (0.18)
@@ -69,3 +69,14 @@ The observed path is resampled once per decode. A tolerant endpoint shortlist li
 All five built-in packs include more everyday vocabulary. The decoder also considers frequent/pinned local user words, unless the editor is sensitive or disables personalized learning. On an empty editor the active keyboard layout supplies the primary language hint.
 
 JVM tests cover continuous sampled paths with transit keys, repeated letters, closed paths, small offsets, personal vocabulary and context interference. Debug Android checks exercise actual pen/finger events on the rendered view.
+
+
+## Gesture ownership and key alternatives (0.19)
+
+An additional finger/hand contact does not reset a finger swipe. The initial active pointer owns the path; a pen can take over from an existing palm contact. Android cancellation flags still cancel the gesture. A gesture starting outside the keyboard is never adopted as a word swipe. Native handwriting remains a separate upper surface.
+
+Holding a stationary character key opens alternatives; movement before the hold timeout chooses normal swipe intent instead. Once the popup opens, sliding selects a variant and releasing inserts it once. Leaving the popup selection area or canceling the touch inserts nothing. Surface detach/layout changes cancel timers and dismiss windows. Letters, both number/symbol pages, bottom-row punctuation and emoji families share this interaction.
+
+Shift occupies the old language-button position. Tap toggles one-shot case, double-tap or hold toggles Caps Lock. Language selection is on a long press of the spacebar. Umlauts are first alternatives on a/o/u, and ß/ẞ is on s/S.
+
+Real Android debug checks cover finger/pen edge re-entry, release beyond the boundary, extra hand contacts and attached popup insertion. Physical stylus/OEM palm-rejection behavior still needs device validation.
