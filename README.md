@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.19.0-alpha19 · Build 19 · Run 46</strong><br>
+  <strong>Current build: 0.19.1-alpha20 · Build 20 · Run 47</strong><br>
   Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME + Input Checks ✓ · Permanent Release ✓
 </p>
 
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.19.0--alpha19-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.19.1--alpha20-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,9 +40,9 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current validated release: 0.19.0-alpha19 / Build 19 / Run 46.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.19.1-alpha20 / Build 20 / Run 47.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
-**Current APK:** [KeySwiper 0.19.0-alpha19 · build 19 · run 46](https://github.com/chekento/KeySwiper/releases/download/v0.19.0-alpha19-b19-run46/KeySwiper-v0.19.0-alpha19-build19-run46.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37210045480)
+**Current APK:** [KeySwiper 0.19.1-alpha20 · build 20 · run 47](https://github.com/chekento/KeySwiper/releases/download/v0.19.1-alpha20-b20-run47/KeySwiper-v0.19.1-alpha20-build20-run47.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37211778300)
 
 ## KeySwiper in action
 
@@ -72,6 +72,7 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - A shell-driven harness enables and selects KeySwiper from outside the app process, then opens a debug-only text host and confirms Android reports KeySwiper as the current visible IME.
 - The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
 - Debug Android input checks exercise pen taps, menu selection, pen/finger loops, palm contacts, edge excursions/re-entry, release outside the keys and handwriting-pad placement using real `MotionEvent` objects. Attached popup checks verify placement and actual hold–slide–release insertion for both pen and finger input.
+- Android editable/cursor checks verify that swipes and accepted completions finish with a space, that the next key starts the next word, and that an existing separator is reused.
 - Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.
 - The host exists only in the `debug` source set and is never included in the release APK.
 
@@ -182,6 +183,14 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 - known/personal words and sensitive, numeric, URL and code input are protected from automatic changes
 - the original spelling stays selectable, and Settings can disable automatic correction
 - larger word labels show the actual text without decorative arrow/star prefixes
+
+### Automatic word spacing (0.19.1)
+
+- swipe a word or accept a completion, correction or phrase: a trailing space is inserted and the cursor moves after it
+- keep typing or swiping the next word without pressing Space
+- switching from a typed word to a new swipe inserts the missing separator
+- a space already following the cursor is reused, avoiding a doubled separator
+- replacing a selected word preserves the preceding text; stale composing spans are finished before insertion
 
 ### 🧠 Intelligent word & sentence prediction
 
