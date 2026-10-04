@@ -9,6 +9,7 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import cloud.kosch.keyswiper.input.GestureIntentSample
 import cloud.kosch.keyswiper.input.PointerKind
 import cloud.kosch.keyswiper.input.SwipeIntentClassifier
@@ -24,6 +25,7 @@ class KeyboardSurface(
 
     interface Listener {
         fun onTap(character: Char)
+        fun onText(value: String) { value.forEach { onTap(it) } }
         fun onBackspace()
         fun onSwipe(trace: SwipeTrace)
         fun onStylusPrimaryButton()
@@ -51,6 +53,25 @@ class KeyboardSurface(
             )
 
     private var symbolMode = false
+    private var symbolPage = 0
+    private var alternativeGesture = false
+    private val alternatives = KeyAlternativesPopup(context) { listener?.onText(it) }
+    internal val isShowingAlternatives: Boolean get() = alternatives.isShowing
+    private val longPress = Runnable {
+        if (gestureActive && !gestureCancelled && !dragging) {
+            val cell = cells.firstOrNull { it.token == downToken }
+            val character = cell?.token?.singleOrNull()
+            if (cell != null && character != null && alternatives.show(this,
+                    KeyAlternatives.forKey(character, layoutProfile.id, shifted, symbolMode), cell.bounds)) {
+                val location = IntArray(2).also { getLocationOnScreen(it) }
+                alternatives.setGestureOrigin(location[0] + downX, location[1] + downY)
+                alternativeGesture = true
+                pressedToken = null
+                path.reset()
+                invalidate()
+            }
+        }
+    }
 
     private val cells =
         mutableListOf<Cell>()
@@ -144,12 +165,20 @@ class KeyboardSurface(
                 Paint.Join.ROUND
         }
 
+    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.RIGHT
+        textSize = resources.displayMetrics.scaledDensity * 9f
+    }
+
     fun setLayout(
         profile: KeyboardLayoutProfile,
-        symbols: Boolean
+        symbols: Boolean,
+        page: Int = 0
     ) {
+        resetGestureState()
         layoutProfile = profile
         symbolMode = symbols
+        symbolPage = page
         theme =
             KeyboardThemes.byId(
                 Prefs.keyboardThemeId(
@@ -174,6 +203,7 @@ class KeyboardSurface(
         oldw: Int,
         oldh: Int
     ) {
+        resetGestureState()
         rebuildCells(
             w.toFloat(),
             h.toFloat()
@@ -184,8 +214,8 @@ class KeyboardSurface(
         List<List<String>> {
         val base =
             if (symbolMode) {
-                KeyboardLayoutProfiles
-                    .symbolRows
+                if (symbolPage == 0) KeyboardLayoutProfiles.symbolRows
+                else KeyboardLayoutProfiles.extraSymbolRows
             } else {
                 layoutProfile
                     .letterRows
@@ -270,6 +300,7 @@ class KeyboardSurface(
             theme.trace
         labelPaint.color =
             theme.textPrimary
+        hintPaint.color = theme.textSecondary
 
         for (cell in cells) {
             keyPaint.color =
@@ -341,6 +372,12 @@ class KeyboardSurface(
                 baseline,
                 labelPaint
             )
+            if (!cell.special && min(cell.bounds.height(), cell.bounds.width()) >= 28 * resources.displayMetrics.density) {
+                KeyAlternatives.hint(cell.token.first(), layoutProfile.id, symbolMode)?.let { hint ->
+                    canvas.drawText(hint, cell.bounds.right - 3 * resources.displayMetrics.density,
+                        cell.bounds.top - hintPaint.ascent() + resources.displayMetrics.density, hintPaint)
+                }
+            }
         }
 
         if (
@@ -367,12 +404,9 @@ class KeyboardSurface(
                 // Prefer a pen arriving while the hand is already resting on glass.
                 pointerIndex = event.actionIndex
                 action = MotionEvent.ACTION_DOWN
-            } else if (gestureActive && pointerKind == PointerKind.STYLUS) {
-                return true // Additional finger/palm contact must not break a pen swipe.
             } else {
-                resetGestureState()
-                invalidate()
-                return true
+                // Keep ownership with the original finger/pen; ignore additional hand contacts.
+                return gestureActive
             }
         }
         if (action == MotionEvent.ACTION_POINTER_UP) {
@@ -394,6 +428,7 @@ class KeyboardSurface(
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 resetGestureState()
+                parent?.requestDisallowInterceptTouchEvent(true)
                 gestureActive = true
                 activePointerId = event.getPointerId(pointerIndex)
                 downX = x
@@ -425,11 +460,22 @@ class KeyboardSurface(
                     addTraceCharacter(x, y)
                     addTracePoint(x, y, event.eventTime)
                 }
+                if (!gestureCancelled) postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
                 if (!gestureActive) return false
+                if (alternativeGesture) {
+                    val location = IntArray(2).also { getLocationOnScreen(it) }
+                    alternatives.move(location[0] + x, location[1] + y)
+                    if (action == MotionEvent.ACTION_UP) {
+                        alternatives.commitSelection()
+                        resetGestureState()
+                        invalidate()
+                    }
+                    return true
+                }
                 for (index in 0 until event.historySize) {
                     recordMotion(
                         event.getHistoricalX(pointerIndex, index),
@@ -490,15 +536,12 @@ class KeyboardSurface(
 
     private fun recordMotion(x: Float, y: Float, timeMs: Long, density: Float) {
         if (gestureCancelled) return
-        if (x < 0f || y < 0f || x >= width || y >= height) {
-            gestureCancelled = true
-            pressedToken = null
-            return
-        }
         val displacementDp = hypot(x - downX, y - downY) / density
+        if (displacementDp > 8f) removeCallbacks(longPress)
+        val outside = x < 0f || y < 0f || x >= width || y >= height
         if (!canSwipe()) {
             // Symbols and command keys remain buttons for both tools.
-            if (displacementDp > 12f) {
+            if (outside || displacementDp > 12f) {
                 gestureCancelled = true
                 pressedToken = null
             }
@@ -508,6 +551,9 @@ class KeyboardSurface(
             dragging = true
             pressedToken = null
         }
+        // Ignore off-keyboard samples, but retain the valid trace and its owner.
+        // Re-entry resumes it; lifting outside commits the last valid word path.
+        if (outside) return
         pathLengthPx += hypot(x - lastPathX, y - lastPathY)
         lastPathX = x
         lastPathY = y
@@ -517,6 +563,10 @@ class KeyboardSurface(
     }
 
     private fun resetGestureState() {
+        removeCallbacks(longPress)
+        alternatives.dismiss()
+        alternativeGesture = false
+        parent?.requestDisallowInterceptTouchEvent(false)
         gestureActive = false
         activePointerId = -1
         gestureCancelled = false
@@ -527,6 +577,11 @@ class KeyboardSurface(
         traceChars.clear()
         tracePoints.clear()
         path.reset()
+    }
+
+    override fun onDetachedFromWindow() {
+        resetGestureState()
+        super.onDetachedFromWindow()
     }
 
     override fun performClick(): Boolean {

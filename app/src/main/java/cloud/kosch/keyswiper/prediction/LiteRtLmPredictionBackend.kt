@@ -139,7 +139,7 @@ class LiteRtLmPredictionBackend(
             .take(maxSuggestions)
             .mapIndexed { index, phrase ->
                 PredictionSuggestion(
-                    display = "✦ $phrase",
+                    display = phrase,
                     commitText = phrase,
                     kind = PredictionKind.NEURAL,
                     confidence = (0.94f - index * 0.08f)
@@ -159,3 +159,4 @@ class LiteRtLmPredictionBackend(
         }
     }
 }
+

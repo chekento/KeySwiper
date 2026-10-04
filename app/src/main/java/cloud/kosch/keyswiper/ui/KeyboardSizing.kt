@@ -57,7 +57,7 @@ object KeyboardSizing {
                 .coerceAtLeast(1)
 
         val toolbar = fraction(0.10f, 26f)
-        val prediction = fraction(0.12f, 32f)
+        val prediction = fraction(0.14f, 36f)
         val bottom = fraction(0.17f, 42f)
         val accent =
             if (symbolMode) 0

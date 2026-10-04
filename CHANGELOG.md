@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.0-alpha19 — 2026-10-04
+
+More forgiving gestures, hold-to-select layers and reversible local autocorrection:
+
+- finger and pen swipes survive excursions beyond the key area and release outside it; off-surface samples do not introduce phantom edge letters
+- additional finger/hand contacts no longer cancel an active finger swipe; the starting pointer owns the gesture
+- all letter keys and both number/symbol pages have hold–slide–release alternatives; ä/ö/ü are first on a/o/u and ß is on s
+- Shift replaces the old DE button; double-tap/hold enables Caps Lock, and holding the labeled spacebar selects the keyboard language
+- six emoji categories offer related emoji and skin-tone variants on long press; Backspace removes complete modifier/ZWJ/flag sequences
+- clearer, larger suggestion labels contain actual words instead of decorative glyphs; unused Undo/Redo controls leave more space for words
+- completions use preceding-word context and accent folding; prediction keeps the user's capitalization and bounds personal frequency boosts
+- local typo ranking considers adjacent keys, transpositions, accents, German transliterations and learned context; ambiguous changes remain explicit choices
+- high-confidence corrections apply on space; immediate Backspace restores the original spelling at the same cursor context and prevents repeated correction
+- known and personal words, acronyms, code, URLs, email addresses, numbers and sensitive fields are protected; automatic replacements do not train themselves
+- a settings switch controls automatic correction; original spelling remains available in the suggestion strip
+- swipe alternatives stay visible after Android selection updates and follow Shift/Caps Lock
+- added JVM coverage for corrections, context ranking, key layers, emoji deletion and safe correction rollback, plus real Android edge/multi-contact and attached long-press popup checks
+- package version 0.19.0-alpha19 / build 19
+
+
 ## 0.18.0-alpha18 — 2026-10-03
 
 Finger and pen typing/swiping, separate upper handwriting, larger keys and better word recognition:

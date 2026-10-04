@@ -11,6 +11,7 @@ object Prefs {
     private const val TARGET_LANGUAGE = "target_language"
     private const val TARGET_HISTORY = "target_language_history"
     private const val HANDWRITING_LANGUAGE = "handwriting_language"
+    private const val AUTO_CORRECT = "auto_correct"
     private const val SEMANTIC_DEPTH = "semantic_prediction_depth"
     private const val KEYBOARD_LAYOUT = "keyboard_layout"
     private const val CLIPBOARD_EXPIRY_MINUTES = "clipboard_expiry_minutes"
@@ -154,6 +155,13 @@ object Prefs {
                 value.trim()
             )
             .apply()
+    }
+
+    fun autoCorrectEnabled(context: Context): Boolean =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(AUTO_CORRECT, true)
+
+    fun setAutoCorrectEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(AUTO_CORRECT, enabled).apply()
     }
 
     fun semanticPredictionDepth(
@@ -365,3 +373,4 @@ object Prefs {
             .apply()
     }
 }
+

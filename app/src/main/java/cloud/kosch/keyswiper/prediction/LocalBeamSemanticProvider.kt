@@ -234,7 +234,7 @@ class LocalBeamSemanticProvider(
             .mapIndexed { index, beam ->
                 val phrase = beam.generated.joinToString(" ")
                 PredictionSuggestion(
-                    display = "→ $phrase",
+                    display = phrase,
                     commitText = phrase,
                     kind = PredictionKind.SENTENCE,
                     confidence = (0.92f - index * 0.07f).coerceAtLeast(0.50f)
@@ -399,3 +399,4 @@ class LocalBeamSemanticProvider(
             .map { it.value.lowercase() }
             .toList()
 }
+

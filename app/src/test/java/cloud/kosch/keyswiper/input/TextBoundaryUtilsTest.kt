@@ -28,6 +28,16 @@ class TextBoundaryUtilsTest {
     }
 
     @Test
+    fun deletesEmojiVariantsAsOneVisibleCharacter() {
+        val variants = listOf("👍🏽", "❤️‍🔥", "👩🏽‍💻", "🇩🇪", "1️⃣", "👨‍👩‍👧‍👦") +
+            cloud.kosch.keyswiper.ui.EmojiCatalog.categories.flatMap { it.groups.flatten() }
+        variants.forEach { emoji ->
+            assertEquals(emoji, emoji.length, TextBoundaryUtils.lastGraphemeUtf16Length("Text $emoji"))
+        }
+        assertEquals(4, TextBoundaryUtils.lastGraphemeUtf16Length("🇩🇪🇫🇷"))
+    }
+
+    @Test
     fun deletesAsciiCharacterNormally() {
         assertEquals(
             1,
@@ -38,3 +48,4 @@ class TextBoundaryUtilsTest {
         )
     }
 }
+

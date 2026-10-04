@@ -114,7 +114,27 @@ class KeyboardRootView(
         KeyboardSurface(context)
 
     private var shifted = false
+    private var capsLocked = false
+    private var lastShiftTap = 0L
+    private var shiftButton: Button? = null
     private var symbolMode = false
+    private var symbolPage = 0
+    private val textAlternatives = KeyAlternativesPopup(context) { value ->
+        consumeShift(value)
+        callbacks?.onDeveloperText(value)
+    }
+    private val emojiAlternatives = KeyAlternativesPopup(context) { callbacks?.onEmoji(it) }
+    private val languageAlternatives = KeyAlternativesPopup(context) { tag ->
+        KeyboardLayoutProfiles.all.firstOrNull { it.languageTag.equals(tag, true) }?.let { next ->
+            Prefs.setKeyboardLayoutId(context, next.id)
+            layoutProfile = next
+            shifted = false
+            capsLocked = false
+            symbolMode = false
+            rebuildKeyboardPanel()
+            setStatus("Layout: ${next.label}")
+        }
+    }
     private var oneHandMode =
         Prefs.oneHandMode(context)
     private var editorMode =
@@ -270,22 +290,14 @@ class KeyboardRootView(
             object :
                 KeyboardSurface.Listener {
 
-                override fun onTap(
-                    character: Char
-                ) {
-                    callbacks
-                        ?.onCharacter(
-                            character
-                        )
+                override fun onTap(character: Char) {
+                    consumeShift(character.toString())
+                    callbacks?.onCharacter(character)
+                }
 
-                    if (
-                        shifted &&
-                        character.isLetter()
-                    ) {
-                        shifted = false
-                        keyboardSurface.shifted =
-                            false
-                    }
+                override fun onText(value: String) {
+                    consumeShift(value)
+                    callbacks?.onDeveloperText(value)
                 }
 
                 override fun onSwipe(
@@ -427,6 +439,8 @@ class KeyboardRootView(
     }
 
     private fun rebuildKeyboardPanel() {
+        dismissAlternatives()
+        shiftButton = null
         keyboardPanel.removeAllViews()
 
         layoutProfile =
@@ -463,7 +477,8 @@ class KeyboardRootView(
 
         keyboardSurface.setLayout(
             profile = layoutProfile,
-            symbols = symbolMode
+            symbols = symbolMode,
+            page = symbolPage
         )
         keyboardSurface.shifted =
             shifted && !symbolMode
@@ -507,389 +522,157 @@ class KeyboardRootView(
     }
 
     private fun buildAccentAndLayoutRow(): View {
-        val row =
-            LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(
-                    dp(4),
-                    dp(1),
-                    dp(4),
-                    dp(1)
-                )
-                setBackgroundColor(
-                    theme.background
-                )
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            setPadding(dp(4), dp(1), dp(4), dp(1))
+        }
+        fun key(label: String, weight: Float = 1f, action: () -> Unit): Button {
+            val button = compactKey(label, action)
+            row.addView(button, LayoutParams(0, LayoutParams.MATCH_PARENT, weight).apply {
+                marginStart = dp(2); marginEnd = dp(2)
+            })
+            return button
+        }
+        shiftButton = key("⇧", 1.15f) { toggleShift() }.apply {
+            textSize = 20f
+            setOnLongClickListener {
+                capsLocked = !capsLocked
+                shifted = capsLocked
+                updateShiftAppearance()
+                true
             }
-
-        fun addButton(
-            label: String,
-            weight: Float = 1f,
-            action: () -> Unit
-        ) {
-            row.addView(
-                Button(context).apply {
-                    text = label
-                    isAllCaps = false
-                    textSize = 13f
-                    setTextColor(
-                        theme.textSecondary
-                    )
-                    background =
-                        buttonBackground(
-                            special = false,
-                            subtle = true
-                        )
-                    minWidth = 0
-                    minimumWidth = 0
-                    setPadding(
-                        dp(2),
-                        0,
-                        dp(2),
-                        0
-                    )
-                    setOnClickListener {
-                        action()
-                    }
-                },
-                LayoutParams(
-                    0,
-                    LayoutParams.MATCH_PARENT,
-                    weight
-                )
-            )
         }
-
-        addButton(
-            layoutProfile
-                .languageTag
-                .uppercase(),
-            1.15f
-        ) {
-            cycleLayout()
-        }
-
-        if (
-            layoutProfile
-                .accentKeys
-                .isEmpty()
-        ) {
-            addButton(
-                "Aa",
-                2.3f
-            ) {
-                shifted = !shifted
-                keyboardSurface.shifted =
-                    shifted
+        updateShiftAppearance()
+        listOf('!', '?', ':', ';').forEach { character ->
+            val button = key(character.toString()) { callbacks?.onCharacter(character) }
+            textAlternatives.attach(button) {
+                KeyAlternatives.forKey(character, layoutProfile.id, false, true)
             }
-        } else {
-            layoutProfile
-                .accentKeys
-                .forEach { character ->
-                    addButton(
-                        character.toString()
-                    ) {
-                        callbacks
-                            ?.onCharacter(
-                                if (shifted) {
-                                    character
-                                        .uppercaseChar()
-                                } else {
-                                    character
-                                }
-                            )
-                        shifted = false
-                        keyboardSurface.shifted =
-                            false
-                    }
-                }
         }
-
         return row
+    }
+
+    private fun compactKey(label: String, action: () -> Unit): Button = Button(context).apply {
+        text = label
+        isAllCaps = false
+        textSize = 16f
+        setTextColor(theme.textPrimary)
+        background = buttonBackground()
+        minWidth = 0; minimumWidth = 0; minHeight = 0; minimumHeight = 0
+        setPadding(dp(3), 0, dp(3), 0)
+        setOnClickListener { action() }
+    }
+
+    fun applyInputCase(word: String): String = when {
+        capsLocked -> word.uppercase()
+        shifted -> word.replaceFirstChar { it.uppercase() }
+        else -> word
+    }
+
+    private fun consumeShift(value: String) {
+        if (shifted && !capsLocked && value.any { it.isLetter() }) {
+            shifted = false
+            updateShiftAppearance()
+        }
+    }
+
+    private fun toggleShift() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (capsLocked) {
+            capsLocked = false
+            shifted = false
+        } else if (lastShiftTap != 0L && now - lastShiftTap < 350L) {
+            capsLocked = true
+            shifted = true
+        } else {
+            shifted = !shifted
+        }
+        lastShiftTap = now
+        updateShiftAppearance()
+    }
+
+    private fun updateShiftAppearance() {
+        keyboardSurface.shifted = shifted && !symbolMode
+        shiftButton?.apply {
+            text = if (capsLocked) "⇪" else "⇧"
+            contentDescription = if (capsLocked) "Feststelltaste aktiv" else if (shifted) "Großschreibung aktiv" else "Umschalten; zweimal tippen für Feststelltaste"
+            setTextColor(if (shifted) theme.accent else theme.textPrimary)
+            background = buttonBackground(special = shifted)
+            isSelected = shifted
+        }
     }
 
     private fun buildBottomRow(): View {
-        val row =
-            LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(
-                    dp(4),
-                    dp(3),
-                    dp(4),
-                    dp(4)
-                )
-                setBackgroundColor(
-                    theme.background
-                )
-            }
-
-        fun key(
-            label: String,
-            weight: Float = 1f,
-            special: Boolean = false,
-            action: () -> Unit
-        ) {
-            row.addView(
-                Button(context).apply {
-                    text = label
-                    isAllCaps = false
-                    textSize =
-                        if (
-                            label == "space"
-                        ) {
-                            13f
-                        } else {
-                            16f
-                        }
-                    setTextColor(
-                        if (special) {
-                            theme.accent
-                        } else {
-                            theme.textPrimary
-                        }
-                    )
-                    background =
-                        buttonBackground(
-                            special =
-                                special
-                        )
-                    minWidth = 0
-                    minimumWidth = 0
-                    setPadding(
-                        dp(3),
-                        0,
-                        dp(3),
-                        0
-                    )
-                    setOnClickListener {
-                        action()
-                    }
-                },
-                LayoutParams(
-                    0,
-                    LayoutParams.MATCH_PARENT,
-                    weight
-                ).apply {
-                    marginStart =
-                        dp(2)
-                    marginEnd =
-                        dp(2)
-                }
-            )
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(3), dp(4), dp(4))
         }
-
+        fun key(label: String, weight: Float = 1f, action: () -> Unit): Button {
+            val button = compactKey(label, action)
+            row.addView(button, LayoutParams(0, LayoutParams.MATCH_PARENT, weight).apply {
+                marginStart = dp(2); marginEnd = dp(2)
+            })
+            return button
+        }
+        fun character(value: Char) {
+            val button = key(value.toString(), 0.75f) { callbacks?.onCharacter(value) }
+            textAlternatives.attach(button) { KeyAlternatives.forKey(value, layoutProfile.id, false, true) }
+        }
         if (symbolMode) {
-            if (
-                editorMode ==
-                KeyboardEditorMode.NUMBER
-            ) {
-                key(
-                    "123",
-                    1.05f,
-                    true
-                ) {}
-            } else {
-                key(
-                    "ABC",
-                    1.05f,
-                    true
-                ) {
-                    symbolMode = false
-                    shifted = false
-                    rebuildKeyboardPanel()
-                }
+            if (editorMode != KeyboardEditorMode.NUMBER) {
+                key("ABC", 1.05f) { symbolMode = false; rebuildKeyboardPanel() }
             }
-        } else {
-            key(
-                "?123",
-                1.05f,
-                true
-            ) {
-                symbolMode = true
-                shifted = false
+            key(if (symbolPage == 0) "#+=" else "123", 1.05f) {
+                symbolPage = 1 - symbolPage
                 rebuildKeyboardPanel()
-            }
-
-            key(
-                "⇧",
-                0.80f,
-                shifted
-            ) {
-                shifted =
-                    !shifted
-                keyboardSurface.shifted =
-                    shifted
-            }
+            }.contentDescription = "Weitere Zahlen und Symbole"
+        } else {
+            key("?123", 1.05f) {
+                symbolMode = true
+                symbolPage = 0
+                rebuildKeyboardPanel()
+            }.contentDescription = "Zahlen und Symbole"
         }
-
-        when (editorMode) {
-            KeyboardEditorMode.EMAIL -> {
-                key(
-                    "@",
-                    0.75f
-                ) {
-                    callbacks
-                        ?.onCharacter('@')
-                }
-
-                key(
-                    "😀",
-                    0.78f
-                ) {
-                    showEmojiPanel()
-                }
-
-                key(
-                    "space",
-                    2.55f
-                ) {
-                    callbacks
-                        ?.onSpace()
-                }
-
-                key(
-                    ".",
-                    0.72f
-                ) {
-                    callbacks
-                        ?.onCharacter('.')
-                }
+        if (editorMode == KeyboardEditorMode.NUMBER) {
+            character('-'); character('.')
+        } else {
+            character(when (editorMode) {
+                KeyboardEditorMode.EMAIL -> '@'
+                KeyboardEditorMode.URL -> '/'
+                else -> ','
+            })
+            key("😀", 0.85f) { showEmojiPanel() }.contentDescription = "Emojis und Varianten"
+            val space = key("${layoutProfile.languageTag.uppercase()}  ·  Leer", 3.35f) { callbacks?.onSpace() }
+            space.textSize = 13f
+            space.contentDescription = "Leerzeichen; gedrückt halten für Sprachwahl"
+            languageAlternatives.attach(space) {
+                listOf(layoutProfile.languageTag.uppercase()) + KeyboardLayoutProfiles.all
+                    .filter { it.id != layoutProfile.id }.map { it.languageTag.uppercase() }
             }
-
-            KeyboardEditorMode.URL -> {
-                key(
-                    "/",
-                    0.72f
-                ) {
-                    callbacks
-                        ?.onCharacter('/')
-                }
-
-                key(
-                    "😀",
-                    0.78f
-                ) {
-                    showEmojiPanel()
-                }
-
-                key(
-                    "space",
-                    2.35f
-                ) {
-                    callbacks
-                        ?.onSpace()
-                }
-
-                key(
-                    ".",
-                    0.72f
-                ) {
-                    callbacks
-                        ?.onCharacter('.')
-                }
-            }
-
-            KeyboardEditorMode.NUMBER -> {
-                key(
-                    "-",
-                    0.85f
-                ) {
-                    callbacks
-                        ?.onCharacter('-')
-                }
-
-                key(
-                    ".",
-                    0.85f
-                ) {
-                    callbacks
-                        ?.onCharacter('.')
-                }
-            }
-
-            KeyboardEditorMode.TEXT -> {
-                key(
-                    ",",
-                    0.70f
-                ) {
-                    callbacks
-                        ?.onCharacter(',')
-                }
-
-                key(
-                    "😀",
-                    0.80f
-                ) {
-                    showEmojiPanel()
-                }
-
-                key(
-                    "space",
-                    3.35f
-                ) {
-                    callbacks
-                        ?.onSpace()
-                }
-
-                key(
-                    ".",
-                    0.70f
-                ) {
-                    callbacks
-                        ?.onCharacter('.')
-                }
-            }
+            character('.')
         }
-
-        key(
-            "↵",
-            0.95f,
-            true
-        ) {
-            callbacks
-                ?.onEnter()
-        }
-
+        key("↵", 1f) { callbacks?.onEnter() }.contentDescription = "Eingabe"
         return row
     }
 
-    private fun cycleLayout() {
-        val all =
-            KeyboardLayoutProfiles.all
+    private fun dismissAlternatives() {
+        textAlternatives.dismiss()
+        emojiAlternatives.dismiss()
+        languageAlternatives.dismiss()
+    }
 
-        val index =
-            all.indexOfFirst {
-                it.id ==
-                    layoutProfile.id
-            }
-                .coerceAtLeast(0)
-
-        val next =
-            all[
-                (index + 1) %
-                    all.size
-                ]
-
-        Prefs.setKeyboardLayoutId(
-            context,
-            next.id
-        )
-
-        layoutProfile = next
-        shifted = false
-        symbolMode = false
-        rebuildKeyboardPanel()
-
-        setStatus(
-            "Layout: ${next.label}"
-        )
+    override fun onDetachedFromWindow() {
+        dismissAlternatives()
+        super.onDetachedFromWindow()
     }
 
     fun setEditorMode(
         mode: KeyboardEditorMode
     ) {
         editorMode = mode
+        capsLocked = false
+        symbolPage = 0
         symbolMode =
             mode ==
                 KeyboardEditorMode.NUMBER
@@ -904,18 +687,9 @@ class KeyboardRootView(
         rebuildKeyboardPanel()
     }
 
-    fun setAutoShift(
-        enabled: Boolean
-    ) {
-        val next =
-            enabled &&
-                editorMode ==
-                KeyboardEditorMode.TEXT &&
-                !symbolMode
-
-        shifted = next
-        keyboardSurface.shifted =
-            next
+    fun setAutoShift(enabled: Boolean) {
+        shifted = capsLocked || (enabled && editorMode == KeyboardEditorMode.TEXT)
+        updateShiftAppearance()
     }
 
     private fun roundedDrawable(
@@ -1004,134 +778,47 @@ class KeyboardRootView(
         }
     }
 
-    fun setPredictions(
-        values: List<PredictionSuggestion>
-    ) {
-        suggestions.removeAllViews()
-
-        values
-            .take(6)
-            .forEach { suggestion ->
-                suggestions.addView(
-                    Button(context).apply {
-                        text =
-                            suggestion.display
-                        isAllCaps = false
-                        setTextColor(
-                            theme.textPrimary
-                        )
-                        background =
-                            buttonBackground(
-                                special =
-                                    suggestion.kind ==
-                                        PredictionKind.SENTENCE,
-                                subtle = true
-                            )
-                        minWidth =
-                            when (
-                                suggestion.kind
-                            ) {
-                                PredictionKind.SENTENCE ->
-                                    dp(170)
-                                else ->
-                                    dp(72)
-                            }
-                        maxLines = 1
-                        textSize =
-                            if (
-                                suggestion.kind ==
-                                PredictionKind.SENTENCE
-                            ) {
-                                13f
-                            } else {
-                                15f
-                            }
-                        alpha =
-                            (
-                                0.72f +
-                                    suggestion
-                                        .confidence
-                                        .coerceIn(
-                                            0f,
-                                            1f
-                                        ) *
-                                    0.28f
-                                )
-                        setOnClickListener {
-                            callbacks
-                                ?.onPrediction(
-                                    suggestion
-                                )
-                        }
-                    },
-                    LinearLayout.LayoutParams(
-                        LayoutParams.WRAP_CONTENT,
-                        LayoutParams.MATCH_PARENT
-                    )
-                )
-            }
+    fun setPredictions(values: List<PredictionSuggestion>) {
+        renderSuggestions(values) { callbacks?.onPrediction(it) }
     }
 
-    fun setSwipeCandidates(
-        values: List<String>
-    ) {
+    private fun renderSuggestions(values: List<PredictionSuggestion>, onChoose: (PredictionSuggestion) -> Unit) {
         suggestions.removeAllViews()
+        suggestionScrollView.scrollTo(0, 0)
+        values.take(6).forEachIndexed { index, suggestion ->
+            val correction = suggestion.kind == PredictionKind.CORRECTION
+            suggestions.addView(Button(context).apply {
+                // Words are readable labels; action/status icons do not belong in their text.
+                text = suggestion.commitText
+                isAllCaps = false
+                textSize = 16f
+                setTextColor(if (correction) theme.accent else theme.textPrimary)
+                typeface = android.graphics.Typeface.create("sans-serif", if (index == 0) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                background = roundedDrawable(theme.surfaceRaised, theme.keyCornerDp,
+                    if (correction) theme.accent else theme.border)
+                minWidth = dp(80); minimumWidth = 0; minHeight = 0; minimumHeight = 0
+                maxWidth = dp(240)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(8), 0, dp(8), 0)
+                contentDescription = when (suggestion.kind) {
+                    PredictionKind.CORRECTION -> "Korrektur: ${suggestion.commitText}"
+                    PredictionKind.KEEP_TYPED -> "Schreibweise behalten: ${suggestion.commitText}"
+                    PredictionKind.SENTENCE, PredictionKind.NEURAL -> "Textvorschlag: ${suggestion.commitText}"
+                    else -> "Wortvorschlag: ${suggestion.commitText}"
+                }
+                setOnClickListener { onChoose(suggestion) }
+            }, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
+                marginStart = dp(2); marginEnd = dp(2)
+            })
+        }
+        StylusUi.usePointerInput(suggestions)
+    }
 
-        values
-            .take(6)
-            .forEachIndexed {
-                    index,
-                    value ->
-
-                val suggestion =
-                    PredictionSuggestion(
-                        display = value,
-                        commitText = value,
-                        kind =
-                            PredictionKind
-                                .SWIPE_CORRECTION,
-                        confidence =
-                            (
-                                0.96f -
-                                    index * 0.10f
-                                )
-                                .coerceAtLeast(
-                                    0.45f
-                                )
-                    )
-
-                suggestions.addView(
-                    Button(context).apply {
-                        text = value
-                        isAllCaps = false
-                        setTextColor(
-                            theme.textPrimary
-                        )
-                        background =
-                            buttonBackground(
-                                special =
-                                    index == 0,
-                                subtle = true
-                            )
-                        minWidth = dp(72)
-                        alpha =
-                            0.75f +
-                                suggestion
-                                    .confidence *
-                                0.25f
-                        setOnClickListener {
-                            callbacks
-                                ?.onCandidate(
-                                    value
-                                )
-                        }
-                    },
-                    LinearLayout.LayoutParams(
-                        LayoutParams.WRAP_CONTENT,
-                        LayoutParams.MATCH_PARENT
-                    )
-                )
-            }
+    fun setSwipeCandidates(values: List<String>) {
+        renderSuggestions(values.mapIndexed { index, value ->
+            PredictionSuggestion(value, value, PredictionKind.SWIPE_CORRECTION, confidence = (0.96f - index * 0.10f).coerceAtLeast(0.45f))
+        }) { callbacks?.onCandidate(it.commitText) }
     }
 
     fun clearSuggestions() {
@@ -1139,6 +826,7 @@ class KeyboardRootView(
     }
 
     fun showKeyboard() {
+        dismissAlternatives()
         handwritingPanelContainer.removeAllViews()
         handwritingPanelContainer.visibility = GONE
         theme =
@@ -1158,7 +846,7 @@ class KeyboardRootView(
         symbolMode =
             editorMode ==
                 KeyboardEditorMode.NUMBER
-        shifted = false
+        shifted = capsLocked
         rebuildKeyboardPanel()
         attachMainPanel(
             keyboardPanel
@@ -1169,6 +857,8 @@ class KeyboardRootView(
         canUndo: Boolean,
         canRedo: Boolean
     ) {
+        undoButton.visibility = if (canUndo) VISIBLE else GONE
+        redoButton.visibility = if (canRedo) VISIBLE else GONE
         undoButton.isEnabled =
             canUndo
         redoButton.isEnabled =
@@ -2152,110 +1842,38 @@ class KeyboardRootView(
     }
 
     fun showEmojiPanel() {
-        val panel =
-            LinearLayout(context).apply {
-                orientation = VERTICAL
-                setPadding(
-                    dp(4),
-                    dp(4),
-                    dp(4),
-                    dp(4)
-                )
-            }
-
-        val groups =
-            listOf(
-                listOf(
-                    "😀",
-                    "😄",
-                    "😂",
-                    "🥹",
-                    "😍",
-                    "🥰",
-                    "😘",
-                    "😎"
-                ),
-                listOf(
-                    "❤️",
-                    "❤️‍🔥",
-                    "💕",
-                    "✨",
-                    "🔥",
-                    "👍",
-                    "🙌",
-                    "🙏"
-                ),
-                listOf(
-                    "🤔",
-                    "😅",
-                    "😢",
-                    "😭",
-                    "😡",
-                    "🤯",
-                    "🥳",
-                    "🫶"
-                )
-            )
-
-        groups.forEach { group ->
-            val row =
-                LinearLayout(context)
-                    .apply {
-                        orientation =
-                            HORIZONTAL
+        val panel = LinearLayout(context).apply { orientation = VERTICAL; setPadding(dp(4), dp(4), dp(4), dp(4)) }
+        val tabs = LinearLayout(context)
+        val grid = LinearLayout(context).apply { orientation = VERTICAL }
+        fun showCategory(index: Int) {
+            emojiAlternatives.dismiss()
+            grid.removeAllViews()
+            EmojiCatalog.categories[index].keys.chunked(6).forEach { group ->
+                val row = LinearLayout(context)
+                group.forEach { emoji ->
+                    val button = compactKey(emoji) { callbacks?.onEmoji(emoji) }.apply {
+                        textSize = 24f
+                        contentDescription = "$emoji; gedrückt halten für Varianten"
                     }
-
-            group.forEach { emoji ->
-                row.addView(
-                    Button(context).apply {
-                        text = emoji
-                        textSize = 20f
-                        background =
-                            buttonBackground(
-                                subtle = true
-                            )
-                        setPadding(
-                            0,
-                            0,
-                            0,
-                            0
-                        )
-                        setOnClickListener {
-                            callbacks
-                                ?.onEmoji(
-                                    emoji
-                                )
-                        }
-                    },
-                    LayoutParams(
-                        0,
-                        dp(52),
-                        1f
-                    )
-                )
-            }
-
-            panel.addView(row)
-        }
-
-        panel.addView(
-            Button(context).apply {
-                text = "Back to keyboard"
-                isAllCaps = false
-                setTextColor(
-                    theme.accent
-                )
-                background =
-                    buttonBackground(
-                        special = true
-                    )
-                setOnClickListener {
-                    showKeyboard()
+                    emojiAlternatives.attach(button) { EmojiCatalog.alternatives(emoji) }
+                    row.addView(button, LayoutParams(0, dp(52), 1f))
                 }
+                repeat(6 - group.size) { row.addView(View(context), LayoutParams(0, dp(52), 1f)) }
+                grid.addView(row)
             }
-        )
-
+            for (i in 0 until tabs.childCount) {
+                tabs.getChildAt(i).background = buttonBackground(special = i == index)
+            }
+        }
+        EmojiCatalog.categories.forEachIndexed { index, category ->
+            tabs.addView(compactKey(category.label) { showCategory(index) }, LayoutParams(0, dp(40), 1f))
+        }
+        panel.addView(tabs)
+        panel.addView(grid)
+        panel.addView(compactKey("ABC · Zur Tastatur") { showKeyboard() }, LayoutParams(LayoutParams.MATCH_PARENT, dp(40)))
         swapContent(panel)
+        showCategory(0)
+        StylusUi.usePointerInput(panel)
     }
 
     fun showHandwritingPanel(
@@ -2356,6 +1974,7 @@ class KeyboardRootView(
     private fun swapContent(
         view: View
     ) {
+        dismissAlternatives()
         handwritingPanelContainer.removeAllViews()
         handwritingPanelContainer.visibility = GONE
         content.removeAllViews()

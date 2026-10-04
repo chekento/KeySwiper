@@ -1,6 +1,8 @@
 package cloud.kosch.keyswiper.language
 
 interface UserVocabularyLookup {
+    fun contains(word: String): Boolean = false
+
     fun prefixMatches(
         prefix: String,
         lanes: List<LanguageLane>,
@@ -12,3 +14,4 @@ interface UserVocabularyLookup {
         limit: Int = 10
     ): List<Pair<String, Int>>
 }
+

@@ -64,4 +64,10 @@ object KeyboardLayoutProfiles {
         "@#€_&-+()/",
         "*\"':;!?.,"
     )
+
+    val extraSymbolRows: List<String> = listOf(
+        "[]{}<>=%^~",
+        "|\\°×÷±§…",
+        "•←→↑↓€$£"
+    )
 }

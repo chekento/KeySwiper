@@ -172,4 +172,9 @@ if ! grep -Fq "PASS: pen and finger taps/swipes, menu selection, palm contact, b
   exit 1
 fi
 
-log "PASS: KeySwiper is alive, selected and visible; pen and swipe input checks passed on Android 15."
+if ! grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt"; then
+  echo "Attached long-press popup regression checks did not pass." >&2
+  exit 1
+fi
+
+log "PASS: KeySwiper is alive, selected and visible; pen, finger, edge and long-press input checks passed on Android 15."

@@ -7,6 +7,8 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
     private val prefs =
         context.getSharedPreferences("keyswiper_user_vocabulary", Context.MODE_PRIVATE)
 
+    override fun contains(word: String): Boolean = prefs.getInt("c|${normalize(word)}", 0) > 0
+
     fun observeWord(
         rawWord: String,
         languageHints: List<String>
@@ -159,3 +161,4 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
         editor.apply()
     }
 }
+

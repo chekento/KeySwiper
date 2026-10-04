@@ -16,7 +16,10 @@ class HybridPredictionEngine(
             languageHints = context.languageHints,
             maxSuggestions = maxSuggestions,
             fallbackLanguage = context.inputLanguageTag
-        )
+        ).filterNot { suggestion ->
+            (context.inputMode == PredictionInputMode.CODE || context.inputMode == PredictionInputMode.EMAIL) &&
+                (suggestion.kind == PredictionKind.CORRECTION || suggestion.kind == PredictionKind.KEEP_TYPED)
+        }
 
         val semanticSuggestions = semantic.predict(
             context = context,
@@ -62,7 +65,9 @@ class HybridPredictionEngine(
 
         val words = base
             .filter {
-                it.kind == PredictionKind.COMPLETION ||
+                it.kind == PredictionKind.CORRECTION ||
+                    it.kind == PredictionKind.KEEP_TYPED ||
+                    it.kind == PredictionKind.COMPLETION ||
                     it.kind == PredictionKind.NEXT_WORD
             }
             .take(3)
@@ -101,3 +106,4 @@ class HybridPredictionEngine(
         }.take(maxSuggestions)
     }
 }
+

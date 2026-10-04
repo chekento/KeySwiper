@@ -12,8 +12,9 @@ data class LanguagePack(
         val normalized = prefix.lowercase()
         if (normalized.isBlank()) return emptyList()
 
+        val folded = cloud.kosch.keyswiper.prediction.WordCorrectionEngine.fold(normalized)
         return words.asSequence()
-            .filter { it.startsWith(normalized) && it != normalized }
+            .filter { (it.startsWith(normalized) || cloud.kosch.keyswiper.prediction.WordCorrectionEngine.fold(it).startsWith(folded)) && it != normalized }
             .sortedWith(
                 compareBy<String> { it.length }
                     .thenBy { it }
@@ -72,7 +73,7 @@ object LanguagePackRegistry {
             warum wieso weshalb wann wohin woher wieviel beide zwei drei vier fünf sechs sieben acht neun
             zehn hundert tausend nummer telefon handy bild foto video musik film buch wetter regen sonne
             schnee wind blau rot grün gelb schwarz weiß lila braun wichtig sicher offen zu bereit endlich
-            konnte wollte musste sollte wäre wären hast hat habt seid darf dürfen mag mögen würde
+            konnte wollte musste sollte wäre wären hast hat habt seid darf dürfen mag mögen würde mochte mochten
         """),
         commonNext = mapOf(
             "ich" to listOf("möchte","kann","habe","bin","würde","denke"),
@@ -84,7 +85,17 @@ object LanguagePackRegistry {
             "kontext" to listOf("kennen","nutzen","berücksichtigen","verstehen"),
             "vorschläge" to listOf("sollen","können","werden","passen"),
             "prediction" to listOf("soll","kann","nutzt","lernt"),
-            "build" to listOf("ist","läuft","wurde","soll","braucht")
+            "build" to listOf("ist","läuft","wurde","soll","braucht"),
+            "guten" to listOf("morgen", "abend", "tag"),
+            "vielen" to listOf("dank"),
+            "bis" to listOf("morgen", "später", "bald", "dann"),
+            "habe" to listOf("ich", "eine", "einen", "das", "noch"),
+            "möchte" to listOf("gerne", "ich", "das", "eine", "einen"),
+            "kann" to listOf("ich", "man", "das", "nicht"),
+            "bin" to listOf("ich", "gerade", "noch", "gleich", "zu"),
+            "danke" to listOf("für", "dir", "schön"),
+            "freue" to listOf("mich"),
+            "komme" to listOf("gleich", "morgen", "später", "nach")
         ),
         technicalTerms = words("""
             android apk api build cloud code github gradle ime kotlin litert litertlm llm mlkit model

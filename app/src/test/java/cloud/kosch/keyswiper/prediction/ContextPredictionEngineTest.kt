@@ -20,6 +20,30 @@ class ContextPredictionEngineTest {
     private val engine = ContextPredictionEngine(memory)
 
     @Test
+    fun contextOutranksAlphabeticalCompletionAndFindsUmlauts() {
+        val suggestions = engine.predict("ich mo", listOf("de"))
+        org.junit.Assert.assertEquals("möchte", suggestions.first().commitText)
+    }
+
+    @Test
+    fun typoSuggestionsAlwaysIncludeTheOriginalSpelling() {
+        val suggestions = engine.predict("tastatru", listOf("de"))
+        assertTrue(suggestions.any { it.kind == PredictionKind.CORRECTION && it.commitText == "tastatur" })
+        assertTrue(suggestions.any { it.kind == PredictionKind.KEEP_TYPED && it.commitText == "tastatru" })
+    }
+
+    @Test
+    fun completionKeepsUserCapitalization() {
+        assertTrue(engine.predict("Hal", listOf("de")).any { it.commitText == "Hallo" })
+    }
+
+    @Test
+    fun sentenceLabelsContainOnlyTheActualText() {
+        val suggestions = engine.predict("ich möchte ", listOf("de"), maxSuggestions = 8)
+        assertTrue(suggestions.all { it.display == it.commitText })
+    }
+
+    @Test
     fun completesGermanPartialWord() {
         val suggestions = engine.predict("Ich mö", listOf("de"))
 
@@ -75,3 +99,4 @@ class ContextPredictionEngineTest {
         )
     }
 }
+

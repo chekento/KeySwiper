@@ -140,3 +140,17 @@ For each failure capture:
 - expected behavior;
 - actual behavior.
 
+
+
+## 0.19 layered input and correction checks
+
+- With a finger, swipe a word, briefly leave each edge, return and release. Repeat with the pen, and then release just beyond an edge. Each path should commit once.
+- Add/lift a second finger or palm during a finger/pen swipe; the original pointer must keep control.
+- Hold a/o/u and slide across the popup to choose ä/ö/ü or another accent; repeat with Shift and Caps Lock. No base letter should also appear.
+- Hold digits, punctuation, and symbols on both symbol pages; release outside the popup to cancel.
+- Hold the spacebar to select DE/EN/FR/IT/ES. A normal tap must still insert one space.
+- Browse all six emoji categories; hold a hand emoji for skin tones, then use Backspace to remove the whole inserted emoji once.
+- Type “udn ” and “tastatru ” in a normal text field; check correction and immediate Backspace restoration. Press space again to retain the original.
+- Check names, personal words, URLs, passwords, code fields, cursor movement and selected text for unwanted replacements.
+- Type “ich mo” and inspect contextual umlaut completions; word labels must remain readable and select normally with the pen.
+- Above the open keyboard, verify native editor selection and handwriting independently on the physical OEM device.

@@ -353,6 +353,12 @@ class SettingsActivity : Activity() {
             )
         )
 
+        content.addView(android.widget.CheckBox(this).apply {
+            text = "Autokorrektur beim Leerzeichen · Backspace nimmt sie zurück"
+            isChecked = Prefs.autoCorrectEnabled(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setAutoCorrectEnabled(this@SettingsActivity, checked) }
+        })
+
         content.addView(TextView(this).apply {
             text = "Semantic prediction depth (2–6 words)"
             textSize = 14f

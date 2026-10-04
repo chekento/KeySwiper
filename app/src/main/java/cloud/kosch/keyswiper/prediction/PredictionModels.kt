@@ -2,6 +2,8 @@ package cloud.kosch.keyswiper.prediction
 
 enum class PredictionKind {
     COMPLETION,
+    CORRECTION,
+    KEEP_TYPED,
     NEXT_WORD,
     SENTENCE,
     SWIPE_CORRECTION,
@@ -57,3 +59,4 @@ interface PredictionProvider {
     val id: String
     fun predict(context: PredictionContext, maxSuggestions: Int): List<PredictionSuggestion>
 }
+

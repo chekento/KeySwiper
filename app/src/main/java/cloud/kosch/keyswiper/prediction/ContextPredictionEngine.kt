@@ -10,6 +10,8 @@ class ContextPredictionEngine(
     private val userVocabulary: UserVocabularyLookup? = null
 ) {
 
+    private val corrections = WordCorrectionEngine(learningStore, userVocabulary)
+
     private data class Phrase(
         val prefix: List<String>,
         val completion: String,
@@ -57,6 +59,18 @@ class ContextPredictionEngine(
         val scored = mutableMapOf<String, ScoredSuggestion>()
 
         if (partial.isNotBlank()) {
+            val raw = beforeCursor.takeLast(partial.length)
+            val language = lanes.firstOrNull()?.tag ?: fallbackLanguage ?: "de"
+            val choices = corrections.candidates(raw, contextWords, language)
+            choices.forEachIndexed { index, choice ->
+                add(scored, PredictionSuggestion(choice.word, choice.word, PredictionKind.CORRECTION,
+                    replacesCurrentToken = true, confidence = choice.confidence),
+                    (if (choice.automatic) 1550 else 1120) - index * 90)
+            }
+            if (choices.isNotEmpty()) {
+                add(scored, PredictionSuggestion(raw, raw, PredictionKind.KEEP_TYPED,
+                    replacesCurrentToken = true, confidence = 1f), 1250)
+            }
             addCompletions(
                 scored = scored,
                 partial = partial,
@@ -90,6 +104,11 @@ class ContextPredictionEngine(
             .sortedByDescending { it.score }
             .map { it.suggestion }
             .take(maxSuggestions)
+            .map { suggestion ->
+                val typed = beforeCursor.takeLast(partial.length)
+                val value = if (partial.isNotBlank()) WordCorrectionEngine.matchCase(typed, suggestion.commitText) else suggestion.commitText
+                suggestion.copy(display = value, commitText = value)
+            }
     }
 
     private fun addCompletions(
@@ -101,6 +120,7 @@ class ContextPredictionEngine(
         userVocabulary
             ?.prefixMatches(partial, lanes, 8)
             .orEmpty()
+            .filter { (candidate, _) -> matchesActiveLanguage(candidate, lanes) }
             .forEach { (candidate, personalScore) ->
                 add(
                     scored,
@@ -111,7 +131,7 @@ class ContextPredictionEngine(
                         replacesCurrentToken = true,
                         confidence = 0.96f
                     ),
-                    1160 + personalScore
+                    1080 + personalScore.coerceIn(0, 180) + contextBoost(contextWords, candidate, lanes)
                 )
             }
 
@@ -119,7 +139,7 @@ class ContextPredictionEngine(
             val pack = LanguagePackRegistry.get(lane.tag)
                 ?: return@forEach
 
-            pack.prefixMatches(partial, 20)
+            pack.prefixMatches(partial, 80)
                 .forEachIndexed { index, candidate ->
                     val technicalBoost =
                         if (candidate in pack.technicalTerms) 35 else 0
@@ -139,7 +159,8 @@ class ContextPredictionEngine(
                         ),
                         900 +
                             (lane.score * 180f).toInt() -
-                            index * 9 +
+                            index.coerceAtMost(25) * 3 +
+                            contextBoost(contextWords, candidate, lanes) +
                             technicalBoost +
                             learningStore.boost(contextWords, candidate)
                     )
@@ -165,7 +186,7 @@ class ContextPredictionEngine(
                         kind = PredictionKind.NEXT_WORD,
                         confidence = 0.94f
                     ),
-                    1220 + learnedScore
+                    1120 + learnedScore.coerceIn(0, 240)
                 )
             }
 
@@ -200,6 +221,7 @@ class ContextPredictionEngine(
         userVocabulary
             ?.frequentWords(lanes, 8)
             .orEmpty()
+            .filter { (candidate, _) -> matchesActiveLanguage(candidate, lanes) }
             .forEach { (candidate, personalScore) ->
                 add(
                     scored,
@@ -209,7 +231,7 @@ class ContextPredictionEngine(
                         kind = PredictionKind.NEXT_WORD,
                         confidence = 0.68f
                     ),
-                    460 + personalScore +
+                    460 + personalScore.coerceIn(0, 200) +
                         learningStore.boost(contextWords, candidate)
                 )
             }
@@ -241,7 +263,7 @@ class ContextPredictionEngine(
                 add(
                     scored,
                     PredictionSuggestion(
-                        display = "→ ${phrase.completion}",
+                        display = phrase.completion,
                         commitText = phrase.completion,
                         kind = PredictionKind.SENTENCE,
                         confidence = (
@@ -272,12 +294,13 @@ class ContextPredictionEngine(
                 ?: return@forEach
 
             val candidates = if (partial.isBlank()) {
-                pack.words
-                    .asSequence()
-                    .filter { it.length in 2..12 }
-                    .sorted()
-                    .take(22)
-                    .toList()
+                when (lane.tag) {
+                    "de" -> listOf("ich", "das", "wir", "die", "und", "bitte", "hallo", "danke", "morgen", "heute")
+                    "en" -> listOf("I", "the", "we", "and", "you", "please", "hello", "thanks", "today")
+                    "fr" -> listOf("je", "le", "nous", "et", "vous", "bonjour", "merci")
+                    "it" -> listOf("io", "il", "noi", "e", "tu", "ciao", "grazie")
+                    else -> listOf("yo", "el", "nosotros", "y", "tú", "hola", "gracias")
+                }
             } else {
                 pack.prefixMatches(partial, 22)
             }
@@ -305,6 +328,14 @@ class ContextPredictionEngine(
                 )
             }
         }
+    }
+
+    private fun contextBoost(context: List<String>, candidate: String, lanes: List<LanguageLane>): Int {
+        val last = context.lastOrNull() ?: return 0
+        return lanes.maxOfOrNull { lane ->
+            val index = LanguagePackRegistry.get(lane.tag)?.commonNext?.get(last)?.indexOf(candidate) ?: -1
+            if (index >= 0) (300 - index * 30).coerceAtLeast(90) else 0
+        } ?: 0
     }
 
     private fun matchesActiveLanguage(
@@ -368,3 +399,4 @@ class ContextPredictionEngine(
             .toList()
     }
 }
+

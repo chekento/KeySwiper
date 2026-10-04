@@ -13,6 +13,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.InputType
+import cloud.kosch.keyswiper.input.PendingAutoCorrection
+import cloud.kosch.keyswiper.prediction.WordCorrectionEngine
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -101,6 +104,9 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var motorProfileStore: MotorProfileStore
     private lateinit var predictionLearningStore: PredictionLearningStore
     private lateinit var userVocabularyStore: UserVocabularyStore
+    private lateinit var wordCorrectionEngine: WordCorrectionEngine
+    private var pendingAutoCorrection: PendingAutoCorrection? = null
+    private val rejectedAutoCorrections = mutableSetOf<String>()
     private lateinit var predictionEngine: HybridPredictionEngine
     private lateinit var neuralModelManager: NeuralModelManager
     private var neuralPredictionBackend: NeuralPredictionBackend? = null
@@ -143,7 +149,18 @@ class KeySwiperImeService : InputMethodService() {
                 refreshLanguageHints(
                     before
                 )
-                refreshPredictionBar()
+                pendingAutoCorrection?.let { pending ->
+                    val connection = currentInputConnection
+                    if (!pending.matches(before, connection?.getTextAfterCursor(64, 0)?.toString().orEmpty(),
+                            connection?.getSelectedText(0)?.toString().orEmpty())) pendingAutoCorrection = null
+                }
+                val swipe = lastSwipeWord
+                if (swipe != null && before.endsWith(swipe + " ") && currentInputConnection?.getSelectedText(0).isNullOrEmpty()) {
+                    root?.setSwipeCandidates(lastSwipeCandidates)
+                } else {
+                    if (swipe != null) clearSwipeState()
+                    refreshPredictionBar()
+                }
                 updateAutoShift()
             }
         }
@@ -179,6 +196,7 @@ class KeySwiperImeService : InputMethodService() {
         predictionLearningStore = PredictionLearningStore(this)
         userVocabularyStore = UserVocabularyStore(this)
 
+        wordCorrectionEngine = WordCorrectionEngine(predictionLearningStore, userVocabularyStore)
         val instantPrediction = ContextPredictionEngine(
             predictionLearningStore,
             userVocabularyStore
@@ -526,6 +544,7 @@ class KeySwiperImeService : InputMethodService() {
         languageDetectionGeneration++
         predictionGeneration++
         editTimeline.clear()
+        rejectedAutoCorrections.clear()
         clearSwipeState()
         refreshEditHistoryState()
     }
@@ -616,6 +635,7 @@ class KeySwiperImeService : InputMethodService() {
         languageDetectionGeneration++
         predictionInputMode = PredictionInputMode.GENERAL
         editTimeline.clear()
+        rejectedAutoCorrections.clear()
         clearSwipeState()
         refreshEditHistoryState()
         root?.clearSuggestions()
@@ -658,6 +678,7 @@ class KeySwiperImeService : InputMethodService() {
         }
 
         override fun onSwipe(trace: SwipeTrace) {
+            pendingAutoCorrection = null
             val before = textBeforeCursor()
             val signature = swipeDecoder.signature(trace)
             val previousWord = previousWord(before)
@@ -690,18 +711,20 @@ class KeySwiperImeService : InputMethodService() {
 
             if (values.isEmpty()) return
 
-            val word = values.first()
+            val casedValues = values.map { root?.applyInputCase(it) ?: it }
+            val word = casedValues.first()
             currentInputConnection?.commitText(word + " ", 1)
+            updateAutoShift()
 
             lastSwipeWord = word
-            lastSwipeCandidates = values
+            lastSwipeCandidates = casedValues
             lastSwipeSignature = signature
             lastSwipeContextWord = previousWord
             lastSwipeTrace = trace
 
             predictionGeneration++
             currentPredictions = emptyList()
-            root?.setSwipeCandidates(values)
+            root?.setSwipeCandidates(casedValues)
             refreshLanguageHints((before + " " + word).takeLast(1000))
         }
 
@@ -716,6 +739,28 @@ class KeySwiperImeService : InputMethodService() {
                     ?.toString()
                     .orEmpty()
 
+            val pending = pendingAutoCorrection
+            if (pending != null && pending.matches(
+                    connection.getTextBeforeCursor(256, 0)?.toString().orEmpty(),
+                    connection.getTextAfterCursor(64, 0)?.toString().orEmpty(), selected)) {
+                connection.beginBatchEdit()
+                try {
+                    if (!connection.deleteSurroundingText(pending.replacement.length, 0)) return
+                    if (!connection.commitText(pending.original, 1)) {
+                        connection.commitText(pending.replacement, 1)
+                        return
+                    }
+                } finally { connection.endBatchEdit() }
+                rejectedAutoCorrections.add(pending.original.lowercase())
+                editTimeline.completeUndo(pending.timelineEntryId)
+                clearSwipeState()
+                refreshEditHistoryState()
+                refreshPredictionBar()
+                updateAutoShift()
+                return
+            }
+            pendingAutoCorrection = null
+
             when {
                 selected.isNotEmpty() -> {
                     connection.commitText(
@@ -725,7 +770,7 @@ class KeySwiperImeService : InputMethodService() {
                     clearSwipeState()
                 }
 
-                lastSwipeWord != null -> {
+                lastSwipeWord != null && textBeforeCursor().endsWith(lastSwipeWord + " ") -> {
                     val swipeWord =
                         lastSwipeWord
                             ?: return
@@ -764,29 +809,59 @@ class KeySwiperImeService : InputMethodService() {
                 }
             }
 
+            clearSwipeState()
             refreshPredictionBar()
             updateAutoShift()
         }
 
         override fun onSpace() {
-            currentInputConnection?.commitText(" ", 1)
+            val connection = currentInputConnection ?: return
+            val before = connection.getTextBeforeCursor(1600, 0)?.toString().orEmpty()
+            val after = connection.getTextAfterCursor(64, 0)?.toString()
+            val token = currentToken(before)
+            val type = currentInputEditorInfo?.inputType ?: 0
+            val surroundingToken = before.takeLastWhile { !it.isWhitespace() }
+            val mayCorrect = !sensitiveField && Prefs.autoCorrectEnabled(this@KeySwiperImeService) &&
+                type and InputType.TYPE_MASK_CLASS == InputType.TYPE_CLASS_TEXT &&
+                type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS == 0 &&
+                KeyboardEditorModeResolver.fromInputType(type) == cloud.kosch.keyswiper.ui.KeyboardEditorMode.TEXT &&
+                predictionInputMode != PredictionInputMode.CODE && predictionInputMode != PredictionInputMode.SEARCH &&
+                connection.getSelectedText(0).isNullOrEmpty() && after != null &&
+                after.firstOrNull()?.isLetterOrDigit() != true &&
+                surroundingToken.none { it in "@/:_.#\\" || it.isDigit() } &&
+                token.lowercase() !in rejectedAutoCorrections
+            val language = CodeSwitchLanguageResolver.primaryInputLanguage(before, languageHints, token,
+                KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag) ?: "de"
+            val correction = if (mayCorrect) wordCorrectionEngine.candidates(token,
+                extractWords(before.dropLast(token.length)), language).firstOrNull()?.takeIf { it.automatic } else null
             clearSwipeState()
-
-            val before = textBeforeCursor()
-            if (!sensitiveField) {
-                val words = extractWords(before)
-                predictionLearningStore.learnTransition(
-                    words.takeLast(5)
-                )
-                words.lastOrNull()?.let { committedWord ->
-                    userVocabularyStore.observeWord(
-                        committedWord,
-                        languageHints
-                    )
+            var corrected = false
+            if (correction != null) {
+                val replacement = correction.word + " "
+                connection.beginBatchEdit()
+                try {
+                    if (connection.deleteSurroundingText(token.length, 0)) {
+                        corrected = connection.commitText(replacement, 1)
+                        if (!corrected) connection.commitText(token, 1)
+                    }
+                } finally { connection.endBatchEdit() }
+                if (corrected) {
+                    editTimeline.record(token, replacement, "Autokorrektur")
+                    pendingAutoCorrection = PendingAutoCorrection(token, replacement,
+                        (before.dropLast(token.length) + replacement).takeLast(256), after.orEmpty(),
+                        editTimeline.recent(1).first().id)
+                    refreshEditHistoryState()
                 }
             }
-
-            refreshLanguageHints(before)
+            if (!corrected) connection.commitText(" ", 1)
+            val updated = textBeforeCursor()
+            // Automatic replacements must not teach themselves as confirmed user choices.
+            if (!sensitiveField && !corrected) {
+                val words = extractWords(updated)
+                predictionLearningStore.learnTransition(words.takeLast(5))
+                words.lastOrNull()?.let { userVocabularyStore.observeWord(it, listOf(language)) }
+            }
+            refreshLanguageHints(updated)
             refreshPredictionBar()
             updateAutoShift()
         }
@@ -1795,6 +1870,7 @@ class KeySwiperImeService : InputMethodService() {
         editTimeline.completeUndo(
             plan.entry.id
         )
+        if (plan.entry.source == "Autokorrektur") rejectedAutoCorrections.add(plan.entry.deletedText.lowercase())
         clearSwipeState()
         refreshEditHistoryState()
         refreshPredictionBar()
@@ -2857,6 +2933,7 @@ class KeySwiperImeService : InputMethodService() {
             .orEmpty()
 
     private fun clearSwipeState() {
+        pendingAutoCorrection = null
         lastSwipeWord = null
         lastSwipeCandidates = emptyList()
         lastSwipeSignature = null

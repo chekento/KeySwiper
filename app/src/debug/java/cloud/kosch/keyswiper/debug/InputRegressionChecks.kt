@@ -9,6 +9,8 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
+import android.widget.FrameLayout
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -51,12 +53,17 @@ object InputRegressionChecks {
             listOf(450f to 100f, 250f to 100f, 166f to 300f, 450f to 100f))
         check(swipes.size == 1 && taps.isEmpty()) { "Finger loop must commit a swipe" }
         swipes.clear()
-        stroke(surface, MotionEvent.TOOL_TYPE_FINGER,
-            listOf(450f to 100f, 250f to -20f, 450f to 100f))
-        check(swipes.isEmpty() && taps.isEmpty()) { "Crossing surface boundary must cancel input" }
-        stroke(surface, MotionEvent.TOOL_TYPE_STYLUS,
-            listOf(450f to 100f, 250f to -20f, 450f to 100f))
-        check(swipes.isEmpty() && taps.isEmpty()) { "Pen cannot turn into handwriting by leaving keys" }
+        for (tool in listOf(MotionEvent.TOOL_TYPE_FINGER, MotionEvent.TOOL_TYPE_STYLUS)) {
+            stroke(surface, tool, listOf(450f to 100f, 250f to 100f, 250f to -20f, 166f to 300f, 450f to 100f))
+            check(swipes.size == 1 && taps.isEmpty()) { "Re-entry after crossing the edge must keep the original swipe" }
+            check(swipes.single().points.all { it.x in 0f..1f && it.y in 0f..1f })
+            swipes.clear()
+            stroke(surface, tool, listOf(450f to 100f, 250f to 100f, 166f to 300f, -30f to 300f))
+            check(swipes.size == 1 && taps.isEmpty()) { "Lifting outside must finish the valid swipe once" }
+            swipes.clear()
+            stroke(surface, tool, listOf(450f to -20f, 250f to 100f, 166f to 300f))
+            check(swipes.isEmpty() && taps.isEmpty()) { "Input starting outside cannot become a keyboard gesture" }
+        }
 
         // A pen can take over from palm contact and survive the palm lifting first.
         val palm = Contact(7, MotionEvent.TOOL_TYPE_FINGER, 800f, 550f)
@@ -76,6 +83,16 @@ object InputRegressionChecks {
         contactEvent(surface, MotionEvent.ACTION_POINTER_UP, listOf(pen.copy(x = 166f, y = 300f), palm))
         contactEvent(surface, MotionEvent.ACTION_UP, listOf(palm))
         check(swipes.size == 1 && taps.isEmpty()) { "Pen lift must finish once even while palm stays down" }
+        swipes.clear()
+
+        val finger = pen.copy(tool = MotionEvent.TOOL_TYPE_FINGER)
+        contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(finger))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(finger, palm))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(finger.copy(x = 250f), palm))
+        contactEvent(surface, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(finger.copy(x = 250f), palm))
+        contactEvent(surface, MotionEvent.ACTION_MOVE, listOf(finger.copy(x = 166f, y = 300f)))
+        contactEvent(surface, MotionEvent.ACTION_UP, listOf(finger))
+        check(swipes.size == 1 && taps.isEmpty()) { "A second finger/hand contact must not cancel the first finger swipe" }
         swipes.clear()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -130,6 +147,46 @@ object InputRegressionChecks {
         Log.i("KeySwiperInputChecks", "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting")
     }
 
+    fun runAttached(root: FrameLayout, onComplete: () -> Unit) {
+        val surface = KeyboardSurface(root.context)
+        val profile = KeyboardLayoutProfiles.byId("de-qwertz")
+        surface.setLayout(profile, false)
+        val commits = mutableListOf<String>()
+        surface.listener = object : KeyboardSurface.Listener {
+            override fun onTap(character: Char) { commits.add(character.toString()) }
+            override fun onText(value: String) { commits.add(value) }
+            override fun onSwipe(trace: SwipeTrace) { error("Long press must not swipe") }
+            override fun onBackspace() = Unit
+            override fun onStylusPrimaryButton() = Unit
+            override fun onStylusSecondaryButton() = Unit
+        }
+        val density = root.resources.displayMetrics.density
+        root.addView(surface, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (180 * density).toInt()).apply {
+            topMargin = (80 * density).toInt()
+        })
+        surface.post {
+            val pen = Contact(0, MotionEvent.TOOL_TYPE_STYLUS, surface.width / 18f, surface.height / 2f)
+            contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(pen))
+            surface.postDelayed({
+                check(surface.isShowingAlternatives) { "Attached pen long press must display alternatives" }
+                contactEvent(surface, MotionEvent.ACTION_UP, listOf(pen))
+                check(commits == listOf("ä")) { "Holding a vowel must commit only its umlaut" }
+                surface.setLayout(profile, true)
+                val finger = Contact(0, MotionEvent.TOOL_TYPE_FINGER, surface.width / 20f, surface.height / 6f)
+                contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(finger))
+                surface.postDelayed({
+                    check(surface.isShowingAlternatives) { "Numbers need long-press variants for fingers too" }
+                    contactEvent(surface, MotionEvent.ACTION_UP, listOf(finger))
+                    check(commits == listOf("ä", "¹")) { "Long press must never also type the base key" }
+                    check(!surface.isShowingAlternatives)
+                    root.removeView(surface)
+                    Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
+                    onComplete()
+                }, ViewConfiguration.getLongPressTimeout().toLong() + 120L)
+            }, ViewConfiguration.getLongPressTimeout().toLong() + 120L)
+        }
+    }
+
     private fun descendants(view: View): List<View> = listOf(view) +
         if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) }
         else emptyList()
@@ -181,7 +238,7 @@ object InputRegressionChecks {
             x = contact.x; y = contact.y; pressure = 1f; size = 1f
         } }.toTypedArray()
         val event = MotionEvent.obtain(now, now, action, contacts.size, properties, coordinates,
-            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, flags)
+            0, 0, 1f, 1f, 0, 0, if (contacts.any { it.tool == MotionEvent.TOOL_TYPE_STYLUS }) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN, flags)
         try {
             if (inkTarget) (view as SystemHandwritingInkView).consumeStylusEvent(event)
             else view.dispatchTouchEvent(event)

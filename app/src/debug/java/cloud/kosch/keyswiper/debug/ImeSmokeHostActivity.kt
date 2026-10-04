@@ -49,6 +49,9 @@ class ImeSmokeHostActivity : Activity() {
 
         setContentView(root)
         input.requestFocus()
+        if (intent.getBooleanExtra("run_input_checks", false)) {
+            root.post { InputRegressionChecks.runAttached(root) { input.requestFocus(); requestImeRepeatedly() } }
+        }
     }
 
     override fun onResume() {
