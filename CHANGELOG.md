@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.1-alpha20 — 2026-10-04
+
+Consistent word separators after swipes and accepted suggestions:
+
+- swipe words, completions, corrections and phrase suggestions share one batched editor insertion path, including a real trailing space and a cursor positioned after it
+- switching from a manually typed word to a new swipe inserts the missing word boundary
+- an existing space to the right of the cursor is reused, avoiding an extra separator when completing or replacing a selected word
+- provider whitespace is normalized at word boundaries, while existing line breaks and additional indentation are preserved
+- finish stale composing spans before inserting words; selected text no longer causes the preceding word to be deleted as well
+- failed editor replacements do not teach or display a successful insertion
+- added JVM spacing cases and real Android editable/cursor checks for consecutive words, immediate continued typing, composition and selection
+- package version 0.19.1-alpha20 / build 20
+
 ## 0.19.0-alpha19 — 2026-10-04
 
 More forgiving gestures, hold-to-select layers and reversible local autocorrection:
@@ -434,4 +447,3 @@ Initial KeySwiper foundation:
 - sensitive-field privacy policy
 - language settings screen
 - CI debug APK build
-

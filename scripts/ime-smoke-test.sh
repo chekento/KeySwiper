@@ -170,7 +170,8 @@ INPUT_CHECKS_OK=0
 for _ in $(seq 1 40); do
   adb logcat -d -s KeySwiperInputChecks:I '*:S' > "$OUT_DIR/input-regression-checks.txt"
   if grep -Fq "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting" "$OUT_DIR/input-regression-checks.txt" &&
-     grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt"; then
+     grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: word spacing, completion, composition, selection and cursor position" "$OUT_DIR/input-regression-checks.txt"; then
     INPUT_CHECKS_OK=1
     break
   fi
@@ -178,9 +179,9 @@ for _ in $(seq 1 40); do
 done
 
 if [[ "$INPUT_CHECKS_OK" -ne 1 ]]; then
-  echo "Android input/attached popup regression checks did not pass." >&2
+  echo "Android input, attached popup or word-spacing regression checks did not pass." >&2
   adb logcat -d -s AndroidRuntime:E KeySwiperInputChecks:I '*:S'
   exit 1
 fi
 
-log "PASS: KeySwiper is alive, selected and visible; pen, finger, edge and long-press input checks passed on Android 15."
+log "PASS: KeySwiper is alive, selected and visible; pen, finger, edge, long-press and word-spacing checks passed on Android 15."

@@ -28,6 +28,7 @@ object InputRegressionChecks {
     // substitutes scheduling and does not use AppCompat theming or widgets.
     @SuppressLint("AppCompatCustomView")
     fun run(context: Context) {
+        WordCommitRegressionChecks.run(context)
         val surface = KeyboardSurface(context)
         surface.setLayout(KeyboardLayoutProfiles.byId("en-qwerty"), false)
         layout(surface)

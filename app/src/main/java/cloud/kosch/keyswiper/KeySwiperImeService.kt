@@ -45,6 +45,7 @@ import cloud.kosch.keyswiper.input.SwipeDecoder
 import cloud.kosch.keyswiper.input.SwipeLearningStore
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.input.TextBoundaryUtils
+import cloud.kosch.keyswiper.input.WordCommitter
 import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.language.UserVocabularyStore
@@ -712,8 +713,9 @@ class KeySwiperImeService : InputMethodService() {
             if (values.isEmpty()) return
 
             val casedValues = values.map { root?.applyInputCase(it) ?: it }
-            val word = casedValues.first()
-            currentInputConnection?.commitText(word + " ", 1)
+            val connection = currentInputConnection ?: return
+            val committed = WordCommitter.commit(connection, casedValues.first()) ?: return
+            val word = committed.plan.word
             updateAutoShift()
 
             lastSwipeWord = word
@@ -919,65 +921,25 @@ class KeySwiperImeService : InputMethodService() {
             if (sensitiveField) return
 
             val connection = currentInputConnection ?: return
-            val snapshot = currentContextSnapshot()
-            val before = snapshot.beforeCursor
-            val contextWords = extractWords(before).takeLast(5)
+            val committed = WordCommitter.commit(connection, suggestion.commitText,
+                suggestion.replacesCurrentToken) ?: return
+            val plan = committed.plan
+            val contextWords = extractWords(committed.beforeCursor.dropLast(plan.deleteBefore)).takeLast(5)
 
-            var replacedToken: String? =
-                null
-
-            if (suggestion.replacesCurrentToken) {
-                val token =
-                    currentToken(before)
-                val length =
-                    token.length
-
-                if (length > 0) {
-                    replacedToken =
-                        token
-                    connection
-                        .deleteSurroundingText(
-                            length,
-                            0
-                        )
-                }
-            } else if (
-                before.isNotEmpty() &&
-                !before.last().isWhitespace() &&
-                !before.last().isISOControl()
-            ) {
-                connection.commitText(" ", 1)
-            }
-
-            val committedText =
-                suggestion.commitText +
-                    " "
-
-            connection.commitText(
-                committedText,
-                1
-            )
-
-            if (
-                !sensitiveField &&
-                replacedToken != null
-            ) {
+            if (plan.deletedText.isNotEmpty()) {
                 editTimeline.record(
-                    deletedText =
-                        replacedToken,
-                    insertedText =
-                        committedText,
-                    source =
-                        "Prediction"
+                    deletedText = plan.deletedText,
+                    insertedText = plan.insertedText,
+                    source = "Prediction"
                 )
                 refreshEditHistoryState()
             }
 
             predictionLearningStore.learnChosenSuggestion(
                 contextWords,
-                suggestion.commitText
+                plan.word
             )
-            extractWords(suggestion.commitText).forEach { chosenWord ->
+            extractWords(plan.word).forEach { chosenWord ->
                 userVocabularyStore.observeWord(
                     chosenWord,
                     languageHints

@@ -49,6 +49,8 @@ CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs
 - Verify corrected candidates train the local swipe model.
 - Verify swipe path still follows the visible full-width key geometry.
 - Verify Backspace immediately after a swipe removes the whole swiped word.
+- Swipe two words, then tap a letter without pressing Space: both words must remain separated and the letter must start the next word.
+- Type a word without a final space, then swipe a new word: the two words must not join.
 
 ## 4. Context prediction
 
@@ -61,6 +63,9 @@ Test:
 
 Verify:
 - completion while typing;
+- accept a completion and immediately type/swipe the next word without pressing Space;
+- accept a completion immediately before an existing space: the cursor must end after one separator, with no doubled space;
+- replace a selected word with a suggestion: the preceding word must remain intact;
 - next-word candidates;
 - 2–6 word semantic continuations;
 - context refresh after moving the cursor;

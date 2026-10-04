@@ -120,3 +120,9 @@ Only an unambiguous, high-confidence transposition, adjacent-key or accent/trans
 The strip keeps the original spelling as an explicit option. Immediate Backspace restores the original text only if the before/after cursor context and selection still match. Undo suppresses that correction for the rest of the input session. Automatic replacements never train themselves; explicitly selected suggestions and intentionally retained words can still be learned. Autocorrection can be disabled in Settings.
 
 Word and phrase labels contain the actual insertion text without decorative arrow/star prefixes. Corrections use an accent border and an accessible correction label. Unavailable Undo/Redo controls leave room for the words.
+
+## Word boundaries after acceptance (0.19.1)
+
+Swipe words and accepted completion/correction/phrase chips use the same batched editor transaction. It finishes an outstanding composing span, replaces only the intended prefix or selection, commits the text with a real trailing space and positions the cursor after that space. An existing ordinary space immediately after the cursor is reused rather than duplicated. Newlines and additional indentation are preserved. A new swipe after a manually typed word adds the missing boundary before the new word as well.
+
+Pure spacing tests and Android editable/cursor checks verify that a subsequent key starts the next word without pressing Space. Successful insertion is required before learning or updating the accepted-word state.
