@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.20.0-alpha21 · Build 21 · Run 49</strong><br>
+  <strong>Current build: 0.21.0-alpha22 · Build 22 · Run 51</strong><br>
   Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME + Input Checks ✓ · Permanent Release ✓
 </p>
 
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.20.0--alpha21-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.21.0--alpha22-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,9 +40,9 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current validated release: 0.20.0-alpha21 / Build 21 / Run 49.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.21.0-alpha22 / Build 22 / Run 51.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
-**Current APK:** [KeySwiper 0.20.0-alpha21 · build 21 · run 49](https://github.com/chekento/KeySwiper/releases/download/v0.20.0-alpha21-b21-run49/KeySwiper-v0.20.0-alpha21-build21-run49.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37294419939)
+**Current APK:** [KeySwiper 0.21.0-alpha22 · build 22 · run 51](https://github.com/chekento/KeySwiper/releases/download/v0.21.0-alpha22-b22-run51/KeySwiper-v0.21.0-alpha22-build22-run51.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37311280940)
 
 ## KeySwiper in action
 
@@ -73,7 +73,7 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
 - Debug Android input checks exercise pen taps, menu selection, pen/finger loops, palm contacts, edge excursions/re-entry, release outside the keys and handwriting-pad placement using real `MotionEvent` objects. Attached popup checks verify placement and actual hold–slide–release insertion for both pen and finger input.
 - Android editable/cursor checks verify automatic word/punctuation spacing, middle-word replacement, composition and selection.
-- Native checks cover Shift/Caps Lock, command-key placement, clipboard input isolation, personal spelling, held-key release/cancellation and clipboard delete/undo/persistence.
+- Native checks cover Shift/Caps Lock, command-key placement, the period key beside M and its punctuation popup, clipboard input isolation, personal spelling, held-key release/cancellation and clipboard delete/undo/persistence.
 - Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.
 - The host exists only in the `debug` source set and is never included in the release APK.
 
@@ -193,9 +193,21 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 - a space already following the cursor is reused, avoiding a doubled separator
 - replacing a selected word preserves the preceding text; stale composing spans are finished before insertion
 
+### Compact punctuation and smarter suggestions (0.21)
+
+- one period key immediately beside M replaces the separate punctuation row, leaving more height for letter keys
+- tap for `.`; hold, slide and release for `, ? ! : ; …` and further variants
+- German noun and sentence-start capitalization uses context for ambiguous words; names, acronyms and explicitly saved spellings are preserved
+- missing umlauts, ae/oe/ue and ss spellings receive correction suggestions, including alternatives for valid words such as schon/schön and mochte/möchte
+- ambiguous umlaut alternatives stay selectable without silently changing the meaning; case corrections and the original spelling remain separate choices
+- word ranking considers longer matching context, and valid prefixes favor useful completions over weak typo guesses
+- local phrase continuations use matching sentence context, topic and formal/informal address; right-hand text is considered to avoid duplication
+- longer personal contexts take priority over unrelated frequent word pairs; repeated phrase endings are filtered out
+- sentence suggestions default to eight words, configurable from two to twelve; longer chips use two lines and holding a chip previews its full text
+
 ### Editing and completion improvements (0.20)
 
-- one clean row for `! ? : ; , .`; punctuation moves an automatic space behind itself, including repeated punctuation
+- punctuation moves an automatic space behind itself, including repeated punctuation
 - manually inserted spacing remains unchanged
 - hold Backspace to accelerate from characters to words, groups, sentences and paragraphs; a held deletion can be undone at its original cursor context
 - hold Space to insert growing groups of spaces; release/cancel stops both keys immediately
@@ -207,9 +219,9 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 - dedicated prediction strip between toolbar and keyboard
 - live word completion while typing
 - next-word prediction
-- sentence continuations 2–6 words ahead
+- sentence continuations 2–12 words ahead, eight by default
 - local 2/3/4-gram personal learning
-- contextual semantic beam search
+- local context-matched phrase continuations and bounded personal phrase generation
 - optional local LiteRT-LM neural refinement
 - stale neural results are discarded instead of overwriting newer context
 - General / Message / Email / Search / Code context modes
@@ -439,7 +451,7 @@ Clipboard / Emoji ───────────┤
         │                    │                    │
         └──────────────┬─────┴──────────────┬─────┘
                        ▼                    ▼
-              Semantic Beam Search    Optional LiteRT-LM
+              Local Phrase Ranking    Optional LiteRT-LM
                        │                    │
                        └─────────┬──────────┘
                                  ▼
