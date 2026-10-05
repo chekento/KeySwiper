@@ -1,6 +1,8 @@
 package cloud.kosch.keyswiper.debug
 
 import android.app.Activity
+import android.graphics.HardwareRenderer
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -17,6 +19,9 @@ class ImeSmokeHostActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         if (intent.getBooleanExtra("run_input_checks", false)) {
+            // ATD images skip drawing by default. Enable it only in the debug
+            // smoke host so CI can also inspect the actual keyboard screenshot.
+            if (Build.VERSION.SDK_INT >= 33) HardwareRenderer.setDrawingEnabled(true)
             InputRegressionChecks.run(this)
         }
 

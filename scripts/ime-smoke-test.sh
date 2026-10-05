@@ -190,4 +190,6 @@ fi
 log "PASS: KeySwiper is alive, selected and visible; pen, finger, edge, long-press and word-spacing checks passed on Android 15."
 
 # Preserve the actual rendered keyboard for layout review.
+# Let the final attached test views disappear and the focused IME draw a frame.
+sleep 1
 adb exec-out screencap -p > "$OUT_DIR/keyboard.png"
