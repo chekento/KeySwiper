@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.19.1-alpha20 · Build 20 · Run 47</strong><br>
+  <strong>Current build: 0.20.0-alpha21 · Build 21 · Run 49</strong><br>
   Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME + Input Checks ✓ · Permanent Release ✓
 </p>
 
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.19.1--alpha20-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.20.0--alpha21-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,9 +40,9 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current validated release: 0.19.1-alpha20 / Build 20 / Run 47.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.20.0-alpha21 / Build 21 / Run 49.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
-**Current APK:** [KeySwiper 0.19.1-alpha20 · build 20 · run 47](https://github.com/chekento/KeySwiper/releases/download/v0.19.1-alpha20-b20-run47/KeySwiper-v0.19.1-alpha20-build20-run47.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37211778300)
+**Current APK:** [KeySwiper 0.20.0-alpha21 · build 21 · run 49](https://github.com/chekento/KeySwiper/releases/download/v0.20.0-alpha21-b21-run49/KeySwiper-v0.20.0-alpha21-build21-run49.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37294419939)
 
 ## KeySwiper in action
 
@@ -72,7 +72,8 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - A shell-driven harness enables and selects KeySwiper from outside the app process, then opens a debug-only text host and confirms Android reports KeySwiper as the current visible IME.
 - The harness verifies the package stays alive and captures input-method, window, activity and logcat diagnostics on failure.
 - Debug Android input checks exercise pen taps, menu selection, pen/finger loops, palm contacts, edge excursions/re-entry, release outside the keys and handwriting-pad placement using real `MotionEvent` objects. Attached popup checks verify placement and actual hold–slide–release insertion for both pen and finger input.
-- Android editable/cursor checks verify that swipes and accepted completions finish with a space, that the next key starts the next word, and that an existing separator is reused.
+- Android editable/cursor checks verify automatic word/punctuation spacing, middle-word replacement, composition and selection.
+- Native checks cover Shift/Caps Lock, command-key placement, clipboard input isolation, personal spelling, held-key release/cancellation and clipboard delete/undo/persistence.
 - Unit tests, Android Lint and APK compilation run before the emulator gate, so infrastructure failures cannot hide whether the core project still builds.
 - The host exists only in the `debug` source set and is never included in the release APK.
 
@@ -118,7 +119,7 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - near-black surfaces with restrained neon-mint accents
 - rounded full-width character keys with pressed states and keyboard haptics
 - compact low-profile toolbar instead of large default Android buttons
-- Backspace integrated directly after M on the third character row
+- Backspace immediately right of P; wider Shift immediately left of Y on QWERTZ
 - Emoji moved out of the toolbar to immediately left of Space
 - prediction chips, auxiliary panels and Android navigation bar visually match the keyboard
 - reusable theme-profile architecture prepared for additional selectable themes
@@ -166,7 +167,7 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 
 - German QWERTZ, English QWERTY, French AZERTY, Italian and Spanish QWERTY
 - umlauts and accents on vowel long presses; alternatives on every letter, digit and both symbol pages
-- Shift in the old DE-button position, Caps Lock by double-tap/hold, language selection by holding the labeled spacebar
+- outlined/filled Shift with a visible lock indicator; double-tap for Caps Lock, tap again to unlock; separate language key
 - in-keyboard language/layout picker
 - dedicated ?123 numbers and symbols page
 - layout-aware geometric swipe recognition
@@ -191,6 +192,15 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 - switching from a typed word to a new swipe inserts the missing separator
 - a space already following the cursor is reused, avoiding a doubled separator
 - replacing a selected word preserves the preceding text; stale composing spans are finished before insertion
+
+### Editing and completion improvements (0.20)
+
+- one clean row for `! ? : ; , .`; punctuation moves an automatic space behind itself, including repeated punctuation
+- manually inserted spacing remains unchanged
+- hold Backspace to accelerate from characters to words, groups, sentences and paragraphs; a held deletion can be undone at its original cursor context
+- hold Space to insert growing groups of spaces; release/cancel stops both keys immediately
+- suggestions consider the word on both sides of the cursor and the following word; accepting a correction replaces the full token
+- personal words retain their stored spelling, including internal capitals
 
 ### 🧠 Intelligent word & sentence prediction
 
@@ -247,7 +257,7 @@ This lets suggestions fit the current thought and avoid blindly duplicating text
 - per-letter personal motor offsets
 - local learning from explicit corrections
 - language-lane-aware swipe ranking
-- whole-word Backspace undo immediately after a swipe
+- single-grapheme Backspace taps and accelerating word/sentence/paragraph deletion when held
 - candidate cycling through the suggestion strip or mapped stylus actions
 
 ### ✍️ Direct Android stylus handwriting
@@ -255,7 +265,8 @@ This lets suggestions fit the current thought and avoid blindly duplicating text
 - native IME stylus-handwriting support
 - Android 15+ connectionless handwriting for delegated/search-style flows
 - scratch-out handwriting deletion through Android DeleteGesture when supported
-- circle-selection through Android SelectGesture when supported
+- circle-selection through Android SelectGesture or editor-provided text geometry; unsupported circles do not become OCR letters
+- short stationary pen contacts place the cursor instead of creating unwanted dots; idle handwriting releases the editor promptly
 - horizontal remove-space gesture when supported
 - vertical join/split gesture when supported
 - system handwriting window
@@ -304,10 +315,12 @@ Samsung remote Air Actions remain a device/foreground-specific optional adapter 
 
 - short tap 🎙 for normal dictation
 - long-press 🎙 for deterministic Voice Editing commands
-- Android SpeechRecognizer integration
+- Android SpeechRecognizer integration with service visibility and runtime microphone permission flow
 - prefers the on-device recognizer when available
-- partial recognition status
-- dictation feeds prediction and personal vocabulary
+- live partial transcript, recording/processing states and clear recovery messages
+- Stop waits for the final result; cancel, keyboard hiding and field changes invalidate late dictation
+- selected/preceding text can be read aloud with Android text-to-speech and the keyboard language
+- dictation inserts its final result once, adds word spacing and refreshes contextual predictions
 - delete last word / delete last sentence
 - new line
 - select all / copy / cut / paste
@@ -325,16 +338,20 @@ Samsung remote Air Actions remain a device/foreground-specific optional adapter 
 - configurable target language
 - fails closed rather than silently uploading text when a local pair is unavailable
 
-### 📋 Smart Clipboard 2.0
+### 📋 Smart Clipboard 3.0
 
 - local categories: Link, Email, Phone, Address, Code and Text
-- search across clipboard text and categories
-- Pin / Unpin / Delete per entry
+- searchable text cards, category filters, a pinned-items view and relative timestamps
+- search/edit directly with the visible keyboard without modifying the target app
+- create/edit text snippets; Pin / Unpin / Copy / Insert / Delete per entry
+- multiple selection, batch deletion and one-step deletion undo
 - 10 min / 1 h / 1 day expiry presets for temporary history
 - Clear removes temporary items while preserving pins
 - only explicitly pinned entries persist in private app storage
 - normal clipboard history remains ephemeral
-- up to 40 local entries
+- up to 80 history entries, preserving pinned snippets
+- preserves source whitespace; opening the panel does not renew expiry or resurrect a deleted clip
+- system clips marked sensitive are excluded
 - hidden in sensitive fields
 
 ### 😀 Emoji
