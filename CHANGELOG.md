@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.21.0-alpha22 — 2026-10-05
+
+Compact punctuation and stronger local spelling/context suggestions:
+
+- remove the separate punctuation row; period now sits beside M, with comma, question mark, exclamation mark, colon, semicolon and more on hold–slide–release
+- use the reclaimed row height for taller letter keys and keep swipe geometry aligned with the visible layout
+- offer missing umlauts and German digraph/ß spellings even when the unaccented word is valid; ambiguous pairs such as schon/schön and mochte/möchte remain explicit choices
+- German noun and sentence-start capitalization, contextual treatment of ambiguous nouns, English I, preserved names/acronyms and formal pronouns
+- case corrections and the original spelling remain separate selectable suggestions; valid prefixes prefer useful completions over weak typo guesses
+- correction ranking uses matching multiword context in addition to adjacent keys, transpositions and learned preferences
+- replace short topic-word chains with context-matched phrase continuations, domain/register ranking, bounded personal phrase generation and repetition suppression
+- sentence suggestions account for text after the cursor, preserve negation in matching prefixes, distinguish formal/informal address and offer diverse alternatives
+- default sentence depth increases to eight words, configurable from two to twelve; optional local neural prompts and limits follow the same setting
+- cache learned follower indexes and prefer exact longer contexts before falling back to common bigrams
+- longer suggestions use two lines, with the full text available on hold
+- targeted spelling, casing, continuation, geometry and native punctuation-popup regressions; CI preserves a rendered keyboard screenshot
+- version 0.21.0-alpha22 / build 22
+
 ## 0.20.0-alpha21 — 2026-10-04
 
 More predictable editing, selection, dictation and clipboard management:

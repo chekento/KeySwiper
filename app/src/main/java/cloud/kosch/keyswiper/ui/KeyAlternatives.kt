@@ -38,7 +38,7 @@ object KeyAlternatives {
         '"' to listOf("„", "“", "”", "«", "»"), '\'' to listOf("’", "‘", "‚", "`"),
         ':' to listOf("∶", ";", "…"), ';' to listOf(":", "·", "•"),
         '!' to listOf("¡", "‼", "⁉"), '?' to listOf("¿", "‽", "⁉"),
-        '.' to listOf("…", "·", "•", "。"), ',' to listOf("‚", "„", "،"),
+        '.' to listOf(",", "?", "!", ":", ";", "…", "–", "·"), ',' to listOf("‚", "„", "،"),
         '[' to listOf("(", "{", "〈"), ']' to listOf(")", "}", "〉"),
         '{' to listOf("[", "(", "«"), '}' to listOf("]", ")", "»"),
         '<' to listOf("≤", "«", "‹", "←"), '>' to listOf("≥", "»", "›", "→"),
@@ -54,7 +54,7 @@ object KeyAlternatives {
     )
 
     fun forKey(character: Char, layoutId: String, shifted: Boolean, symbolMode: Boolean): List<String> {
-        if (symbolMode) return symbols[character].orEmpty()
+        if (symbolMode || !character.isLetter()) return symbols[character].orEmpty()
         val key = character.lowercaseChar()
         val row = KeyboardLayoutProfiles.byId(layoutId).letterRows.first()
         val digit = row.indexOf(key).takeIf { it >= 0 }?.let { "1234567890"[it].toString() }

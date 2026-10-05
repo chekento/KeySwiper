@@ -3,400 +3,117 @@ package cloud.kosch.keyswiper.prediction
 import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import kotlin.math.ln
 
-class LocalBeamSemanticProvider(
-    private val memory: PredictionMemory
-) : PredictionProvider {
+/** Context-matched phrases plus bounded, higher-order personal continuations. */
+class LocalBeamSemanticProvider(private val memory: PredictionMemory) : PredictionProvider {
+    override val id = "local-context-v3"
+    private data class Choice(val text: String, val score: Double, val confidence: Float)
+    private data class Beam(val history: List<String>, val words: List<String>, val score: Double)
+    private val unfinished = "der die das den dem des ein eine einen einem einer eines mit für von zu zum zur im am auf an und oder weil dass the a an to with for of and or di del della il la le un una et de des du les el los las y para por".split(' ').toSet()
+    private val repeatedContentExempt = "ich du er sie es wir ihr der die das den dem ein eine und oder i you we he she it the a an and or".split(' ').toSet()
+    private val formal = setOf("ihnen", "ihre", "ihren", "ihrem", "ihres")
+    private val informal = setOf("du", "dich", "dir", "dein", "deine", "deinen", "euch")
 
-    override val id: String = "local-beam-v2-contextual"
-
-    private data class Beam(
-        val history: List<String>,
-        val generated: List<String>,
-        val score: Double
-    )
-
-    private val graph = mapOf(
-        "de" to mapOf(
-            "ich" to listOf("möchte","denke","kann","würde","habe"),
-            "möchte" to listOf("gerne","noch","das","eine"),
-            "gerne" to listOf("noch","mehr","wissen","weiter"),
-            "wir" to listOf("können","sollten","haben","müssen"),
-            "können" to listOf("das","jetzt","direkt","auch"),
-            "das" to listOf("ist","so","direkt","noch"),
-            "ist" to listOf("eine","sehr","gut","jetzt"),
-            "eine" to listOf("gute","sehr","weitere","neue"),
-            "gute" to listOf("idee","lösung","basis","frage"),
-            "bitte" to listOf("mach","weiter","noch","prüfe"),
-            "mach" to listOf("damit","bitte","das","weiter"),
-            "damit" to listOf("weiter","wir","das","es"),
-            "wenn" to listOf("wir","das","du","ich"),
-            "dass" to listOf("das","wir","es","ich"),
-            "noch" to listOf("etwas","mehr","eine","mal"),
-            "etwas" to listOf("ergänzen","ändern","verbessern","genauer"),
-            "mehr" to listOf("details","intelligenz","kontext","möglichkeiten"),
-            "kontext" to listOf("kennen","berücksichtigen","nutzen","verstehen"),
-            "vorschläge" to listOf("sollen","können","werden","passen"),
-            "tastatur" to listOf("soll","kann","lernt","erkennt"),
-            "prediction" to listOf("soll","kann","lernt","nutzt")
-        ),
-        "en" to mapOf(
-            "i" to listOf("would","want","think","can","need"),
-            "would" to listOf("like","be","prefer","also"),
-            "like" to listOf("to","this","that","more"),
-            "to" to listOf("add","continue","make","see"),
-            "we" to listOf("can","should","need","could"),
-            "can" to listOf("do","make","also","use"),
-            "this" to listOf("is","would","can","looks"),
-            "is" to listOf("a","very","really","still"),
-            "a" to listOf("good","great","better","new"),
-            "please" to listOf("continue","add","check","make"),
-            "continue" to listOf("with","this","and","from"),
-            "with" to listOf("that","this","the","more"),
-            "that" to listOf("would","is","we","it"),
-            "context" to listOf("aware","matters","helps","improves"),
-            "suggestions" to listOf("should","can","will","need"),
-            "keyboard" to listOf("should","can","learns","predicts"),
-            "prediction" to listOf("should","can","learns","uses")
-        ),
-        "it" to mapOf(
-            "io" to listOf("voglio","penso","posso","vorrei"),
-            "voglio" to listOf("continuare","aggiungere","anche","più"),
-            "noi" to listOf("possiamo","dovremmo","vogliamo"),
-            "possiamo" to listOf("farlo","continuare","anche","ora"),
-            "contesto" to listOf("conoscere","usare","capire","considerare")
-        ),
-        "fr" to mapOf(
-            "je" to listOf("veux","pense","peux","voudrais"),
-            "veux" to listOf("continuer","ajouter","aussi","plus"),
-            "nous" to listOf("pouvons","devrions","voulons"),
-            "pouvons" to listOf("continuer","faire","aussi","maintenant"),
-            "contexte" to listOf("connaître","utiliser","comprendre","considérer")
-        ),
-        "es" to mapOf(
-            "yo" to listOf("quiero","pienso","puedo","quisiera"),
-            "quiero" to listOf("seguir","añadir","también","más"),
-            "nosotros" to listOf("podemos","deberíamos","queremos"),
-            "podemos" to listOf("seguir","hacerlo","también","ahora"),
-            "contexto" to listOf("conocer","usar","entender","considerar")
-        )
-    )
-
-    private val topicAssociations = mapOf(
-        "tastatur" to listOf("vorschläge","eingabe","swipe","sprache","kontext"),
-        "keyboard" to listOf("suggestions","input","swipe","language","context"),
-        "prediction" to listOf("kontext","vorschläge","lernen","context","suggestions","learning"),
-        "vorschläge" to listOf("kontext","besser","intelligent","passen"),
-        "suggestions" to listOf("context","better","smart","relevant"),
-        "kontext" to listOf("kennen","nutzen","berücksichtigen","verstehen"),
-        "context" to listOf("aware","use","understand","relevant"),
-        "email" to listOf("antwort","grüße","danke","reply","regards","thanks"),
-        "code" to listOf("return","class","function","fun","val","var"),
-        "android" to listOf("app","keyboard","tastatur","input","ime"),
-        "modell" to listOf("lokal","prediction","sprache","inferenz"),
-        "model" to listOf("local","prediction","language","inference")
-    )
-
-    private val modeBoosts = mapOf(
-        PredictionInputMode.MESSAGE to setOf(
-            "danke","gerne","super","später","heute",
-            "thanks","great","later","today","please"
-        ),
-        PredictionInputMode.EMAIL to setOf(
-            "bitte","vielen","freundlichen","danke","anbei",
-            "please","regards","thank","attached","best"
-        ),
-        PredictionInputMode.SEARCH to setOf(
-            "beste","vergleich","download","android","app",
-            "best","review","download","android","app"
-        ),
-        PredictionInputMode.CODE to setOf(
-            "if","else","return","class","fun","val","var","null","true","false"
-        ),
-        PredictionInputMode.GENERAL to emptySet()
-    )
-
-    override fun predict(
-        context: PredictionContext,
-        maxSuggestions: Int
-    ): List<PredictionSuggestion> {
-        val partial = currentToken(context.beforeCursor)
-        if (partial.isNotBlank()) return emptyList()
-
+    override fun predict(context: PredictionContext, maxSuggestions: Int): List<PredictionSuggestion> {
+        if (maxSuggestions <= 0 || context.inputMode in setOf(PredictionInputMode.CODE, PredictionInputMode.SEARCH) ||
+            context.surrounding.selectedText.isNotEmpty()) return emptyList()
+        if (context.beforeCursor.lastOrNull()?.let { it.isLetterOrDigit() || it in "'-’" } == true) return emptyList()
         val snapshot = context.surrounding
-        val contextSource = snapshot.currentSentenceBefore
-            .ifBlank { context.beforeCursor }
-
-        val history = extractWords(contextSource).takeLast(5)
+        val source = snapshot.currentSentenceBefore.ifBlank { context.beforeCursor.substringAfterLast('\n') }
+        val history = ContinuationCorpus.words(source).takeLast(8)
         if (history.isEmpty()) return emptyList()
+        val language = CodeSwitchLanguageResolver.primaryInputLanguage(context.beforeCursor, context.languageHints,
+            fallbackLanguage = context.inputLanguageTag) ?: return emptyList()
+        val entries = ContinuationCorpus.entries.filter { it.language == language }
+        val depth = context.maxSemanticTokens.coerceIn(2, 12)
+        val after = ContinuationCorpus.words(snapshot.afterCursor).take(16)
+        val topics = snapshot.topicTerms.map(String::lowercase).toSet()
+        val registerWords = ContinuationCorpus.words(snapshot.currentParagraph.ifBlank { context.beforeCursor }).takeLast(80)
+        val useFormal = registerWords.any { it in formal } || context.inputMode == PredictionInputMode.EMAIL && registerWords.none { it in informal }
+        val useInformal = registerWords.any { it in informal } && !useFormal
+        val choices = mutableListOf<Choice>()
+        val newSentence = Orthography.sentenceStart(context.beforeCursor)
 
-        val languages = CodeSwitchLanguageResolver.resolveForPrediction(
-            contextText = snapshot.currentParagraph.ifBlank {
-                context.beforeCursor
-            },
-            detectedLanguages = context.languageHints,
-            currentToken = "",
-            fallbackLanguage = context.inputLanguageTag
-        ).map { it.tag }
-        val depth = context.maxSemanticTokens.coerceIn(2, 6)
-        val afterWords = extractWords(snapshot.currentSentenceAfter).take(4)
-        val topics = snapshot.topicTerms.map { it.lowercase() }.toSet()
+        fun add(words: List<String>, score: Double, confidence: Float, formalPhrase: Boolean = useFormal) {
+            var retained = words.take(depth)
+            val normalized = retained.map(ContinuationCorpus::normalize)
+            val overlap = (minOf(normalized.size, after.size) downTo 1)
+                .firstOrNull { normalized.takeLast(it) == after.take(it) } ?: 0
+            if (overlap > 0) retained = retained.dropLast(overlap)
+            while (retained.isNotEmpty() && ContinuationCorpus.normalize(retained.last()) in unfinished) retained = retained.dropLast(1)
+            if (retained.size < 2) return
+            val lowered = retained.map(ContinuationCorpus::normalize)
+            if (after.isNotEmpty() && lowered.first() == after.first()) return
+            if (lowered.zipWithNext().any { it.first == it.second }) return
+            val phrase = Orthography.phrase(retained.joinToString(" "), language, context.beforeCursor, formalPhrase)
+            choices += Choice(phrase, score + if (overlap > 0) 0.8 else 0.0, confidence)
+        }
 
-        var beams = listOf(
-            Beam(
-                history = history,
-                generated = emptyList(),
-                score = 0.0
-            )
-        )
+        // A longer matching suffix outweighs a frequent but unrelated last word.
+        for (entry in entries) {
+            if (newSentence) {
+                val relevant = topics.count { it in entry.topics }
+                if (relevant > 0 && !context.beforeCursor.contains(entry.text, true)) {
+                    add(entry.displayWords, relevant * 0.7 + if (entry.mode == context.inputMode) 0.6 else 0.0, 0.78f)
+                }
+                continue
+            }
+            for (start in 0 until entry.words.lastIndex) {
+                val matched = (minOf(6, history.size, entry.words.size - start - 1) downTo 1)
+                    .firstOrNull { history.takeLast(it) == entry.words.subList(start, start + it) } ?: continue
+                val rest = entry.displayWords.drop(start + matched)
+                if (rest.size < 2) continue
+                if (useFormal && rest.any { ContinuationCorpus.normalize(it) in informal }) continue
+                if (useInformal && rest.any { it in setOf("Sie", "Ihnen", "Ihre", "Ihren") }) continue
+                val relevant = topics.count { it in entry.topics || it in entry.words }
+                val register = if (entry.mode == context.inputMode) 0.55 else if (entry.mode == PredictionInputMode.GENERAL) 0.2 else 0.0
+                val learned = memory.boost(history, rest.first()).coerceIn(0, 260) / 260.0
+                val score = matched * 1.45 + relevant.coerceAtMost(4) * 0.85 + register + learned +
+                    if (rest.size <= depth) 0.25 else 0.0
+                add(rest, score, (0.83f + matched * 0.022f + relevant.coerceAtMost(3) * 0.012f).coerceAtMost(0.98f),
+                    useFormal || entry.mode == PredictionInputMode.EMAIL)
+            }
+        }
 
-        val finished = mutableListOf<Beam>()
-
+        // Learned transitions can form new phrases beyond the bundled examples.
+        var beams = if (newSentence) emptyList() else listOf(Beam(history, emptyList(), 0.0))
         repeat(depth) {
             val expanded = mutableListOf<Beam>()
-
             for (beam in beams) {
-                val candidates = candidatesFor(
-                    history = beam.history,
-                    languages = languages,
-                    mode = context.inputMode,
-                    topics = topics
-                )
-
-                candidates.take(12).forEachIndexed { index, candidate ->
-                    val nextHistory = (beam.history + candidate).takeLast(5)
-                    val personal = memory.boost(beam.history, candidate)
-                    val rankPrior = 1.0 / (index + 1.0)
-                    val personalPrior = 1.0 + personal / 65.0
-
-                    val modePrior = if (
-                        candidate.lowercase() in modeBoosts[context.inputMode].orEmpty()
-                    ) 1.45 else 1.0
-
-                    val topicPrior = topicPrior(candidate, topics)
-                    val questionPrior = if (
-                        snapshot.isQuestion &&
-                        candidate.lowercase() in setOf(
-                            "weil","dann","wenn","kann","können",
-                            "because","then","if","can","could"
-                        )
-                    ) 1.18 else 1.0
-
-                    val nextScore = beam.score +
-                        ln(
-                            (
-                                rankPrior *
-                                    personalPrior *
-                                    modePrior *
-                                    topicPrior *
-                                    questionPrior
-                                ).coerceAtLeast(0.0001)
-                        )
-
-                    val next = Beam(
-                        history = nextHistory,
-                        generated = beam.generated + candidate,
-                        score = nextScore
-                    )
-
+                val followers = memory.learnedFollowers(beam.history, 6)
+                    .filter { (word, _) -> CodeSwitchLanguageResolver.matchesLanguage(word, language) }
+                for ((candidate, strength) in followers) {
+                    val lower = candidate.lowercase()
+                    if (lower == beam.history.lastOrNull()) continue
+                    if (lower !in repeatedContentExempt && lower in beam.words.map(String::lowercase)) continue
+                    val pair = beam.history.lastOrNull() to lower
+                    if (beam.words.map(String::lowercase).zipWithNext().any { it == pair }) continue
+                    if (useFormal && lower in informal || useInformal && lower in formal) continue
+                    val next = Beam((beam.history + lower).takeLast(8), beam.words + candidate,
+                        beam.score + ln(1.0 + strength.coerceAtMost(500)) / 5.0)
                     expanded += next
-
-                    if (next.generated.size >= 2) {
-                        finished += next
-                    }
+                    if (next.words.size >= 2) add(next.words, 2.8 + next.score / next.words.size + next.words.size * 0.08,
+                        (0.82f + next.words.size * 0.009f).coerceAtMost(0.94f))
                 }
             }
-
-            beams = expanded
-                .sortedByDescending { beam ->
-                    normalizedScore(
-                        beam = beam,
-                        afterWords = afterWords,
-                        languages = languages
-                    )
-                }
-                .take(24)
-
-            if (beams.isEmpty()) return@repeat
+            beams = expanded.sortedByDescending { it.score / it.words.size }.take(12)
         }
 
-        return finished
-            .filter { it.generated.size >= 2 }
-            .filterNot { duplicatesAfterCursor(it.generated, afterWords) }
-            .sortedByDescending { beam ->
-                normalizedScore(
-                    beam = beam,
-                    afterWords = afterWords,
-                    languages = languages
-                )
-            }
-            .distinctBy { it.generated.joinToString(" ").lowercase() }
-            .take(maxSuggestions)
-            .mapIndexed { index, beam ->
-                val phrase = beam.generated.joinToString(" ")
-                PredictionSuggestion(
-                    display = phrase,
-                    commitText = phrase,
-                    kind = PredictionKind.SENTENCE,
-                    confidence = (0.92f - index * 0.07f).coerceAtLeast(0.50f)
-                )
-            }
-    }
-
-    private fun candidatesFor(
-        history: List<String>,
-        languages: List<String>,
-        mode: PredictionInputMode,
-        topics: Set<String>
-    ): List<String> {
-        val scored = mutableMapOf<String, Int>()
-
-        memory.learnedFollowers(history, limit = 12)
-            .filter { (word, _) ->
-                matchesPredictionLanguage(word, languages)
-            }
-            .forEach { (word, score) ->
-                scored[word] = maxOf(scored[word] ?: 0, 1100 + score)
-            }
-
-        val last = history.lastOrNull()?.lowercase().orEmpty()
-
-        languages.forEach { language ->
-            graph[language]?.get(last).orEmpty().forEachIndexed { index, word ->
-                var score = 760 - index * 35
-
-                if (word.lowercase() in modeBoosts[mode].orEmpty()) {
-                    score += 130
-                }
-
-                score += memory.boost(history, word)
-                scored[word] = maxOf(scored[word] ?: 0, score)
-            }
+        // Avoid spending both sentence slots on near-identical prefixes.
+        val selected = mutableListOf<Choice>()
+        val ranked = choices.sortedByDescending { it.score }.distinctBy { it.text.lowercase() }
+        for (choice in ranked) {
+            if (selected.any { similar(it.text, choice.text) }) continue
+            selected += choice
+            if (selected.size >= maxSuggestions) break
         }
-
-        topics.forEach { topic ->
-            topicAssociations[topic].orEmpty().forEachIndexed { index, word ->
-                val score = 570 - index * 30 + memory.boost(history, word)
-                scored[word] = maxOf(scored[word] ?: 0, score)
-            }
-        }
-
-        return scored.entries
-            .filter {
-                matchesPredictionLanguage(
-                    it.key,
-                    languages
-                )
-            }
-            .sortedByDescending { it.value }
-            .map { it.key }
-            .take(14)
+        return selected.map { PredictionSuggestion(it.text, it.text, PredictionKind.SENTENCE, confidence = it.confidence) }
     }
 
-    private fun matchesPredictionLanguage(
-        text: String,
-        languages: List<String>
-    ): Boolean {
-        val primary = languages.firstOrNull() ?: return true
-
-        return CodeSwitchLanguageResolver.matchesLanguage(
-            text = text,
-            languageTag = primary
-        )
+    private fun similar(a: String, b: String): Boolean {
+        val left = ContinuationCorpus.words(a)
+        val right = ContinuationCorpus.words(b)
+        val smaller = minOf(left.size, right.size)
+        val sharedPrefix = left.zip(right).takeWhile { it.first == it.second }.size
+        return sharedPrefix >= smaller || sharedPrefix >= 3 && sharedPrefix.toDouble() / smaller >= 0.7
     }
-
-    private fun normalizedScore(
-        beam: Beam,
-        afterWords: List<String>,
-        languages: List<String>
-    ): Double {
-        val base = beam.score / beam.generated.size.coerceAtLeast(1)
-        val bridge = bridgeScore(beam.generated.lastOrNull(), afterWords.firstOrNull(), languages)
-        return base + lengthPreference(beam.generated.size) + bridge
-    }
-
-    private fun bridgeScore(
-        generatedLast: String?,
-        afterFirst: String?,
-        languages: List<String>
-    ): Double {
-        if (generatedLast.isNullOrBlank() || afterFirst.isNullOrBlank()) return 0.0
-        if (generatedLast.equals(afterFirst, ignoreCase = true)) return -0.8
-
-        val connects = languages.any { language ->
-            graph[language]
-                ?.get(generatedLast.lowercase())
-                .orEmpty()
-                .any { it.equals(afterFirst, ignoreCase = true) }
-        }
-
-        return if (connects) 0.40 else 0.0
-    }
-
-    private fun duplicatesAfterCursor(
-        generated: List<String>,
-        afterWords: List<String>
-    ): Boolean {
-        if (generated.isEmpty() || afterWords.isEmpty()) return false
-
-        val max = minOf(generated.size, afterWords.size, 3)
-        for (length in max downTo 1) {
-            val tail = generated.takeLast(length).map { it.lowercase() }
-            val head = afterWords.take(length).map { it.lowercase() }
-            if (tail == head) return true
-        }
-
-        return false
-    }
-
-    private fun topicPrior(
-        candidate: String,
-        topics: Set<String>
-    ): Double {
-        val normalized = candidate.lowercase()
-        if (normalized in topics) return 1.12
-
-        val associated = topics.any { topic ->
-            topicAssociations[topic]
-                .orEmpty()
-                .any { it.equals(normalized, ignoreCase = true) }
-        }
-
-        return if (associated) 1.28 else 1.0
-    }
-
-    private fun lengthPreference(length: Int): Double =
-        when (length) {
-            2 -> 0.05
-            3 -> 0.12
-            4 -> 0.20
-            5 -> 0.22
-            6 -> 0.16
-            else -> 0.08
-        }
-
-    private fun preferredLanguages(hints: List<String>): List<String> {
-        val available = graph.keys
-
-        val normalized = hints
-            .map { it.substringBefore('-').lowercase() }
-            .filter { it in available }
-            .distinct()
-
-        return (normalized + listOf("de","en","it","fr","es")).distinct()
-    }
-
-    private fun currentToken(text: String): String {
-        if (text.isEmpty() || text.last().isWhitespace()) return ""
-
-        return text.takeLastWhile {
-            it.isLetterOrDigit() || it == '\'' || it == '-'
-        }
-    }
-
-    private fun extractWords(text: String): List<String> =
-        Regex("[\\p{L}\\p{N}'-]+")
-            .findAll(text.takeLast(900))
-            .map { it.value.lowercase() }
-            .toList()
 }
-

@@ -20,49 +20,63 @@ class WordCorrectionEngine(
     private val knownWords = lexicons.values.flatten().toSet()
     private val foldedLetters = knownWords.flatMap { it.toList() }.distinct().associateWith { fold(it.toString()) }
 
-    fun candidates(token: String, contextWords: List<String>, language: String, limit: Int = 3): List<Candidate> {
-        if (token.length !in 3..32 || token.any { !it.isLetter() }) return emptyList()
+    fun candidates(token: String, contextWords: List<String>, language: String, limit: Int = 3,
+        beforeToken: String? = null): List<Candidate> {
+        if (token.length !in 2..48 || token.any { !it.isLetter() } || limit <= 0) return emptyList()
         val lower = token.lowercase()
-        if (lower in knownWords || vocabulary?.contains(lower) == true) return emptyList()
         if (token.drop(1).any { it.isUpperCase() }) return emptyList() // Acronyms and identifiers.
         val pack = LanguagePackRegistry.get(language) ?: return emptyList()
+        val prefix = beforeToken ?: contextWords.joinToString(" ").let { if (it.isEmpty()) it else "$it " }
+        val sentenceStart = beforeToken != null && Orthography.sentenceStart(prefix)
+        val personalKnown = vocabulary?.contains(lower) == true
+        val known = lower in knownWords || personalKnown
+        val personal = vocabulary?.frequentWords(listOf(LanguageLane(language, 1f)), 120).orEmpty().map { it.first }
+        fun spelling(word: String): String {
+            val stored = personal.firstOrNull { it.equals(word, true) }
+                ?.takeIf { word.lowercase() !in knownWords || it.drop(1).any(Char::isUpperCase) || vocabulary?.isExplicit(word) == true }
+            val display = Orthography.display(stored ?: word, language, prefix, sentenceStart, token, stored != null)
+            return if (beforeToken == null && token.first().isUpperCase()) matchCase(token, display) else display
+        }
         val next = pack.commonNext[contextWords.lastOrNull()?.lowercase()].orEmpty()
-        val personal = vocabulary?.frequentWords(listOf(LanguageLane(language, 1f)), 120).orEmpty().map { it.first.lowercase() }
         val keys = KeyboardLayoutProfiles.forLanguage(language).letterRows.flatMapIndexed { row, letters ->
             letters.mapIndexed { column, char -> char to (column + row * 0.35f to row.toFloat()) }
         }.toMap()
         val threshold = if (lower.length <= 5) 1.05f else 1.65f
         data class Match(val word: String, val cost: Float, val rank: Float)
-        val ranked = (lexicons[language].orEmpty() + personal).asSequence()
-            .filter { it.length >= 3 && abs(it.length - lower.length) <= 2 && it.all(Char::isLetter) }
+        val ranked = (lexicons[language].orEmpty() + personal.map { it.lowercase() }).asSequence().distinct()
+            .filter { it != lower && it.length >= 2 && abs(it.length - lower.length) <= 2 && it.all(Char::isLetter) }
             .mapNotNull { word ->
                 val transliterated = if (language == "de") word.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss") else word
-                val cost = if (transliterated == lower) 0.3f else distance(lower, word, keys)
+                val accentMatch = fold(word) == fold(lower) || transliterated == lower
+                // Valid words and personal spellings still offer umlaut alternatives,
+                // but must not be replaced automatically (schon/schön, mochte/möchte).
+                if ((known || lower.length < 3) && !accentMatch) return@mapNotNull null
+                val cost = if (transliterated == lower) 0.3f else if (fold(word) == fold(lower)) 0.25f else distance(lower, word, keys)
                 if (cost > threshold) null else {
                     val contextIndex = next.indexOf(word)
-                    val contextBoost = if (contextIndex >= 0) (0.32f - contextIndex * 0.035f).coerceAtLeast(0.10f) else 0f
+                    val directBoost = if (contextIndex >= 0) (0.32f - contextIndex * 0.035f).coerceAtLeast(0.10f) else 0f
+                    val contextBoost = maxOf(directBoost, (ContinuationCorpus.contextMatch(language, contextWords, word) * 0.18f).coerceAtMost(0.55f))
                     val learnedBoost = memory.boost(contextWords, word).coerceIn(0, 160) / 1000f
                     Match(word, cost, cost - contextBoost - learnedBoost)
                 }
-            }
-            .sortedWith(compareBy<Match> { it.rank }.thenBy { it.word })
-            .toList()
-        val best = ranked.firstOrNull() ?: return emptyList()
-        val gap = ranked.getOrNull(1)?.let { it.rank - best.rank } ?: 1f
-        return ranked.take(limit.coerceAtLeast(0)).mapIndexed { index, match ->
+            }.sortedWith(compareBy<Match> { it.rank }.thenBy { it.word }).toList()
+        val result = mutableListOf<Candidate>()
+        val canonical = spelling(lower)
+        if (canonical != token && vocabulary?.isExplicit(lower) != true && lower in lexicons[language].orEmpty()) {
+            val safe = sentenceStart || lower in Orthography.germanNouns || language == "en" && lower == "i"
+            result += Candidate(canonical, 0.1f, if (safe) 0.98f else 0.88f, safe)
+        }
+        val best = ranked.firstOrNull()
+        val gap = if (best == null) 0f else ranked.getOrNull(1)?.let { it.rank - best.rank } ?: 1f
+        result += ranked.take(limit).mapIndexed { index, match ->
             val confidence = (0.97f - match.cost * 0.04f - if (index == 0 && gap < 0.35f) 0.18f else index * 0.13f).coerceIn(0.4f, 0.99f)
-            // Capitalized unknown words may be names. Only unambiguous function-word typos
-            // can be corrected automatically at the beginning of a sentence.
             val safeCase = token.first().isLowerCase() || match.word in capitalizedFunctionWords
-            // Common German short imperatives can themselves look like transpositions
-            // of a past-tense verb: schreib/schrieb. Keep derived stems explicit.
             val possibleGermanStem = language == "de" && lower.length >= 4 &&
                 listOf("e", "en", "n").any { lower + it in lexicons[language].orEmpty() }
-            // A compact lexicon cannot list every valid inflection. Missing/extra letters
-            // remain explicit choices (e.g. “schreib” must not silently become “schreibt”).
-            Candidate(matchCase(token, match.word), match.cost, confidence,
-                index == 0 && safeCase && !possibleGermanStem && match.cost <= 0.75f && gap >= 0.35f && confidence >= 0.91f)
+            Candidate(spelling(match.word), match.cost, confidence,
+                !known && index == 0 && safeCase && !possibleGermanStem && match.cost <= 0.75f && gap >= 0.35f && confidence >= 0.91f)
         }
+        return result.distinctBy { it.word }.take(limit)
     }
 
     private fun distance(a: String, b: String, keys: Map<Char, Pair<Float, Float>>): Float {

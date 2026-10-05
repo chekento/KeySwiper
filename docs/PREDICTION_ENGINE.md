@@ -130,3 +130,9 @@ Pure spacing tests and Android editable/cursor checks verify that a subsequent k
 ## Editing inside words (0.20)
 
 The current word includes its prefix before the cursor and its suffix after it. Typo candidates consider the complete token; completions receive a preference for preserving the existing suffix and fitting the following word. Accepting a replacement removes both parts of the original token, reuses the next ordinary separator and leaves the cursor after the completed word. Explicit selections continue to take precedence. Learned vocabulary retains its preferred display spelling, including internal capitals. These are local ranking improvements; predictions can still be wrong, and ambiguous corrections remain choices.
+
+## Context and orthography (0.21)
+
+The local correction engine now keeps accent-only alternatives for valid words, so `schon → schön` and `mochte → möchte` remain suggestions without an automatic meaning change. Noun and sentence casing is applied through a shared spelling policy, with contextual handling for ambiguous words such as `morgen`, personal names and formal pronouns. The suggestion identity preserves meaningful case differences, including the original spelling.
+
+Local sentence prediction uses a multilingual phrase corpus with domain/register hints, matching up to six prefix words. Topics score compatible phrases instead of injecting unrelated words into a word graph. Personal n-grams can supply additional continuations; longer contexts take precedence and cached follower indexes are invalidated by learning. Repetition and right-hand overlap are filtered. Default depth is eight words, configurable from two to twelve. These remain bounded local suggestions, not unrestricted language understanding. Optional on-device neural refinement receives explicit casing, negation, register and diversity instructions.

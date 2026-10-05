@@ -360,7 +360,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Semantic prediction depth (2–6 words)"
+            text = "Satzvorschläge: Länge (2–12 Wörter)"
             textSize = 14f
             setPadding(0, dp(18), 0, dp(6))
         })
@@ -372,7 +372,7 @@ class SettingsActivity : Activity() {
                     this@SettingsActivity
                 ).toString()
             )
-            hint = "5"
+            hint = "8"
             maxLines = 1
         }
 

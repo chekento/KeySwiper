@@ -28,7 +28,7 @@ class ContextPredictionEngineTest {
     @Test
     fun typoSuggestionsAlwaysIncludeTheOriginalSpelling() {
         val suggestions = engine.predict("tastatru", listOf("de"))
-        assertTrue(suggestions.any { it.kind == PredictionKind.CORRECTION && it.commitText == "tastatur" })
+        assertTrue(suggestions.any { it.kind == PredictionKind.CORRECTION && it.commitText == "Tastatur" })
         assertTrue(suggestions.any { it.kind == PredictionKind.KEEP_TYPED && it.commitText == "tastatru" })
     }
 
@@ -100,13 +100,27 @@ class ContextPredictionEngineTest {
     }
     @Test fun suggestionsUseTheWholeMisspelledWordAtTheCursor() {
         val suggestions = engine.predict("ta", listOf("de"), afterCursor = "statru ist gut")
-        assertTrue(suggestions.any { it.commitText == "tastatur" && it.replacesCurrentToken })
+        assertTrue(suggestions.any { it.commitText == "Tastatur" && it.replacesCurrentToken })
         assertTrue(suggestions.any { it.kind == PredictionKind.KEEP_TYPED && it.commitText == "tastatru" })
     }
 
     @Test fun matchingRightHandSuffixSupportsTheIntendedCompletion() {
         val suggestions = engine.predict("ich mö", listOf("de"), afterCursor = "chte gerne")
         org.junit.Assert.assertEquals("möchte", suggestions.first().commitText)
+    }
+    @Test fun correctedCaseAndOriginalRemainSeparateChoices() {
+        val result = engine.predict("die tastatur", listOf("de"))
+        assertTrue(result.any { it.kind == PredictionKind.CORRECTION && it.commitText == "Tastatur" })
+        assertTrue(result.any { it.kind == PredictionKind.KEEP_TYPED && it.commitText == "tastatur" })
+        val hybrid = HybridPredictionEngine(engine, LocalBeamSemanticProvider(memory))
+            .predict(PredictionContext("die tastatur", listOf("de")))
+        assertTrue(hybrid.any { it.commitText == "Tastatur" })
+        assertTrue(hybrid.any { it.commitText == "tastatur" })
+    }
+    @Test fun umlautsAreSuggestedEvenForKnownUnaccentedWords() {
+        val result = engine.predict("das ist schon", listOf("de"))
+        assertTrue(result.any { it.commitText == "schön" })
+        assertTrue(result.any { it.commitText == "schon" })
     }
 }
 

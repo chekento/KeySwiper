@@ -86,3 +86,7 @@ Real Android debug checks cover finger/pen edge re-entry, release beyond the bou
 Backspace repeats after 420 ms. At 1.5 s it removes words, at 3.5 s groups of three words, at 6 s sentences, and at 9.5 s paragraphs. It operates on the selection or text before the cursor. Space repeats with group sizes 1/1/2/4/8 at the same stages. Both stop on release, cancellation, leaving the command key, hiding or detaching. Held deletion is one undo entry guarded by the surrounding cursor context.
 
 Automatic separators keep a before/after snapshot. Punctuation moves that separator behind itself only when the snapshot and empty selection still match. Manual spaces are not altered.
+
+## Compact punctuation (0.21)
+
+The separate punctuation row has been removed. A period key immediately follows M; holding it opens comma, question/exclamation marks, colon, semicolon, ellipsis and additional symbols. The surface and decoder use the same weighted slots, and the former row height is returned to letter keys. Shared spelling rules supply German noun casing when automatic correction is enabled; sensitive and code input retain their protected behavior.

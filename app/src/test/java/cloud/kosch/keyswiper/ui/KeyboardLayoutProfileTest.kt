@@ -108,4 +108,15 @@ class KeyboardLayoutProfileTest {
                 bottomLeft.first
         )
     }
+    @Test fun punctuationIsOneKeyImmediatelyAfterM() {
+        for (profile in KeyboardLayoutProfiles.all) {
+            val rows = KeyboardLayoutProfiles.slots(profile)
+            val row = rows.first { it.any { slot -> slot.token == "m" } }
+            assertEquals(".", row[row.indexOfFirst { it.token == "m" } + 1].token)
+            assertEquals(1, rows.flatten().count { it.token == "." })
+        }
+        val variants = KeyAlternatives.forKey('.', "de-qwertz", false, false)
+        assertTrue(variants.containsAll(listOf(",", "?", "!", ":", ";", "…")))
+    }
 }
+

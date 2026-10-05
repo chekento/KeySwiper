@@ -18,7 +18,10 @@ object KeyboardLayoutProfiles {
         return rows.mapIndexed { index, row ->
             buildList {
                 if (!symbols && index == rows.lastIndex) add(Slot(SHIFT, 1.55f))
-                addAll(row.map { Slot(it.toString()) })
+                row.forEach { character ->
+                    add(Slot(character.toString()))
+                    if (!symbols && character == 'm') add(Slot("."))
+                }
                 if (index == 0) add(Slot(BACKSPACE, 1.25f))
             }
         }

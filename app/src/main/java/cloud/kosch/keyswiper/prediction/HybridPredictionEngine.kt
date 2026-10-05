@@ -19,7 +19,8 @@ class HybridPredictionEngine(
             afterCursor = context.surrounding.afterCursor
         ).filterNot { suggestion ->
             (context.inputMode == PredictionInputMode.CODE || context.inputMode == PredictionInputMode.EMAIL) &&
-                (suggestion.kind == PredictionKind.CORRECTION || suggestion.kind == PredictionKind.KEEP_TYPED)
+                (suggestion.kind == PredictionKind.CORRECTION || suggestion.kind == PredictionKind.KEEP_TYPED) ||
+                context.inputMode in setOf(PredictionInputMode.CODE, PredictionInputMode.SEARCH) && suggestion.kind == PredictionKind.SENTENCE
         }
 
         val semanticSuggestions = semantic.predict(
@@ -32,15 +33,13 @@ class HybridPredictionEngine(
             .take(4)
 
         val sentences = (
-            instantSuggestions.filter { it.kind == PredictionKind.SENTENCE } +
-                semanticSuggestions
+            semanticSuggestions + instantSuggestions.filter { it.kind == PredictionKind.SENTENCE }
             )
-            .distinctBy { it.commitText.lowercase() }
-            .sortedByDescending { it.confidence }
+            .distinctBy { it.commitText }
             .take(2)
 
         return (singles + sentences)
-            .distinctBy { it.commitText.lowercase() }
+            .distinctBy { it.commitText }
             .take(maxSuggestions)
     }
 
@@ -74,7 +73,7 @@ class HybridPredictionEngine(
             .take(3)
 
         val neuralUnique = languageSafeNeural
-            .distinctBy { it.commitText.lowercase() }
+            .distinctBy { it.commitText }
             .take(2)
 
         val localSentence = base
@@ -94,12 +93,7 @@ class HybridPredictionEngine(
             base.forEach { suggestion ->
                 if (
                     size < maxSuggestions &&
-                    none {
-                        it.commitText.equals(
-                            suggestion.commitText,
-                            ignoreCase = true
-                        )
-                    }
+                    none { it.commitText == suggestion.commitText }
                 ) {
                     add(suggestion)
                 }

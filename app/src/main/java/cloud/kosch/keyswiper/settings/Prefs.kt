@@ -174,11 +174,11 @@ object Prefs {
             )
             .getInt(
                 SEMANTIC_DEPTH,
-                5
+                8
             )
             .coerceIn(
                 2,
-                6
+                12
             )
 
     fun setSemanticPredictionDepth(
@@ -195,7 +195,7 @@ object Prefs {
                 SEMANTIC_DEPTH,
                 value.coerceIn(
                     2,
-                    6
+                    12
                 )
             )
             .apply()

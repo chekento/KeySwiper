@@ -549,16 +549,6 @@ class KeyboardRootView(
             )
         )
 
-        if (!symbolMode) {
-            keyboardPanel.addView(
-                buildAccentAndLayoutRow(),
-                LayoutParams(
-                    LayoutParams.MATCH_PARENT,
-                    sizing.accentRowHeightPx
-                )
-            )
-        }
-
         keyboardPanel.addView(
             buildBottomRow(),
             LayoutParams(
@@ -577,34 +567,6 @@ class KeyboardRootView(
 
         systemBottomInsetPx = normalized
         rebuildKeyboardPanel()
-    }
-
-    private fun buildAccentAndLayoutRow(): View {
-        val row = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            setPadding(dp(4), dp(1), dp(4), dp(1))
-        }
-        fun key(label: String, weight: Float = 1f, action: () -> Unit): Button {
-            val button = compactKey(label, action)
-            row.addView(button, LayoutParams(0, LayoutParams.MATCH_PARENT, weight).apply {
-                marginStart = dp(2); marginEnd = dp(2)
-            })
-            return button
-        }
-        listOf('!', '?', ':', ';', ',', '.').forEach { character ->
-            val button = key(character.toString()) { callbacks?.onCharacter(character) }.apply {
-                textSize = 22f
-                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                contentDescription = when (character) {
-                    '!' -> "Ausrufezeichen"; '?' -> "Fragezeichen"; ':' -> "Doppelpunkt"
-                    ';' -> "Semikolon"; ',' -> "Komma"; else -> "Punkt"
-                }
-            }
-            textAlternatives.attach(button) {
-                KeyAlternatives.forKey(character, layoutProfile.id, false, true)
-            }
-        }
-        return row
     }
 
     private fun compactKey(label: String, action: () -> Unit): Button = Button(context).apply {
@@ -858,14 +820,16 @@ class KeyboardRootView(
                 // Words are readable labels; action/status icons do not belong in their text.
                 text = suggestion.commitText
                 isAllCaps = false
-                textSize = 16f
+                val phrase = suggestion.kind == PredictionKind.SENTENCE || suggestion.kind == PredictionKind.NEURAL
+                textSize = if (phrase) 13f else 16f
+                includeFontPadding = !phrase
                 setTextColor(if (correction) theme.accent else theme.textPrimary)
                 typeface = android.graphics.Typeface.create("sans-serif", if (index == 0) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
                 background = roundedDrawable(theme.surfaceRaised, theme.keyCornerDp,
                     if (correction) theme.accent else theme.border)
                 minWidth = dp(80); minimumWidth = 0; minHeight = 0; minimumHeight = 0
-                maxWidth = dp(240)
-                maxLines = 1
+                maxWidth = dp(if (phrase) 280 else 240)
+                maxLines = if (phrase) 2 else 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(dp(8), 0, dp(8), 0)
                 contentDescription = when (suggestion.kind) {
@@ -875,6 +839,10 @@ class KeyboardRootView(
                     else -> "Wortvorschlag: ${suggestion.commitText}"
                 }
                 setOnClickListener { onChoose(suggestion) }
+                setOnLongClickListener {
+                    Toast.makeText(context, suggestion.commitText, Toast.LENGTH_LONG).show()
+                    true
+                }
             }, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
                 marginStart = dp(2); marginEnd = dp(2)
             })

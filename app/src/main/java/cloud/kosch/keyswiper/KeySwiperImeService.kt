@@ -774,7 +774,16 @@ class KeySwiperImeService : InputMethodService() {
 
             if (values.isEmpty()) return
 
-            val casedValues = values.map { root?.applyInputCase(it) ?: it }
+            val spellingLanguage = CodeSwitchLanguageResolver.primaryInputLanguage(before, languageHints, "",
+                KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag) ?: "de"
+            val casedValues = values.map { value ->
+                val spelled = if (sensitiveField || predictionInputMode == PredictionInputMode.CODE ||
+                    !Prefs.autoCorrectEnabled(this@KeySwiperImeService)) value else
+                    cloud.kosch.keyswiper.prediction.Orthography.display(value, spellingLanguage, before,
+                    cloud.kosch.keyswiper.prediction.Orthography.sentenceStart(before),
+                    personal = !sensitiveField && userVocabularyStore.isExplicit(value))
+                root?.applyInputCase(spelled) ?: spelled
+            }
             val connection = currentInputConnection ?: return
             val committed = WordCommitter.commit(connection, casedValues.first()) ?: return
             val word = committed.plan.word
@@ -921,7 +930,8 @@ class KeySwiperImeService : InputMethodService() {
             val language = CodeSwitchLanguageResolver.primaryInputLanguage(before, languageHints, token,
                 KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag) ?: "de"
             val correction = if (mayCorrect) wordCorrectionEngine.candidates(token,
-                extractWords(before.dropLast(token.length)), language).firstOrNull()?.takeIf { it.automatic } else null
+                extractWords(before.dropLast(token.length)), language,
+                beforeToken = before.dropLast(token.length)).firstOrNull()?.takeIf { it.automatic } else null
             clearSwipeState()
             var corrected = false
             if (correction != null) {

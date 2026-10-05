@@ -2,6 +2,7 @@ package cloud.kosch.keyswiper.language
 
 interface UserVocabularyLookup {
     fun contains(word: String): Boolean = false
+    fun isExplicit(word: String): Boolean = false
 
     fun prefixMatches(
         prefix: String,

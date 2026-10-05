@@ -44,7 +44,7 @@ data class PredictionContext(
     val languageHints: List<String>,
     val inputLanguageTag: String? = null,
     val inputMode: PredictionInputMode = PredictionInputMode.GENERAL,
-    val maxSemanticTokens: Int = 4,
+    val maxSemanticTokens: Int = 8,
     val surrounding: SurroundingContextSnapshot = SurroundingContextSnapshot(
         beforeCursor = beforeCursor
     )

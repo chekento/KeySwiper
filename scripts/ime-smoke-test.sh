@@ -173,7 +173,8 @@ for _ in $(seq 1 40); do
      grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: word spacing, completion, composition, selection and cursor position" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: Shift caps lock, command layout, clipboard input isolation and personal spelling" "$OUT_DIR/input-regression-checks.txt" &&
-     grep -Fq "PASS: held key release/cancel and clipboard delete/undo/persistence" "$OUT_DIR/input-regression-checks.txt"; then
+     grep -Fq "PASS: held key release/cancel and clipboard delete/undo/persistence" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: period beside M and held punctuation" "$OUT_DIR/input-regression-checks.txt"; then
     INPUT_CHECKS_OK=1
     break
   fi
@@ -187,3 +188,6 @@ if [[ "$INPUT_CHECKS_OK" -ne 1 ]]; then
 fi
 
 log "PASS: KeySwiper is alive, selected and visible; pen, finger, edge, long-press and word-spacing checks passed on Android 15."
+
+# Preserve the actual rendered keyboard for layout review.
+adb exec-out screencap -p > "$OUT_DIR/keyboard.png"

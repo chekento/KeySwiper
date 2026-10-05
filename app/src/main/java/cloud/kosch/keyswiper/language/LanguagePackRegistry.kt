@@ -84,7 +84,8 @@ object LanguagePackRegistry {
             heißen heißt heiße hieß genannt müsste müsstest müsste möchten möchtest wolltest willst will
             sollst sollt dürft darfst könntest könnt kannst könnt ihr euch euer eure euren ihrer ihres
             trotz während wegen seit seitdem sobald obwohl bevor nachdem damit deshalb deswegen trotzdem
-        """),
+        """) + cloud.kosch.keyswiper.prediction.Orthography.germanNouns +
+            cloud.kosch.keyswiper.prediction.Orthography.germanSpellings,
         commonNext = mapOf(
             "ich" to listOf("möchte","kann","habe","bin","würde","denke"),
             "wir" to listOf("können","haben","sollten","müssen","werden"),
@@ -261,7 +262,10 @@ object LanguagePackRegistry {
     )
 
     val all: List<LanguagePack> =
-        listOf(german, english, italian, french, spanish)
+        listOf(german, english, italian, french, spanish).map { pack ->
+            pack.copy(words = pack.words + cloud.kosch.keyswiper.prediction.ContinuationCorpus.entries
+                .filter { it.language == pack.tag }.flatMap { it.words })
+        }
 
     fun get(tag: String): LanguagePack? =
         all.firstOrNull {

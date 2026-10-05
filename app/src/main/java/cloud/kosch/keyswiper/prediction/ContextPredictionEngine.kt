@@ -12,32 +12,12 @@ class ContextPredictionEngine(
 
     private val corrections = WordCorrectionEngine(learningStore, userVocabulary)
 
-    private data class Phrase(
-        val prefix: List<String>,
-        val completion: String,
-        val languages: Set<String>
-    )
-
     private data class ScoredSuggestion(
         val suggestion: PredictionSuggestion,
         val score: Int
     )
 
-    private val phraseBank = listOf(
-        Phrase(listOf("ich","möchte"), "gerne noch etwas ergänzen", setOf("de")),
-        Phrase(listOf("wir","können"), "das direkt umsetzen", setOf("de")),
-        Phrase(listOf("das","ist"), "eine gute Idee", setOf("de")),
-        Phrase(listOf("bitte"), "mach damit weiter", setOf("de")),
-        Phrase(listOf("ich","denke"), "dass das gut funktionieren kann", setOf("de")),
-        Phrase(listOf("wenn","wir"), "das so machen", setOf("de")),
-        Phrase(listOf("i","would"), "like to add one more thing", setOf("en")),
-        Phrase(listOf("we","can"), "do that directly", setOf("en")),
-        Phrase(listOf("this","is"), "a good idea", setOf("en")),
-        Phrase(listOf("please"), "continue with that", setOf("en")),
-        Phrase(listOf("io","voglio"), "continuare così", setOf("it")),
-        Phrase(listOf("je","veux"), "continuer comme ça", setOf("fr")),
-        Phrase(listOf("yo","quiero"), "seguir así", setOf("es"))
-    )
+    private val continuations = LocalBeamSemanticProvider(learningStore)
 
     fun predict(
         beforeCursor: String,
@@ -63,15 +43,24 @@ class ContextPredictionEngine(
         if (partial.isNotBlank()) {
             val raw = cursorWord.whole
             val language = lanes.firstOrNull()?.tag ?: fallbackLanguage ?: "de"
-            val choices = corrections.candidates(raw, contextWords, language)
+            val choices = corrections.candidates(raw, contextWords, language, beforeToken = beforeCursor.dropLast(cursorWord.prefix.length))
+            val hasExactCompletion = LanguagePackRegistry.get(language)?.prefixMatches(raw, 24).orEmpty()
+                .any { it.length > raw.length && it.startsWith(raw, ignoreCase = true) }
             choices.forEachIndexed { index, choice ->
+                val correctionScore = when {
+                    choice.automatic -> 1650
+                    choice.cost <= 0.3f -> 1500
+                    hasExactCompletion -> 1040
+                    else -> 1450
+                }
                 add(scored, PredictionSuggestion(choice.word, choice.word, PredictionKind.CORRECTION,
                     replacesCurrentToken = true, confidence = choice.confidence),
-                    (if (choice.automatic) 1550 else 1120) - index * 90)
+                    correctionScore - index * 80)
             }
             if (choices.isNotEmpty()) {
                 add(scored, PredictionSuggestion(raw, raw, PredictionKind.KEEP_TYPED,
-                    replacesCurrentToken = true, confidence = 1f), 1250)
+                    replacesCurrentToken = true, confidence = 1f),
+                    if (hasExactCompletion && choices.none { it.automatic || it.cost <= 0.3f }) 820 else 1250)
             }
             addCompletions(
                 scored = scored,
@@ -117,8 +106,17 @@ class ContextPredictionEngine(
             .map { it.suggestion }
             .take(maxSuggestions)
             .map { suggestion ->
-                val typed = beforeCursor.takeLast(partial.length)
-                val value = if (partial.isNotBlank()) WordCorrectionEngine.matchCase(typed, suggestion.commitText) else suggestion.commitText
+                val typed = cursorWord.prefix
+                val prefix = beforeCursor.dropLast(typed.length)
+                val language = lanes.firstOrNull()?.tag ?: fallbackLanguage ?: "de"
+                val value = when (suggestion.kind) {
+                    PredictionKind.CORRECTION, PredictionKind.KEEP_TYPED -> suggestion.commitText
+                    PredictionKind.SENTENCE -> suggestion.commitText
+                    else -> Orthography.display(suggestion.commitText, language, prefix,
+                        Orthography.sentenceStart(prefix), typed,
+                        userVocabulary?.isExplicit(suggestion.commitText) == true ||
+                            userVocabulary?.contains(suggestion.commitText) == true && LanguagePackRegistry.get(language)?.contains(suggestion.commitText) != true)
+                }
                 suggestion.copy(display = value, commitText = value)
             }
     }
@@ -254,45 +252,10 @@ class ContextPredictionEngine(
         contextWords: List<String>,
         lanes: List<LanguageLane>
     ) {
-        val activeTags = lanes.map { it.tag }.toSet()
-        val normalizedContext = contextWords.map { it.lowercase() }
-
-        phraseBank.asSequence()
-            .filter { phrase ->
-                phrase.languages.any { it in activeTags }
-            }
-            .filter { phrase ->
-                normalizedContext.takeLast(phrase.prefix.size) ==
-                    phrase.prefix
-            }
-            .take(4)
-            .forEachIndexed { index, phrase ->
-                val languageWeight = lanes
-                    .filter { it.tag in phrase.languages }
-                    .maxOfOrNull { it.score }
-                    ?: 0.4f
-
-                add(
-                    scored,
-                    PredictionSuggestion(
-                        display = phrase.completion,
-                        commitText = phrase.completion,
-                        kind = PredictionKind.SENTENCE,
-                        confidence = (
-                            0.88f +
-                                languageWeight * 0.04f -
-                                index * 0.05f
-                            ).coerceIn(0.50f, 0.95f)
-                    ),
-                    990 +
-                        (languageWeight * 120f).toInt() -
-                        index * 22 +
-                        learningStore.boost(
-                            contextWords,
-                            phrase.completion
-                        )
-                )
-            }
+        val before = contextWords.joinToString(" ") + " "
+        continuations.predict(PredictionContext(before, lanes.map { it.tag }, lanes.firstOrNull()?.tag,
+            maxSemanticTokens = 8, surrounding = LocalContextAnalyzer.analyze(before, "", "")), 2)
+            .forEachIndexed { index, suggestion -> add(scored, suggestion, 1230 - index * 35) }
     }
 
     private fun addFallbacks(
@@ -367,7 +330,7 @@ class ContextPredictionEngine(
         suggestion: PredictionSuggestion,
         score: Int
     ) {
-        val key = suggestion.commitText.lowercase()
+        val key = if (suggestion.kind == PredictionKind.KEEP_TYPED) "keep:${suggestion.commitText}" else suggestion.commitText.lowercase()
         val existing = map[key]
 
         if (existing == null || score > existing.score) {

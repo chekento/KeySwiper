@@ -59,9 +59,8 @@ object KeyboardSizing {
         val toolbar = fraction(0.10f, 26f)
         val prediction = fraction(0.14f, 36f)
         val bottom = fraction(0.17f, 42f)
-        val accent =
-            if (symbolMode) 0
-            else fraction(0.09f, 24f)
+        // Punctuation lives beside M; its former row now belongs to the letter keys.
+        val accent = 0
 
         val surface =
             (usable - toolbar - prediction - bottom - accent)

@@ -9,6 +9,8 @@ class UserVocabularyStore(context: Context) : UserVocabularyLookup {
 
     override fun contains(word: String): Boolean = prefs.getInt("c|${normalize(word)}", 0) > 0
 
+    override fun isExplicit(word: String): Boolean = prefs.getBoolean("p|${normalize(word)}", false)
+
     fun observeWord(
         rawWord: String,
         languageHints: List<String>

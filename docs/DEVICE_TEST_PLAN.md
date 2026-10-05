@@ -170,3 +170,13 @@ For each failure capture:
 - Read selected text aloud, stop playback, then switch languages. Check missing TTS language handling.
 - Search clipboard with keys and pen; the target app text must remain untouched. Add/edit a snippet, pin it, copy/insert it, delete several cards and undo. Delete the current system clip from history and reopen: it must stay deleted.
 - Rotate/open/close panels during a held key and verify no stuck repeat or delayed action.
+
+## 0.21 punctuation and language checks
+
+- Confirm the separate punctuation row is gone. Tap period beside M, then hold it and slide to comma, question mark, exclamation mark, colon and semicolon. No extra period may be inserted.
+- Compare the larger letter-key height; swipe paths must still match the displayed letters.
+- Type “die tastatur”, “Hallo. ich”, “das ist schon”, “ich mochte”, “fur”, “moglich”, “grosser” and “bucher”. Check capitalization/umlaut alternatives and that ambiguous valid words are not silently changed.
+- Confirm both “Tastatur” and the original “tastatur” can remain selectable; check names, acronyms, formal Sie/Ihnen and “morgen” versus “Guten Morgen”.
+- Test “Ich kann nicht ”, “Es geht um einen Termin. Ich möchte ” in email context, and “Ich kann nicht |teilnehmen”. The continuation must fit the phrase, form of address and existing right-hand text.
+- Hold a long suggestion to read it fully. Set the depth to 2, 8 and 12 and check the maximum inserted length.
+- Teach a recurring personal phrase; matching longer context should outrank unrelated frequent bigrams.

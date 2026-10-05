@@ -53,7 +53,7 @@ class LiteRtLmPredictionBackend(
                 synchronized(lock) {
                     activeEngine.createConversation().use { conversation ->
                         val response = conversation.sendMessage(prompt)
-                        parseSuggestions(response.toString(), maxSuggestions)
+                        parseSuggestions(response.toString(), maxSuggestions, context)
                     }
                 }
             }.getOrElse {
@@ -96,8 +96,10 @@ class LiteRtLmPredictionBackend(
             appendLine("Task: predict short text continuations for an Android keyboard.")
             appendLine("Return exactly ${maxSuggestions.coerceIn(1, 4)} alternatives, one per line.")
             appendLine("No numbering, no explanations, no quotation marks.")
-            appendLine("Each alternative must be at most ${context.maxSemanticTokens.coerceIn(2, 6)} words.")
+            appendLine("Each alternative must be at most ${context.maxSemanticTokens.coerceIn(2, 12)} words.")
             appendLine("Match the user's language, current sentence, topic and tone.")
+            appendLine("Preserve negation, subject/verb agreement, German noun capitalization, umlauts and the user's form of address.")
+            appendLine("Offer distinct useful continuations, not multiple lengths of the same phrase. Avoid repetitive word loops and unfinished articles.")
             appendLine("Use text after the cursor only to maintain coherence; never repeat it.")
             appendLine("Input mode: ${context.inputMode}")
             appendLine("Detected languages: ${context.languageHints.joinToString(",")}")
@@ -106,7 +108,7 @@ class LiteRtLmPredictionBackend(
             appendLine("Selected text: ${snapshot.selectedText}")
             appendLine("Current sentence after cursor: ${snapshot.currentSentenceAfter}")
             appendLine("Next sentence: ${snapshot.nextSentence}")
-            appendLine("Current paragraph: ${snapshot.currentParagraph.take(900)}")
+            appendLine("Current paragraph: ${snapshot.currentParagraph.take(1600)}")
             appendLine("Topic terms: ${snapshot.topicTerms.joinToString(", ")}")
             appendLine("Question context: ${snapshot.isQuestion}")
             append("Continue at the cursor:")
@@ -115,7 +117,8 @@ class LiteRtLmPredictionBackend(
 
     private fun parseSuggestions(
         raw: String,
-        maxSuggestions: Int
+        maxSuggestions: Int,
+        context: PredictionContext
     ): List<PredictionSuggestion> =
         raw.lines()
             .asSequence()
@@ -130,7 +133,7 @@ class LiteRtLmPredictionBackend(
             .map { phrase ->
                 phrase
                     .split(Regex("\\s+"))
-                    .take(6)
+                    .take(context.maxSemanticTokens.coerceIn(2, 12))
                     .joinToString(" ")
                     .trimEnd('.', ',', ';', ':')
             }

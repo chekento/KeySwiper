@@ -195,9 +195,21 @@ object InputRegressionChecks {
                             contactEvent(surface, MotionEvent.ACTION_UP, listOf(choice))
                             check(commits == listOf("ä", "½")) { "Sliding into a popup must select the variant without the base key" }
                             check(!surface.isShowingAlternatives)
-                            root.removeView(surface)
-                            Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
-                            runHoldChecks(root, onComplete)
+                            surface.setLayout(profile, false)
+                            val dotBounds = checkNotNull(surface.keyBounds("."))
+                            val dot = Contact(0, MotionEvent.TOOL_TYPE_STYLUS, dotBounds.centerX(), dotBounds.centerY())
+                            contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(dot))
+                            contactEvent(surface, MotionEvent.ACTION_UP, listOf(dot))
+                            check(commits.last() == ".") { "The key beside M must tap a period" }
+                            contactEvent(surface, MotionEvent.ACTION_DOWN, listOf(dot))
+                            awaitPopupLayout(surface) {
+                                contactEvent(surface, MotionEvent.ACTION_UP, listOf(dot))
+                                check(commits.takeLast(2) == listOf(".", ",")) { "Holding period must choose punctuation without an extra period" }
+                                root.removeView(surface)
+                                Log.i("KeySwiperInputChecks", "PASS: attached pen/finger long-press alternatives")
+                                Log.i("KeySwiperInputChecks", "PASS: period beside M and held punctuation")
+                                runHoldChecks(root, onComplete)
+                            }
                         }
                     }
                 }
@@ -221,6 +233,10 @@ object InputRegressionChecks {
         val firstBottom = checkNotNull(keys.keyBounds(if (keys.currentLayoutId() == "de-qwertz") "y" else "z"))
         check(shift.right < firstBottom.left && shift.width() > firstBottom.width())
         check(backspace.left > checkNotNull(keys.keyBounds("p")).right)
+        val dot = checkNotNull(keys.keyBounds("."))
+        val m = checkNotNull(keys.keyBounds("m"))
+        check(dot.left > m.right && dot.centerY() == m.centerY())
+        check(descendants(root).filterIsInstance<Button>().none { it.text.toString() in listOf("!", "?", ":", ";", ",", ".") })
         fun tap(bounds: android.graphics.RectF) = stroke(keys, MotionEvent.TOOL_TYPE_STYLUS,
             listOf(bounds.centerX() to bounds.centerY(), bounds.centerX() to bounds.centerY()))
         tap(shift); tap(shift)
@@ -244,6 +260,20 @@ object InputRegressionChecks {
         vocabulary.observeWord("keyswiperprobe", listOf("de"))
         check(vocabulary.prefixMatches("keysw", emptyList(), 20).any { it.first == "KeySwiperProbe" })
         vocabulary.forgetWord("KeySwiperProbe")
+        val learning = cloud.kosch.keyswiper.prediction.PredictionLearningStore(object : android.content.ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int): android.content.SharedPreferences =
+                super.getSharedPreferences("input_checks_$name", mode)
+        })
+        repeat(12) { learning.learnTransition(listOf("anders", "probe", "häufig")) }
+        learning.learnTransition(listOf("kontext", "probe", "passend"))
+        check(learning.learnedFollowers(listOf("kontext", "probe"), 4).first().first == "passend") {
+            "Exact longer context must beat a more frequent unrelated bigram"
+        }
+        learning.learnTransition(listOf("neu", "probe", "aktuell"))
+        check(learning.learnedFollowers(listOf("neu", "probe"), 4).first().first == "aktuell") {
+            "New learning must invalidate the follower index"
+        }
+        learning.reset()
         Log.i("KeySwiperInputChecks", "PASS: Shift caps lock, command layout, clipboard input isolation and personal spelling")
     }
 

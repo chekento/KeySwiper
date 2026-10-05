@@ -7,6 +7,8 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
     private val preferences =
         context.getSharedPreferences("keyswiper_prediction_learning", Context.MODE_PRIVATE)
 
+    private var followerIndex: Map<String, List<Pair<String, Int>>>? = null
+
     fun learnTransition(words: List<String>) {
         val normalized = words
             .map { normalize(it) }
@@ -98,42 +100,30 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
 
         if (previous.isBlank()) return emptyList()
 
-        val results = mutableMapOf<String, Int>()
-
-        preferences.all.forEach { (key, value) ->
-            val count = value as? Int ?: return@forEach
-
-            when {
-                previous3.isNotBlank() &&
-                    key.startsWith("q|$previous3|$previous2|$previous|") -> {
-                    val candidate = key.substringAfterLast('|')
-                    results[candidate] = maxOf(results[candidate] ?: 0, count * 9)
-                }
-
-                previous2.isNotBlank() &&
-                    key.startsWith("t|$previous2|$previous|") -> {
-                    val candidate = key.substringAfterLast('|')
-                    results[candidate] = maxOf(results[candidate] ?: 0, count * 5)
-                }
-
-                key.startsWith("b|$previous|") -> {
-                    val candidate = key.substringAfterLast('|')
-                    results[candidate] = maxOf(results[candidate] ?: 0, count * 3)
-                }
-            }
+        val index = followerIndex ?: preferences.all.entries.asSequence()
+            .filter { it.key.startsWith("b|") || it.key.startsWith("t|") || it.key.startsWith("q|") }
+            .mapNotNull { (key, value) -> (value as? Int)?.let { Triple(key.substringBeforeLast('|'), key.substringAfterLast('|'), it) } }
+            .groupBy { it.first }.mapValues { (_, rows) -> rows.map { it.second to it.third }.sortedByDescending { it.second } }
+            .also { followerIndex = it }
+        // Prefer exact longer contexts; an often-used bigram must not override a matching phrase.
+        val keys = listOfNotNull(
+            if (previous3.isNotBlank()) "q|$previous3|$previous2|$previous" to 9 else null,
+            if (previous2.isNotBlank()) "t|$previous2|$previous" to 5 else null,
+            "b|$previous" to 3)
+        for ((key, weight) in keys) {
+            val followers = index[key].orEmpty()
+            if (followers.isNotEmpty()) return followers.take(limit).map { it.first to it.second * weight }
         }
-
-        return results.entries
-            .sortedByDescending { it.value }
-            .take(limit)
-            .map { it.key to it.value }
+        return emptyList()
     }
 
     fun reset() {
+        followerIndex = null
         preferences.edit().clear().apply()
     }
 
     private fun increment(key: String, amount: Int = 1) {
+        followerIndex = null
         val next = (preferences.getInt(key, 0) + amount).coerceAtMost(10_000)
         preferences.edit().putInt(key, next).apply()
     }
@@ -154,3 +144,4 @@ class PredictionLearningStore(context: Context) : PredictionMemory {
     private fun normalize(value: String): String =
         value.lowercase().trim { !it.isLetterOrDigit() && it != '\'' && it != '-' }
 }
+
