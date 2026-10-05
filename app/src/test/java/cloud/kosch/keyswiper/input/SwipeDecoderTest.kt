@@ -22,12 +22,16 @@ class SwipeDecoderTest {
             }
         }
         points.add(SwipePoint(centers.last().first + drift, centers.last().second, points.size * 8L))
-        val rows = KeyboardLayoutProfiles.byId(layout).letterRows
+        val rows = KeyboardLayoutProfiles.slots(KeyboardLayoutProfiles.byId(layout))
         val touched = points.mapNotNull { point ->
             val rowIndex = (point.y * 3).toInt().coerceIn(0, 2)
             val row = rows[rowIndex]
-            val columns = row.length + if (rowIndex == 2) 1 else 0
-            row.getOrNull((point.x * columns).toInt())
+            val total = row.sumOf { it.weight.toDouble() }.toFloat()
+            var edge = 0f
+            row.firstOrNull { slot ->
+                edge += slot.weight / total
+                point.x < edge
+            }?.token?.singleOrNull()
         }
         return SwipeTrace(points, touched, layout)
     }
@@ -131,12 +135,12 @@ class SwipeDecoderTest {
     }
 
     @Test
-    fun learnedWordsOutsideBundledDictionaryCanBeSwiped() {
+    fun learnedWordsOutsideBundledDictionaryKeepTheirSpelling() {
         val result = SwipeDecoder().decode(
             denseTrace("keyswiper"), "use ", listOf("en"),
             additionalWords = listOf("KeySwiper")
         )
-        assertEquals("keyswiper", result.first())
+        assertEquals("KeySwiper", result.first())
     }
 
     @Test
