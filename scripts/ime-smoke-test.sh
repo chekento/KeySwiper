@@ -174,7 +174,10 @@ for _ in $(seq 1 40); do
      grep -Fq "PASS: word spacing, completion, composition, selection and cursor position" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: Shift caps lock, command layout, clipboard input isolation and personal spelling" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: held key release/cancel and clipboard delete/undo/persistence" "$OUT_DIR/input-regression-checks.txt" &&
-     grep -Fq "PASS: period beside M and held punctuation" "$OUT_DIR/input-regression-checks.txt"; then
+     grep -Fq "PASS: period beside M and held punctuation" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: cursor movement, selection collapse, extracted offsets and emoji boundaries" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: numeric keypad, digits, decimal/sign flags, PIN and text-field restoration" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: spacebar cursor drag/cancel/hold, stable candidate clicks and bounded sentence panel" "$OUT_DIR/input-regression-checks.txt"; then
     INPUT_CHECKS_OK=1
     break
   fi
@@ -187,9 +190,30 @@ if [[ "$INPUT_CHECKS_OK" -ne 1 ]]; then
   exit 1
 fi
 
-log "PASS: KeySwiper is alive, selected and visible; pen, finger, edge, long-press and word-spacing checks passed on Android 15."
+log "PASS: KeySwiper is alive, selected and visible; cursor, numeric keypad, stable suggestions and existing Android input checks passed."
 
 # Preserve the actual rendered keyboard for layout review.
 # Let the final attached test views disappear and the focused IME draw a frame.
 sleep 1
 adb exec-out screencap -p > "$OUT_DIR/keyboard.png"
+
+# Exercise the actual service's field-type transition and retain the numeric UI.
+adb shell am start -n "$HOST" --ei input_type 2 > "$OUT_DIR/numeric-host-start.txt"
+NUMERIC_VISIBLE=0
+for _ in $(seq 1 40); do
+  STATE="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r' || true)"
+  printf '%s\n' "$STATE" > "$OUT_DIR/dumpsys-input_method-numeric.txt"
+  if grep -Eq 'inputType=0x0*2([^0-9a-fA-F]|$)' <<<"$STATE" &&
+     { grep -Fq 'mInputShown=true' <<<"$STATE" || grep -Fq 'mIsInputViewShown=true' <<<"$STATE"; }; then
+    NUMERIC_VISIBLE=1
+    break
+  fi
+  sleep 0.25
+done
+if [[ "$NUMERIC_VISIBLE" -ne 1 ]]; then
+  echo "The numeric host did not bind a visible numeric input session." >&2
+  exit 1
+fi
+sleep 1
+adb exec-out screencap -p > "$OUT_DIR/keyboard-numeric.png"
+log "PASS: actual IME switched to the numeric editor; normal and numeric screenshots captured."

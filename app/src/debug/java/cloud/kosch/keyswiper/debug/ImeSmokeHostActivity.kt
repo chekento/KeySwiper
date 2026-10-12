@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.HardwareRenderer
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -34,6 +35,7 @@ class ImeSmokeHostActivity : Activity() {
             id = View.generateViewId()
             hint = "KeySwiper IME smoke test"
             setSingleLine(false)
+            inputType = intent.getIntExtra("input_type", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE)
             minLines = 4
             isFocusable = true
             isFocusableInTouchMode = true
