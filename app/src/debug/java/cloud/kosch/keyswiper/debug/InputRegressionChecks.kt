@@ -371,9 +371,14 @@ object InputRegressionChecks {
             null
         } as KeyboardRootView.Callbacks
         host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-        root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+        fun layoutInHost() {
+            val width = host.width - host.paddingLeft - host.paddingRight
+            root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            root.layout(host.paddingLeft, host.paddingTop,
+                host.paddingLeft + root.measuredWidth, host.paddingTop + root.measuredHeight)
+        }
+        layoutInHost()
         root.post {
             val space = descendants(root).filterIsInstance<Button>().single { it.text.toString() == "Leerzeichen" }
             val finger = Contact(2, MotionEvent.TOOL_TYPE_FINGER, space.width / 2f, space.height / 2f)
@@ -395,9 +400,7 @@ object InputRegressionChecks {
                 val old = PredictionSuggestion("Alt", "Alt", PredictionKind.NEXT_WORD)
                 val phrase = PredictionSuggestion("Ein längerer Satzvorschlag", "Ein längerer Satzvorschlag", PredictionKind.SENTENCE)
                 root.setPredictions(listOf(old, phrase))
-                root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-                root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                layoutInHost()
                 val word = descendants(root).filterIsInstance<Button>().single { it.text.toString() == "Alt" }
                 val originalWidth = word.width
                 val touch = Contact(0, MotionEvent.TOOL_TYPE_FINGER, word.width / 2f, word.height / 2f)
@@ -407,20 +410,18 @@ object InputRegressionChecks {
                 contactEvent(word, MotionEvent.ACTION_UP, listOf(touch))
                 root.post {
                     check(accepted == listOf("Alt")) { "Touch release must accept the originally pressed word" }
-                    check(word.text.toString() == "Neu" && word.width == originalWidth) { "Deferred suggestions reuse fixed slots" }
+                    check(word.text.toString() == "Neu" && word.width == originalWidth) {
+                        "Deferred suggestions reuse fixed slots: text=<${word.text}>, width=${word.width}, expected=$originalWidth"
+                    }
                     root.setEditHistoryState(true, true)
-                    root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-                    root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                    layoutInHost()
                     check(word.width == originalWidth) { "Undo availability must not shift suggestion widths" }
                     val height = root.height
                     descendants(root).filterIsInstance<Button>().single {
                         it.contentDescription == "Satzvorschläge und weitere Wörter anzeigen"
                     }.performClick()
                     check(descendants(root).filterIsInstance<Button>().any { it.text.toString() == phrase.commitText })
-                    root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-                    root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                    layoutInHost()
                     check(root.height == height) { "Expanded suggestions must stay within the keyboard height budget" }
                     host.removeView(root)
                     Log.i("KeySwiperInputChecks", "PASS: spacebar cursor drag/cancel/hold, stable candidate clicks and bounded sentence panel")
