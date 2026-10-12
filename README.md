@@ -72,6 +72,9 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 - **Predictable held deletion:** characters, then single words by default. Larger word groups, sentences and paragraphs require the optional advanced deletion setting. The spacebar shows the current deletion unit; number/PIN fields always delete one character per repeat.
 - **Stable suggestions:** three fixed word slots, with original spelling directly selectable. Open `⌄` for sentence suggestions and further words without enlarging the keyboard. Incoming updates wait until an active candidate touch finishes.
 - **Automatic Num-Pad:** integer/PIN fields show only digits plus Backspace/Enter. Decimal point and minus follow the field's Android input flags; phone/date/time fields get the separators they require. No letter keys, symbol pages, toolbar or word predictions appear in numeric mode.
+- **Durable clipboard:** encrypted local history survives process restarts, with fixed retention up to 30 days, independent pins/permanent snippets, selected-text capture and compact recycled tap-to-paste cards.
+- **Private dictation:** local recognition by default, explicit system-service opt-in, regional language/formatting hints, partial transcripts and an animated measured-level recording view.
+- **Privacy controls:** manual private mode, screenshot protection for clipboard/dictation, obscured-touch rejection, sensitive accessibility views and no learning/swipe suggestions in private fields.
 
 ### 🧪 Runtime smoke coverage
 
@@ -360,15 +363,15 @@ Samsung remote Air Actions remain a device/foreground-specific optional adapter 
 ### 📋 Smart Clipboard 3.0
 
 - local categories: Link, Email, Phone, Address, Code and Text
-- searchable text cards, category filters, a pinned-items view and relative timestamps
+- compact recycled text cards, search and History / Pins / Saved views
 - search/edit directly with the visible keyboard without modifying the target app
 - create/edit text snippets; Pin / Unpin / Copy / Insert / Delete per entry
 - multiple selection, batch deletion and one-step deletion undo
-- 10 min / 1 h / 1 day expiry presets for temporary history
-- Clear removes temporary items while preserving pins
-- only explicitly pinned entries persist in private app storage
-- normal clipboard history remains ephemeral
-- up to 80 history entries, preserving pinned snippets
+- 10 min / 1 h / 1 day / 7 days / 30 days expiry presets for new temporary history
+- Clear removes temporary items while preserving pins and permanent snippets
+- all accepted history persists as authenticated encrypted snapshots in private no-backup storage
+- process restarts preserve the original expiry and copy identity
+- up to 2,000 entries; full storage rejects new content instead of evicting unexpired history
 - preserves source whitespace; opening the panel does not renew expiry or resurrect a deleted clip
 - system clips marked sensitive are excluded
 - hidden in sensitive fields

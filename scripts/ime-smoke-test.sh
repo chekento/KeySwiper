@@ -167,7 +167,7 @@ if [[ "$VISIBLE" -ne 1 ]]; then
 fi
 
 INPUT_CHECKS_OK=0
-for _ in $(seq 1 40); do
+for _ in $(seq 1 120); do
   adb logcat -d -s KeySwiperInputChecks:I '*:S' > "$OUT_DIR/input-regression-checks.txt"
   if grep -Fq "PASS: pen and finger taps/swipes, menu selection, palm contact, boundaries, handwriting" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: attached pen/finger long-press alternatives" "$OUT_DIR/input-regression-checks.txt" &&
@@ -177,7 +177,9 @@ for _ in $(seq 1 40); do
      grep -Fq "PASS: period beside M and held punctuation" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: cursor movement, selection collapse, extracted offsets and emoji boundaries" "$OUT_DIR/input-regression-checks.txt" &&
      grep -Fq "PASS: numeric keypad, digits, decimal/sign flags, PIN and text-field restoration" "$OUT_DIR/input-regression-checks.txt" &&
-     grep -Fq "PASS: spacebar cursor drag/cancel/hold, stable candidate clicks and bounded sentence panel" "$OUT_DIR/input-regression-checks.txt"; then
+     grep -Fq "PASS: spacebar cursor drag/cancel/hold, stable candidate clicks and bounded sentence panel" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: compact clipboard/voice UI, local speech options and private input guards" "$OUT_DIR/input-regression-checks.txt" &&
+     grep -Fq "PASS: encrypted clipboard restart/retention, pins/save, capacity, tamper detection and private capture" "$OUT_DIR/input-regression-checks.txt"; then
     INPUT_CHECKS_OK=1
     break
   fi
@@ -196,9 +198,11 @@ log "PASS: KeySwiper is alive, selected and visible; cursor, numeric keypad, sta
 # Let the final attached test views disappear and the focused IME draw a frame.
 sleep 1
 adb exec-out screencap -p > "$OUT_DIR/keyboard.png"
+adb exec-out run-as "$PACKAGE" cat files/clipboard-preview.png > "$OUT_DIR/clipboard-preview.png"
+adb exec-out run-as "$PACKAGE" cat files/voice-preview.png > "$OUT_DIR/voice-preview.png"
 
 # Exercise the actual service's field-type transition and retain the numeric UI.
-adb shell am start -n "$HOST" --ei input_type 2 > "$OUT_DIR/numeric-host-start.txt"
+adb shell am start -n "$HOST" --activity-single-top --ei input_type 2 > "$OUT_DIR/numeric-host-start.txt"
 NUMERIC_VISIBLE=0
 for _ in $(seq 1 40); do
   STATE="$(adb shell dumpsys input_method 2>/dev/null | tr -d '\r' || true)"

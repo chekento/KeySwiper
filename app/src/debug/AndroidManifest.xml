@@ -3,6 +3,7 @@
         <activity
             android:name=".debug.ImeSmokeHostActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:label="KeySwiper IME smoke host"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>

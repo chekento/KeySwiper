@@ -37,6 +37,7 @@ class KeyboardSurface(
     }
 
     var listener: Listener? = null
+    var swipeEnabled = true
 
     var shifted: Boolean = false
         set(value) {
@@ -551,7 +552,7 @@ class KeyboardSurface(
     }
 
     private fun canSwipe(): Boolean =
-        !symbolMode &&
+        swipeEnabled && !symbolMode &&
             downToken?.let { it.length == 1 && it.first().isLetter() } == true
 
     private fun recordMotion(x: Float, y: Float, timeMs: Long, density: Float) {

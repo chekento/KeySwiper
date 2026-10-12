@@ -21,6 +21,8 @@ class VoiceInputController(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var stateChanged: (String) -> Unit = {}
     private var reportError: (String) -> Unit = {}
+    private var phaseChanged: (VoicePhase) -> Unit = {}
+    private var levelChanged: (Float) -> Unit = {}
     private val finalTimeout = Runnable {
         if (active && processing) {
             cancel()
@@ -30,6 +32,8 @@ class VoiceInputController(private val context: Context) {
     }
     private fun awaitFinalResult() {
         processing = true
+        phaseChanged(VoicePhase.PROCESSING)
+        levelChanged(0f)
         stateChanged("Sprache wird umgewandelt …")
         handler.removeCallbacks(finalTimeout)
         handler.postDelayed(finalTimeout, 15_000)
@@ -38,7 +42,8 @@ class VoiceInputController(private val context: Context) {
 
     fun toggle(languageTag: String = Locale.getDefault().toLanguageTag(),
         onPartial: (String) -> Unit, onFinal: (String) -> Unit, onError: (String) -> Unit,
-        onState: (String) -> Unit = {}) {
+        onState: (String) -> Unit = {}, localOnly: Boolean = true, biasing: List<String> = emptyList(),
+        format: Boolean = true, onPhase: (VoicePhase) -> Unit = {}, onLevel: (Float) -> Unit = {}) {
         if (active) { stop(); return }
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             onError("Bitte den Mikrofonzugriff erlauben."); return
@@ -46,15 +51,23 @@ class VoiceInputController(private val context: Context) {
         cancel()
         stateChanged = onState
         reportError = onError
+        phaseChanged = onPhase
+        levelChanged = onLevel
         val request = generation
         var fallbackUsed = false
         val onDevice = Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+        if (localOnly && !onDevice) {
+            phaseChanged(VoicePhase.IDLE)
+            onError("Lokale Spracherkennung fehlt. Bitte ein Offline-Sprachpaket installieren. Ein Systemdienst kann in den Datenschutzeinstellungen ausdrücklich erlaubt werden.")
+            return
+        }
         if (!onDevice && !SpeechRecognizer.isRecognitionAvailable(context)) {
             onError("Kein Spracherkennungsdienst installiert. Bitte einen Dienst in den Android-Spracheinstellungen aktivieren."); return
         }
         fun start(local: Boolean) {
             if (request != generation) return
             active = true; processing = false
+            phaseChanged(VoicePhase.STARTING)
             stateChanged("Mikrofon wird gestartet …")
             try {
                 recognizer?.destroy()
@@ -63,32 +76,38 @@ class VoiceInputController(private val context: Context) {
                 recognizer = speech
                 speech.setRecognitionListener(object : RecognitionListener {
                     private fun valid() = request == generation && recognizer === speech && active
-                    override fun onReadyForSpeech(params: Bundle?) { if (valid()) stateChanged("Ich höre zu …") }
-                    override fun onBeginningOfSpeech() = Unit
-                    override fun onRmsChanged(rmsdB: Float) = Unit
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        if (valid()) { phaseChanged(VoicePhase.LISTENING); stateChanged(if (local) "Lokale Aufnahme · ich höre zu …" else "Systemdienst · ich höre zu …") }
+                    }
+                    override fun onBeginningOfSpeech() { if (valid()) phaseChanged(VoicePhase.LISTENING) }
+                    override fun onRmsChanged(rmsdB: Float) { if (valid() && !processing) levelChanged(((rmsdB + 2f) / 12f).coerceIn(0f, 1f)) }
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
                     override fun onEndOfSpeech() { if (valid()) awaitFinalResult() }
                     override fun onError(error: Int) {
                         if (!valid()) return
                         handler.removeCallbacks(finalTimeout)
-                        if (local && !fallbackUsed && error in setOf(4, 5, 11, 12, 13) && SpeechRecognizer.isRecognitionAvailable(context)) {
+                        if (!localOnly && local && !fallbackUsed && error in setOf(4, 5, 11, 12, 13) && SpeechRecognizer.isRecognitionAvailable(context)) {
                             fallbackUsed = true
                             stateChanged("System-Spracherkennung wird verwendet …")
                             handler.post { start(false) }
                             return
                         }
                         active = false; processing = false
+                        phaseChanged(VoicePhase.IDLE); levelChanged(0f)
                         stateChanged("Bereit")
                         onError(message(error))
+                        handler.post { if (recognizer === speech) { speech.destroy(); recognizer = null } }
                     }
                     override fun onResults(results: Bundle?) {
                         if (!valid()) return
                         handler.removeCallbacks(finalTimeout)
                         active = false; processing = false
+                        phaseChanged(VoicePhase.IDLE); levelChanged(0f)
                         val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                             ?.firstOrNull { it.isNotBlank() }.orEmpty()
                         stateChanged("Bereit")
                         if (text.isNotBlank()) onFinal(text) else onError("Keine Sprache erkannt. Bitte erneut versuchen.")
+                        handler.post { if (recognizer === speech) { speech.destroy(); recognizer = null } }
                     }
                     override fun onPartialResults(results: Bundle?) {
                         if (!valid()) return
@@ -97,17 +116,13 @@ class VoiceInputController(private val context: Context) {
                     }
                     override fun onEvent(eventType: Int, params: Bundle?) = Unit
                 })
-                speech.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                })
+                speech.startListening(VoiceRecognitionOptions.intent(languageTag, local, biasing, format))
             } catch (_: RuntimeException) {
-                if (local && !fallbackUsed && SpeechRecognizer.isRecognitionAvailable(context)) {
+                if (!localOnly && local && !fallbackUsed && SpeechRecognizer.isRecognitionAvailable(context)) {
                     fallbackUsed = true; handler.post { start(false) }
                 } else {
                     active = false; processing = false
+                    phaseChanged(VoicePhase.IDLE); levelChanged(0f)
                     stateChanged("Bereit")
                     onError("Mikrofon konnte nicht gestartet werden. Bitte Berechtigung und Android-Spracherkennung prüfen.")
                 }
@@ -128,6 +143,7 @@ class VoiceInputController(private val context: Context) {
         generation++
         handler.removeCallbacksAndMessages(null)
         active = false; processing = false
+        phaseChanged(VoicePhase.IDLE); levelChanged(0f)
         runCatching { recognizer?.cancel(); recognizer?.destroy() }
         recognizer = null
     }

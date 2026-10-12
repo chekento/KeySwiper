@@ -628,7 +628,7 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Clipboard entries are categorized and searchable locally. Temporary entries expire after the preset selected inside the keyboard clipboard panel; only entries you explicitly pin are persisted."
+            text = "Die Zwischenablage speichert ihren Verlauf verschlüsselt, auch über Neustarts hinweg. Antippen fügt direkt ein. Pins und dauerhaft gespeicherte Textbausteine bleiben ohne Ablauf; temporäre Einträge halten die gewählte Aufbewahrungszeit."
             textSize = 14f
             setPadding(0, dp(4), 0, dp(8))
         })
@@ -821,9 +821,40 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
-            text = "Privacy default: surrounding context, prediction learning and neural inference are disabled in sensitive/password fields. Personal models stay local."
+            text = "Datenschutz & Sicherheit"
+            textSize = 20f
+            setPadding(0, dp(24), 0, dp(8))
+        })
+        fun privacyOption(label: String, checked: Boolean, change: (Boolean) -> Unit) {
+            content.addView(android.widget.CheckBox(this).apply {
+                text = label; isChecked = checked
+                setOnCheckedChangeListener { _, enabled -> change(enabled) }
+            })
+        }
+        privacyOption("Privatmodus: Lernen, Kontextzugriff, Zwischenablage und Diktat aus", Prefs.privateMode(this)) {
+            Prefs.setPrivateMode(this, it)
+        }
+        privacyOption("System-Spracherkennung erlauben (kann Netzwerkdienste verwenden)", Prefs.networkSpeechAllowed(this)) {
+            Prefs.setNetworkSpeechAllowed(this, it)
+        }
+        content.addView(Button(this).apply {
+            text = "Android-Spracherkennung / Offline-Sprachen"
+            isAllCaps = false
+            setOnClickListener {
+                runCatching { startActivity(Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS)) }
+            }
+        })
+        privacyOption("Zwischenablage und Diktat gegen Screenshots schützen", Prefs.securePanels(this)) {
+            Prefs.setSecurePanels(this, it)
+            if (it) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        content.addView(TextView(this).apply {
+            text = "Zwischenablage: verschlüsselt auf diesem Gerät, mit festen Ablaufzeiten bis 30 Tage. Pins und gespeicherte Textbausteine bleiben ohne Ablauf. " +
+                "Private Felder werden nicht gelernt oder in den Verlauf übernommen. Spracherkennung bleibt standardmäßig lokal; Audiodateien werden nicht gespeichert. " +
+                "Verdeckte Berührungen werden blockiert. Der Schutz der Tastatur ersetzt nicht die Sicherheit des Android-Systems."
             textSize = 14f
-            setPadding(0, dp(24), 0, 0)
+            setPadding(0, dp(8), 0, 0)
         })
 
         StylusUi.usePointerInput(content)
@@ -838,6 +869,8 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (Prefs.securePanels(this)) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         if (
             ::setupStatusText
                 .isInitialized

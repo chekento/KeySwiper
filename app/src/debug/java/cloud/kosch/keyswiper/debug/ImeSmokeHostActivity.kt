@@ -1,6 +1,7 @@
 package cloud.kosch.keyswiper.debug
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.HardwareRenderer
 import android.os.Build
 import android.os.Bundle
@@ -63,6 +64,15 @@ class ImeSmokeHostActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        requestImeRepeatedly()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        input.inputType = intent.getIntExtra("input_type", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE)
+        getSystemService(InputMethodManager::class.java)?.restartInput(input)
+        input.requestFocus()
         requestImeRepeatedly()
     }
 

@@ -27,6 +27,7 @@ import cloud.kosch.keyswiper.input.CursorMovement
 import cloud.kosch.keyswiper.prediction.PredictionKind
 import cloud.kosch.keyswiper.prediction.PredictionSuggestion
 import cloud.kosch.keyswiper.settings.Prefs
+import cloud.kosch.keyswiper.voice.VoicePhase
 
 class KeyboardRootView(
     context: Context
@@ -68,6 +69,9 @@ class KeyboardRootView(
         fun onClipboardInsert(id: String)
         fun onClipboardSearch(query: String)
         fun onClipboardTogglePin(id: String)
+        fun onClipboardToggleSaved(id: String) {}
+        fun onClipboardCaptureSelection() {}
+        fun onSensitivePanelChanged(active: Boolean) {}
         fun onClipboardDelete(id: String)
         fun onClipboardDeleteMany(ids: Set<String>) {}
         fun onClipboardUndoDelete() {}
@@ -161,6 +165,9 @@ class KeyboardRootView(
     private var spaceButton: Button? = null
     private var spaceController: SpacebarCursorController? = null
     private var numericProfile: NumericKeypadProfile? = null
+    private var sensitivePanelOpen = false
+    private var voicePanelOpen = false
+    private var privateInput = false
 
     private val suggestions =
         LinearLayout(context)
@@ -218,6 +225,7 @@ class KeyboardRootView(
 
     init {
         orientation = VERTICAL
+        filterTouchesWhenObscured = true
         setBackgroundColor(
             theme.background
         )
@@ -402,7 +410,7 @@ class KeyboardRootView(
                 }
 
                 override fun onBackspaceRepeat(elapsedMs: Long) {
-                    val unit = if (editorMode == KeyboardEditorMode.NUMBER) DeleteUnit.CHARACTER
+                    val unit = if (privateInput || editorMode == KeyboardEditorMode.NUMBER) DeleteUnit.CHARACTER
                         else HoldAcceleration.step(elapsedMs, Prefs.advancedHoldDeleteEnabled(context)).unit
                     showDeletionUnit(unit)
                     callbacks?.onBackspaceRepeat(elapsedMs)
@@ -890,7 +898,7 @@ class KeyboardRootView(
     }
 
     private fun renderSuggestions(values: List<PredictionSuggestion>, onChoose: (PredictionSuggestion) -> Unit) {
-        if (clipboardPanel != null || editorMode == KeyboardEditorMode.NUMBER) { clearSuggestions(); return }
+        if (privateInput || clipboardPanel != null || editorMode == KeyboardEditorMode.NUMBER) { clearSuggestions(); return }
         if (suggestionInteractions > 0) {
             pendingSuggestionUpdate = SuggestionUpdate(values.toList(), onChoose)
             return
@@ -968,6 +976,12 @@ class KeyboardRootView(
         }) { callbacks?.onCandidate(it.commitText) }
     }
 
+    fun setPrivateInput(active: Boolean) {
+        privateInput = active
+        keyboardSurface.swipeEnabled = !active
+        if (active) { keyboardSurface.cancelActiveGesture(); clearSuggestions() }
+    }
+
     fun clearSuggestions() {
         pendingSuggestionUpdate = null
         suggestionModel = SuggestionBarModel.from(emptyList())
@@ -978,6 +992,8 @@ class KeyboardRootView(
     }
 
     fun showKeyboard() {
+        if (voicePanelOpen) { voicePanelOpen = false; callbacks?.onVoiceCancel() }
+        setSensitivePanel(false)
         clipboardEditor = null
         clipboardPanel = null
         dismissAlternatives()
@@ -1701,53 +1717,125 @@ class KeyboardRootView(
 
     private var voiceStatus: TextView? = null
     private var voiceTranscript: TextView? = null
+    private var voiceLevel: VoiceLevelView? = null
+    private var voiceRecordButton: Button? = null
 
-    fun showVoicePanel() {
+    fun showVoicePanel(commandMode: Boolean = false) {
+        val panelBudget = clipboardHeight()
+        val budgetDp = panelBudget / density
+        fun portion(cap: Int, ratio: Float) = minOf(dp(cap), (panelBudget * ratio).toInt()).coerceAtLeast(1)
         val panel = LinearLayout(context).apply {
             orientation = VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(12), dp(5), dp(12), dp(5))
             setBackgroundColor(theme.background)
+            filterTouchesWhenObscured = true
+            if (android.os.Build.VERSION.SDK_INT >= 34) setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
         }
+        panel.addView(TextView(context).apply {
+            text = (if (commandMode) "Sprachbefehle" else "Diktat") + " · " + layoutProfile.languageTag.uppercase()
+            textSize = minOf(17f, budgetDp * 0.08f).coerceAtLeast(11f)
+            includeFontPadding = false; setTextColor(theme.textPrimary); typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }, LayoutParams(LayoutParams.MATCH_PARENT, portion(25, 0.13f)))
         voiceStatus = TextView(context).apply {
-            text = "Diktat · ${layoutProfile.languageTag.uppercase()}"
-            textSize = 17f; setTextColor(theme.accent)
-        }.also { panel.addView(it) }
-        voiceTranscript = TextView(context).apply {
-            text = "Sprich deinen Text. Teilresultate erscheinen hier."
-            textSize = 17f; setTextColor(theme.textPrimary)
-            setPadding(0, dp(8), 0, dp(8)); minLines = 3
-        }.also { panel.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, dp(105))) }
-        val actions = LinearLayout(context)
-        fun action(label: String, block: () -> Unit) {
-            actions.addView(compactKey(label, block), LayoutParams(0, dp(44), 1f))
+            text = if (Prefs.networkSpeechAllowed(context)) "Lokale Erkennung bevorzugt · Systemdienst erlaubt" else "Lokale Spracherkennung"
+            textSize = 12f; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+            includeFontPadding = false; setTextColor(theme.textSecondary)
+        }.also { panel.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, portion(32, 0.16f))) }
+        voiceLevel = VoiceLevelView(context, theme).also {
+            panel.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, portion(46, 0.23f)))
         }
-        action("Aufnahme / Stopp") { callbacks?.onVoice() }
-        action("Abbrechen") { callbacks?.onVoiceCancel(); showKeyboard() }
+        voiceTranscript = TextView(context).apply {
+            text = "Sprich deinen Text …"
+            textSize = 17f; setTextColor(theme.textPrimary); setPadding(0, dp(4), 0, dp(4))
+        }.also { transcript ->
+            panel.addView(ScrollView(context).apply { addView(transcript); isFillViewport = true },
+                LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        val actions = LinearLayout(context)
+        voiceRecordButton = compactKey("Aufnehmen") {
+            if (commandMode) callbacks?.onVoiceCommand() else callbacks?.onVoice()
+        }.also { actions.addView(it, LayoutParams(0, portion(38, 0.23f), 1.5f)) }
+        actions.addView(compactKey("Zur Tastatur") { callbacks?.onVoiceCancel(); showKeyboard() },
+            LayoutParams(0, portion(38, 0.23f), 1.5f))
+        val more = compactKey("⋮") {}
+        more.setOnClickListener {
+            android.widget.PopupMenu(context, more).apply {
+                menu.add("Text vorlesen").setOnMenuItemClickListener { callbacks?.onSpeak(); true }
+                menu.add("Vorlesen stoppen").setOnMenuItemClickListener { callbacks?.onStopSpeaking(); true }
+                show()
+            }
+        }
+        actions.addView(more, LayoutParams(0, portion(38, 0.23f), 0.5f))
         panel.addView(actions)
-        val speech = LinearLayout(context)
-        speech.addView(compactKey("Text vorlesen") { callbacks?.onSpeak() }, LayoutParams(0, dp(44), 1f))
-        speech.addView(compactKey("Vorlesen stoppen") { callbacks?.onStopSpeaking() }, LayoutParams(0, dp(44), 1f))
-        panel.addView(speech)
         StylusUi.usePointerInput(panel)
-        swapContent(panel)
+        swapContent(panel, panelBudget, sensitive = true)
+        toolbarView.visibility = GONE
+        predictionRowView.visibility = GONE
+        voicePanelOpen = true
     }
 
-    fun updateVoicePanel(status: String? = null, transcript: String? = null) {
+    fun updateVoicePanel(status: String? = null, transcript: String? = null, phase: VoicePhase? = null, level: Float? = null) {
         status?.let { voiceStatus?.text = it }
         transcript?.let { voiceTranscript?.text = it }
+        level?.let { voiceLevel?.setLevel(it) }
+        phase?.let {
+            voiceLevel?.setPhase(it)
+            voiceRecordButton?.text = when (it) {
+                VoicePhase.IDLE -> "Aufnehmen"
+                VoicePhase.STARTING -> "Startet …"
+                VoicePhase.LISTENING -> "Stopp"
+                VoicePhase.PROCESSING -> "Umwandeln …"
+            }
+            voiceRecordButton?.isEnabled = it != VoicePhase.PROCESSING
+        }
     }
 
-    fun showClipboardPanel(items: List<ClipboardEntry>, query: String = "", expiryMinutes: Long = 60L) {
-        clipboardPanel?.let { it.update(items, expiryMinutes); return }
+    fun isClipboardOpen(): Boolean = clipboardPanel != null
+    fun updateClipboardStatus(message: String) { clipboardPanel?.showStatus(message) }
+    private fun setSensitivePanel(active: Boolean) {
+        if (sensitivePanelOpen != active) { sensitivePanelOpen = active; callbacks?.onSensitivePanelChanged(active) }
+    }
+    private fun clipboardHeight(): Int = keyboardContentHeightPx + if (editorMode == KeyboardEditorMode.NUMBER) 0
+        else toolbarView.layoutParams.height + predictionRowView.layoutParams.height
+
+    private fun editClipboardPanel(panel: ClipboardPanelView, editor: EditText?) {
+        detachFromParent(panel)
+        if (editor != null) {
+            panel.setCompactEditorMode(true)
+            handwritingPanelContainer.removeAllViews()
+            handwritingPanelContainer.addView(panel, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+            handwritingPanelContainer.visibility = VISIBLE
+            rebuildKeyboardPanel()
+            attachMainPanel(keyboardPanel)
+            clipboardPanel = panel
+            clipboardEditor = editor
+            setSensitivePanel(true)
+        } else {
+            panel.setCompactEditorMode(false)
+            swapContent(panel, clipboardHeight(), sensitive = true)
+            toolbarView.visibility = GONE
+            predictionRowView.visibility = GONE
+            clipboardPanel = panel
+            clipboardEditor = null
+        }
+        clearSuggestions()
+    }
+
+    fun showClipboardPanel(items: List<ClipboardEntry>, query: String = "", expiryMinutes: Long = 1440L,
+        hasSelection: Boolean = false, message: String? = null) {
+        clipboardPanel?.let { it.update(items, expiryMinutes, hasSelection, message); return }
         showKeyboard()
         val actions = callbacks ?: return
+        var reference: ClipboardPanelView? = null
         val panel = ClipboardPanelView(context, theme, actions,
-            onEditor = { clipboardEditor = it; clearSuggestions() },
+            onEditor = { editor -> reference?.let { editClipboardPanel(it, editor) } },
             onClose = { showKeyboard() })
+        reference = panel
+        swapContent(panel, clipboardHeight(), sensitive = true)
+        toolbarView.visibility = GONE
+        predictionRowView.visibility = GONE
         clipboardPanel = panel
-        handwritingPanelContainer.addView(panel)
-        handwritingPanelContainer.visibility = VISIBLE
-        panel.update(items, expiryMinutes)
+        panel.update(items, expiryMinutes, hasSelection, message)
         clearSuggestions()
     }
 
@@ -1883,8 +1971,11 @@ class KeyboardRootView(
 
     private fun swapContent(
         view: View,
-        heightPx: Int? = null
+        heightPx: Int? = null,
+        sensitive: Boolean = false
     ) {
+        if (voicePanelOpen) { voicePanelOpen = false; callbacks?.onVoiceCancel() }
+        setSensitivePanel(sensitive)
         clipboardEditor = null
         clipboardPanel = null
         dismissAlternatives()
@@ -1905,6 +1996,12 @@ class KeyboardRootView(
 
         if (heightPx == null) content.addView(view)
         else content.addView(view, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, heightPx))
+    }
+
+    override fun onFilterTouchEventForSecurity(event: MotionEvent): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= 29 &&
+            event.flags and MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED != 0) return false
+        return super.onFilterTouchEventForSecurity(event)
     }
 
     private fun themeAuxiliaryTree(

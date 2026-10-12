@@ -83,9 +83,10 @@ import cloud.kosch.keyswiper.voice.VoiceEditCommandParser
 import cloud.kosch.keyswiper.voice.VoiceInputController
 import java.time.Duration
 import java.util.Locale
+import java.util.concurrent.Executors
 
 class KeySwiperImeService : InputMethodService() {
-    private var inputSession = 0L
+    @Volatile private var inputSession = 0L
     private var editorAnchor: CursorAnchorInfo? = null
     private var automaticSpace: AutomaticSpace? = null
     private val heldDeletion = StringBuilder()
@@ -120,12 +121,19 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var neuralModelManager: NeuralModelManager
     private var neuralPredictionBackend: NeuralPredictionBackend? = null
 
+    private val clipboardExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var clipboardCaptureAllowed = false
+    @Volatile private var destroyed = false
+    private var protectedPanelOpen = false
     private val clipboardControllerDelegate =
-        lazy(LazyThreadSafetyMode.NONE) {
-            ClipboardController(this).also {
+        lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+            ClipboardController(this, eventExecutor = clipboardExecutor,
+                onChanged = { mainHandler.post { if (!destroyed && root?.isClipboardOpen() == true && !sensitiveField) clipboardTask() } },
+                onStorageError = { mainHandler.post { root?.updateClipboardStatus("Speichern fehlgeschlagen. Bitte erneut versuchen.") } }).also {
                 it.setDefaultExpiryMinutes(
                     Prefs.clipboardExpiryMinutes(this)
                 )
+                it.setCaptureAllowed(clipboardCaptureAllowed)
                 it.start()
             }
         }
@@ -143,7 +151,7 @@ class KeySwiperImeService : InputMethodService() {
     private lateinit var stylusActionStore: StylusActionStore
 
     private var root: KeyboardRootView? = null
-    private var sensitiveField = false
+    @Volatile private var sensitiveField = false
     private var languageHints: List<String> = emptyList()
     private var languageDetectionGeneration = 0L
     private var predictionInputMode = PredictionInputMode.GENERAL
@@ -564,6 +572,15 @@ class KeySwiperImeService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        sensitiveField = SecurityPolicy.isSensitive(currentInputEditorInfo) || Prefs.privateMode(this)
+        setClipboardCaptureAllowed(!sensitiveField)
+        if (sensitiveField) {
+            predictionGeneration++
+            root?.clearSuggestions()
+            editTimeline.clear()
+            if (voiceControllerDelegate.isInitialized()) voiceControllerDelegate.value.cancel()
+        }
+        refreshPrivacyState()
         styleImeSystemBars()
     }
 
@@ -576,7 +593,8 @@ class KeySwiperImeService : InputMethodService() {
         editorAnchor = null
         automaticSpace = null
         heldDeletion.setLength(0)
-        sensitiveField = SecurityPolicy.isSensitive(attribute)
+        sensitiveField = SecurityPolicy.isSensitive(attribute) || Prefs.privateMode(this)
+        setClipboardCaptureAllowed(false)
         predictionInputMode = PredictionContextClassifier.classify(attribute)
         languageHints = emptyList()
         languageDetectionGeneration++
@@ -591,7 +609,8 @@ class KeySwiperImeService : InputMethodService() {
         super.onStartInputView(info, restarting)
         currentInputConnection?.requestCursorUpdates(android.view.inputmethod.InputConnection.CURSOR_UPDATE_MONITOR)
         styleImeSystemBars()
-        sensitiveField = SecurityPolicy.isSensitive(info)
+        sensitiveField = SecurityPolicy.isSensitive(info) || Prefs.privateMode(this)
+        setClipboardCaptureAllowed(!sensitiveField)
         predictionInputMode =
             PredictionContextClassifier.classify(
                 info
@@ -662,6 +681,7 @@ class KeySwiperImeService : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        setClipboardCaptureAllowed(false)
         root?.cancelActiveGestures()
         cursorGestureActive = false
         if (voiceControllerDelegate.isInitialized()) voiceControllerDelegate.value.cancel()
@@ -701,6 +721,9 @@ class KeySwiperImeService : InputMethodService() {
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onDestroy() {
+        destroyed = true
+        inputSession++
+        setClipboardCaptureAllowed(false)
         predictionGeneration++
         stylusClickInterpreter.clear()
         mainHandler.removeCallbacksAndMessages(null)
@@ -709,9 +732,8 @@ class KeySwiperImeService : InputMethodService() {
         )
         neuralPredictionBackend = null
 
-        if (clipboardControllerDelegate.isInitialized()) {
-            clipboardControllerDelegate.value.stop()
-        }
+        if (clipboardControllerDelegate.isInitialized()) clipboardExecutor.execute { clipboardControllerDelegate.value.stop() }
+        clipboardExecutor.shutdown()
         if (voiceControllerDelegate.isInitialized()) {
             voiceControllerDelegate.value.destroy()
         }
@@ -886,8 +908,8 @@ class KeySwiperImeService : InputMethodService() {
             val connection = currentInputConnection ?: return
             automaticSpace = null
             val selected = connection.getSelectedText(0)?.toString().orEmpty()
-            val before = connection.getTextBeforeCursor(8192, 0)?.toString().orEmpty()
-            val unit = if (!KeyboardEditorModeResolver.allowsWordPrediction(currentInputEditorInfo?.inputType ?: 0))
+            val before = connection.getTextBeforeCursor(if (sensitiveField) 64 else 8192, 0)?.toString().orEmpty()
+            val unit = if (sensitiveField || !KeyboardEditorModeResolver.allowsWordPrediction(currentInputEditorInfo?.inputType ?: 0))
                 DeleteUnit.CHARACTER else HoldAcceleration.step(elapsedMs,
                     Prefs.advancedHoldDeleteEnabled(this@KeySwiperImeService)).unit
             val count = HoldAcceleration.deleteLength(before, unit)
@@ -896,7 +918,7 @@ class KeySwiperImeService : InputMethodService() {
             val success = if (selected.isNotEmpty()) connection.commitText("", 1)
                 else connection.deleteSurroundingText(count, 0)
             if (success) {
-                heldDeletion.insert(0, deleted)
+                if (!sensitiveField) heldDeletion.insert(0, deleted)
                 clearSwipeState(); refreshPredictionBar(); updateAutoShift()
             }
         }
@@ -1171,6 +1193,10 @@ class KeySwiperImeService : InputMethodService() {
             val connection = currentInputConnection ?: return
             val language = KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag
             voiceController.toggle(languageTag = language,
+                localOnly = !Prefs.networkSpeechAllowed(this@KeySwiperImeService),
+                biasing = userVocabularyStore.frequentWords(emptyList(), 128).map { it.first }.filter { userVocabularyStore.isExplicit(it) },
+                onPhase = { if (session == inputSession) root?.updateVoicePanel(phase = it) },
+                onLevel = { if (session == inputSession) root?.updateVoicePanel(level = it) },
                 onPartial = { if (session == inputSession) root?.updateVoicePanel(transcript = it) },
                 onState = { if (session == inputSession) root?.updateVoicePanel(status = it) },
                 onFinal = { spoken ->
@@ -1212,23 +1238,31 @@ class KeySwiperImeService : InputMethodService() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 return
             }
-            root?.showVoicePanel()
+            if (voiceController.isListening()) { voiceController.stop(); return }
+            root?.showVoicePanel(commandMode = true)
             root?.updateVoicePanel(status = "Sprachbefehl …")
+            val session = inputSession
 
             voiceController.toggle(
+                localOnly = !Prefs.networkSpeechAllowed(this@KeySwiperImeService),
+                format = false,
+                onState = { if (session == inputSession) root?.updateVoicePanel(status = it) },
+                onPhase = { if (session == inputSession) root?.updateVoicePanel(phase = it) },
+                onLevel = { if (session == inputSession) root?.updateVoicePanel(level = it) },
                 languageTag =
                     KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag,
                 onPartial = {
-                    root?.updateVoicePanel(transcript = it)
+                    if (session == inputSession) root?.updateVoicePanel(transcript = it)
                 },
                 onFinal = { spoken ->
+                    if (session != inputSession || sensitiveField) return@toggle
                     val command =
                         VoiceEditCommandParser
                             .parse(spoken)
 
                     if (command == null) {
                         root?.setStatus(
-                            "Voice command not recognized: " + spoken
+                            "Sprachbefehl nicht erkannt. Bitte erneut versuchen."
                         )
                     } else {
                         executeVoiceEditCommand(
@@ -1346,21 +1380,20 @@ class KeySwiperImeService : InputMethodService() {
         ) {
             if (sensitiveField) return
 
-            val value =
-                clipboardController.textFor(id)
-                    ?: return
-
-            currentInputConnection
-                ?.commitText(
-                    value,
-                    1
-                )
-
-            clearSwipeState()
-            refreshLanguageHints(
-                textBeforeCursor()
-            )
-            refreshPredictionBar()
+            val session = inputSession
+            clipboardExecutor.execute {
+                val result = runCatching { clipboardController.textFor(id) }
+                mainHandler.post {
+                    if (session != inputSession || sensitiveField) return@post
+                    result.onSuccess { value ->
+                        if (value == null) { root?.setStatus("Dieser Eintrag ist bereits abgelaufen."); return@onSuccess }
+                        currentInputConnection?.finishComposingText()
+                        currentInputConnection?.commitText(value, 1)
+                        automaticSpace = null
+                        clearSwipeState(); refreshLanguageHints(textBeforeCursor()); refreshPredictionBar()
+                    }.onFailure { root?.setStatus("Zwischenablage konnte nicht gelesen werden.") }
+                }
+            }
         }
 
         override fun onClipboardSearch(
@@ -1379,10 +1412,21 @@ class KeySwiperImeService : InputMethodService() {
         ) {
             if (sensitiveField) return
 
-            clipboardController
-                .togglePin(id)
+            clipboardTask({ it.togglePin(id) })
+        }
 
-            showClipboardPanel()
+        override fun onClipboardToggleSaved(id: String) {
+            if (!sensitiveField) clipboardTask({ it.toggleSaved(id) })
+        }
+        override fun onClipboardCaptureSelection() {
+            if (sensitiveField) return
+            val selected = currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
+            if (selected.isBlank()) { root?.updateClipboardStatus("Bitte zuerst Text in der App markieren."); return }
+            clipboardTask({ check(it.copySelection(selected)) }, "Auswahl kopiert und verschlüsselt gespeichert")
+        }
+        override fun onSensitivePanelChanged(active: Boolean) {
+            protectedPanelOpen = active
+            updateScreenProtection()
         }
 
         override fun onClipboardDelete(
@@ -1390,43 +1434,33 @@ class KeySwiperImeService : InputMethodService() {
         ) {
             if (sensitiveField) return
 
-            clipboardController
-                .delete(id)
-
-            showClipboardPanel()
+            clipboardTask({ it.delete(id) })
         }
 
         override fun onClipboardDeleteMany(ids: Set<String>) {
             if (sensitiveField) return
-            clipboardController.deleteMany(ids)
-            showClipboardPanel()
+            clipboardTask({ it.deleteMany(ids) })
         }
 
         override fun onClipboardUndoDelete() {
             if (sensitiveField) return
-            clipboardController.undoDelete()
-            showClipboardPanel()
+            clipboardTask({ it.undoDelete() })
         }
 
         override fun onClipboardCopy(id: String) {
             if (sensitiveField) return
-            clipboardController.copy(id)
-            root?.setStatus("In die Zwischenablage kopiert")
+            clipboardTask({ it.copy(id) }, "Kopiert · Systemvorschau geschützt")
         }
 
         override fun onClipboardSave(id: String?, value: String) {
             if (sensitiveField) return
-            clipboardController.save(id, value)
-            showClipboardPanel()
+            clipboardTask({ it.save(id, value) }, "Dauerhaft verschlüsselt gespeichert")
         }
 
         override fun onClipboardClearUnpinned() {
             if (sensitiveField) return
 
-            clipboardController
-                .clearUnpinned()
-
-            showClipboardPanel()
+            clipboardTask({ it.clearUnpinned() })
         }
 
         override fun onClipboardExpiryChanged(
@@ -1438,12 +1472,7 @@ class KeySwiperImeService : InputMethodService() {
                 this@KeySwiperImeService,
                 minutes
             )
-            clipboardController
-                .setDefaultExpiryMinutes(
-                    minutes
-                )
-
-            showClipboardPanel()
+            clipboardTask({ it.setDefaultExpiryMinutes(minutes) })
         }
 
         override fun onEmoji(value: String) {
@@ -2899,16 +2928,43 @@ class KeySwiperImeService : InputMethodService() {
             return
         }
 
-        root?.showClipboardPanel(
-            items =
-                clipboardController.items(),
-            query =
-                clipboardQuery,
-            expiryMinutes =
-                Prefs.clipboardExpiryMinutes(
-                    this
-                )
-        )
+        clipboardTask(open = true)
+    }
+
+    private fun setClipboardCaptureAllowed(allowed: Boolean) {
+        clipboardCaptureAllowed = allowed
+        if (clipboardControllerDelegate.isInitialized()) clipboardControllerDelegate.value.setCaptureAllowed(allowed)
+    }
+
+    private fun clipboardTask(operation: (ClipboardController) -> Unit = {}, success: String? = null, open: Boolean = false) {
+        if (destroyed || sensitiveField) return
+        val session = inputSession
+        val selection = !currentInputConnection?.getSelectedText(0).isNullOrEmpty()
+        if (open && root?.isClipboardOpen() != true) root?.showClipboardPanel(emptyList(),
+            expiryMinutes = Prefs.clipboardExpiryMinutes(this), hasSelection = selection, message = "Verlauf wird geladen …")
+        else root?.updateClipboardStatus("Wird gespeichert …")
+        clipboardExecutor.execute {
+            if (session != inputSession || !clipboardCaptureAllowed) return@execute
+            val result = runCatching {
+                val controller = clipboardController
+                controller.setDefaultExpiryMinutes(Prefs.clipboardExpiryMinutes(this))
+                operation(controller)
+                controller.items()
+            }
+            mainHandler.post {
+                if (session != inputSession || sensitiveField || root?.isClipboardOpen() != true) return@post
+                result.onSuccess { items -> root?.showClipboardPanel(items, clipboardQuery,
+                    Prefs.clipboardExpiryMinutes(this), selection, success) }
+                    .onFailure { error -> root?.updateClipboardStatus(error.message?.takeIf { error is IllegalArgumentException }
+                        ?: "Speicher nicht verfügbar. Vorhandene Dateien werden nicht überschrieben.") }
+            }
+        }
+    }
+
+    private fun updateScreenProtection() {
+        val target = window?.window ?: return
+        if (sensitiveField || protectedPanelOpen && Prefs.securePanels(this)) target.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else target.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     private fun styleImeSystemBars() {
@@ -3077,6 +3133,8 @@ class KeySwiperImeService : InputMethodService() {
     }
 
     private fun refreshPrivacyState() {
+        root?.setPrivateInput(sensitiveField)
+        updateScreenProtection()
         if (sensitiveField) {
             root?.setStatus(
                 "Private field: learning, surrounding context, neural prediction, clipboard, voice and transformations are off."

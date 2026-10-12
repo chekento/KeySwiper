@@ -190,3 +190,14 @@ For each failure capture:
 - Switch between ordinary text, an integer, a signed number, a decimal, a signed decimal, a numeric PIN, phone, date and time fields. Integer/PIN fields must show only 0–9 plus Backspace/Enter; decimal/minus and other separators follow each field's requirements.
 - In numeric mode confirm no alphabet/symbol-page switch, toolbar, word suggestions, swipe words or long-press fractions appear. Enter all ten digits and return to a text field; the normal keyboard must return immediately.
 - Compare ordinary, numeric and expanded-suggestion heights in portrait/landscape against the one-third display budget.
+
+## 0.22 durable clipboard, recording and privacy
+
+- Copy text, choose a retention preset, note its deadline, force-stop/restart KeySwiper and verify the same deadline and content. Reopening/searching/Undo must not extend it. Deleted/expired current system clips must stay absent after restart.
+- Retain more than eighty clips; unexpired items must survive. Pin one item and permanently save another. Clear temporary history, unpin a saved item and restart: both protected items must remain.
+- Inspect History/Pins/Saved and tap a card to paste once. Scroll a long list while new clips arrive: the visible item should stay stable, and a touched card must not change underneath the pointer.
+- Mark a sentence in the focused app, open the clipboard and use copy-selection. Confirm it becomes an encrypted history item and its system preview is marked sensitive.
+- Test clipboard search/snippet editing with finger/pen and spacebar cursor control without modifying the focused application's text.
+- Compare the clipboard and recording panels in portrait/landscape. Verify measured-level animation, elapsed time, live partial text, Stop/final insertion and cancel on return to keyboard.
+- With network recognition disabled, remove/disable the local recognizer/model: no silent system fallback may occur. Explicitly enable system recognition separately. Check local language/formatting support using real audio on physical hardware.
+- Verify private mode and password/PIN fields do not learn, display swipe suggestions, capture clipboard, retain held-deletion history or start dictation. Test screenshot protection and obscured-touch rejection; recognized accessibility tools must remain usable.

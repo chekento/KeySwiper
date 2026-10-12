@@ -17,6 +17,21 @@ More predictable daily typing and an automatic numeric keypad:
 - JVM tests and Android input checks cover safe long deletion, emoji cursor boundaries, numeric field flags, actual digit insertion, spacebar drag/cancel/hold and candidate-update races
 - version 0.22.0-alpha23 / build 23
 
+Clipboard, voice and privacy improvements in the same build:
+
+- replace memory-only temporary clipboard history with atomic AES-256-GCM snapshots in no-backup private storage; keys stay in Android Keystore and legacy pins migrate after a successful encrypted write
+- preserve absolute expiry and copy identity across process restarts; reopening the panel, Undo and an unchanged system clip do not renew retention or resurrect deleted/expired content
+- offer 10 minutes, 1 hour, 1 day, 7 days and 30 days for new clips, with visible remaining time; pins and permanently saved snippets are independent choices
+- preserve unexpired entries instead of evicting at eighty clips; reject new entries at the explicit storage limits rather than silently dropping older content
+- use recycled compact clipboard cards with direct tap-to-paste, pin icons, a small overflow menu and separate History/Pins/Saved tabs; defer updates during touch/scroll and preserve the visible item
+- copy a selected app sentence directly into the encrypted history; KeySwiper-generated system clips are marked sensitive to suppress preview
+- keep clipboard encryption and file work off the typing/UI thread; only report a completed save after the atomic write succeeds
+- prefer strictly local dictation by default; system/network speech fallback needs the explicit setting and does not receive personal bias words
+- request regional language tags, quality formatting and local personal-word biasing where the recognizer supports them; show partial text, measured microphone-level animation, recording timer and processing state
+- cancel recording when leaving its panel; protect clipboard/dictation against screenshots by default, block obscured touches and mark private views sensitive for accessibility
+- add a manual private mode; password/private input also blocks swipe suggestions and stores no held-deletion timeline; offline TTS voices only and explicit cleartext-network denial
+- restrict the debug smoke host to the privileged Android DUMP permission and add native encrypted restart/expiry, tamper, UI and speech-option checks
+
 ## 0.21.0-alpha22 — 2026-10-05
 
 Compact punctuation and stronger local spelling/context suggestions:

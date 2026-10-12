@@ -38,6 +38,7 @@ object InputRegressionChecks {
         WordCommitRegressionChecks.run(context)
         checkShiftAndClipboard(context)
         checkNumericKeypad(context)
+        checkClipboardAndVoiceUi(context)
         val surface = KeyboardSurface(context)
         surface.setLayout(KeyboardLayoutProfiles.byId("en-qwerty"), false)
         layout(surface)
@@ -355,6 +356,72 @@ object InputRegressionChecks {
         Log.i("KeySwiperInputChecks", "PASS: numeric keypad, digits, decimal/sign flags, PIN and text-field restoration")
     }
 
+    private fun checkClipboardAndVoiceUi(context: Context) {
+        val root = KeyboardRootView(context)
+        val inserted = mutableListOf<String>()
+        var voiceCancels = 0
+        root.callbacks = java.lang.reflect.Proxy.newProxyInstance(
+            KeyboardRootView.Callbacks::class.java.classLoader, arrayOf(KeyboardRootView.Callbacks::class.java)
+        ) { _, method, args ->
+            if (method.name == "onClipboardInsert") inserted.add(args!![0] as String)
+            if (method.name == "onVoiceCancel") voiceCancels++
+            null
+        } as KeyboardRootView.Callbacks
+        fun measure() {
+            root.measure(View.MeasureSpec.makeMeasureSpec(context.resources.displayMetrics.widthPixels, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+            check(root.height <= context.resources.displayMetrics.heightPixels / 3 + 1) { "Utility panel exceeded the keyboard height budget" }
+        }
+        fun preview(name: String) {
+            val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(bitmap))
+            java.io.File(context.filesDir, name).outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        val now = System.currentTimeMillis()
+        root.showClipboardPanel(listOf(
+            ClipboardEntry("sample", "Unser Termin am Donnerstag um 14 Uhr bleibt bestehen.", ClipboardCategory.TEXT, now, now + 86_400_000, false),
+            ClipboardEntry("link", "https://kosch.cloud", ClipboardCategory.LINK, now, null, true),
+            ClipboardEntry("saved", "Viele Grüße,\nKoSch", ClipboardCategory.TEXT, now, null, false, true)
+        ), hasSelection = true)
+        measure()
+        check(descendants(root).filterIsInstance<Button>().none { it.text.toString() in listOf("Einfügen", "Kopieren", "Auswahl", "Merken") }) {
+            "Clipboard cards should not be crowded with action rows"
+        }
+        preview("clipboard-preview.png")
+        val cards = descendants(root).filterIsInstance<android.widget.ListView>().single()
+        check(cards.performItemClick(cards.getChildAt(0), 0, cards.adapter.getItemId(0)))
+        check(inserted == listOf("sample") && !root.isClipboardOpen()) { "A clipboard card tap must paste once and return to the keyboard" }
+        root.setPrivateInput(true)
+        root.setSwipeCandidates(listOf("PrivateProbe"))
+        check(descendants(root).filterIsInstance<Button>().none { it.text.toString() == "PrivateProbe" })
+        check(!descendants(root).filterIsInstance<KeyboardSurface>().single().swipeEnabled)
+        val event = MotionEvent.obtain(SystemClock.uptimeMillis(), SystemClock.uptimeMillis(), MotionEvent.ACTION_DOWN, 1,
+            arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }),
+            arrayOf(MotionEvent.PointerCoords().apply { x = 20f; y = 20f; pressure = 1f }),
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, MotionEvent.FLAG_WINDOW_IS_OBSCURED)
+        check(!root.onFilterTouchEventForSecurity(event)) { "Obscured keyboard touches must be rejected" }
+        event.recycle()
+        root.setPrivateInput(false)
+        root.showVoicePanel()
+        root.updateVoicePanel(status = "Lokale Aufnahme · ich höre zu …", transcript = "Wir sehen uns morgen um vierzehn Uhr.",
+            phase = cloud.kosch.keyswiper.voice.VoicePhase.LISTENING, level = 0.8f)
+        measure()
+        preview("voice-preview.png")
+        root.showKeyboard()
+        check(voiceCancels == 1) { "Leaving the recording view must cancel microphone ownership" }
+        val local = cloud.kosch.keyswiper.voice.VoiceRecognitionOptions.intent("de", true, listOf("KoSch"), true)
+        check(local.getBooleanExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE, false))
+        check(local.getStringExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE) == "de-DE")
+        if (Build.VERSION.SDK_INT >= 33) {
+            check(local.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_BIASING_STRINGS) == arrayListOf("KoSch"))
+            val system = cloud.kosch.keyswiper.voice.VoiceRecognitionOptions.intent("de", false, listOf("KoSch"), true)
+            check(!system.hasExtra(android.speech.RecognizerIntent.EXTRA_BIASING_STRINGS)) { "Personal words must not be sent to a system/network recognizer" }
+        }
+        Log.i("KeySwiperInputChecks", "PASS: compact clipboard/voice UI, local speech options and private input guards")
+    }
+
     private fun runCursorAndSuggestionChecks(host: FrameLayout, onComplete: () -> Unit) {
         val root = KeyboardRootView(host.context)
         var spaces = 0
@@ -425,7 +492,7 @@ object InputRegressionChecks {
                     check(root.height == height) { "Expanded suggestions must stay within the keyboard height budget" }
                     host.removeView(root)
                     Log.i("KeySwiperInputChecks", "PASS: spacebar cursor drag/cancel/hold, stable candidate clicks and bounded sentence panel")
-                    onComplete()
+                    ClipboardRegressionChecks.runAsync(host.context, onComplete)
                 }
             }, 700)
         }
