@@ -84,6 +84,7 @@ class KeyboardSurface(
 
     private val cells =
         mutableListOf<Cell>()
+    private var cellRowCount = 3
 
     private val traceChars =
         mutableListOf<Char>()
@@ -238,6 +239,7 @@ class KeyboardSurface(
         if (widthPx <= 0f || heightPx <= 0f) return
 
         val rows = displayRows()
+        cellRowCount = rows.size.coerceAtLeast(1)
         val rowHeight = heightPx / rows.size.coerceAtLeast(1)
         val density = resources.displayMetrics.density
         val horizontalInset = min(1.2f * density, widthPx / 100f)
@@ -808,9 +810,13 @@ class KeyboardSurface(
 
     private fun tokenAt(x: Float, y: Float): String? {
         if (x < 0f || y < 0f || x >= width || y >= height) return null
-        val rowIndex = (y / height * 3).toInt().coerceIn(0, 2)
-        val row = cells.filter { (it.bounds.centerY() / height * 3).toInt() == rowIndex }
-        return row.minByOrNull { kotlin.math.abs(it.bounds.centerX() - x) }?.token
+        val rowIndex = (y / height * cellRowCount).toInt().coerceIn(0, cellRowCount - 1)
+        val row = cells.filter { (it.bounds.centerY() / height * cellRowCount).toInt() == rowIndex }
+        val closest = row.minByOrNull { kotlin.math.abs(it.bounds.centerX() - x) } ?: return null
+        // Empty numeric slots are not touch targets; ordinary key gaps still
+        // belong to the adjacent key, as on the alphabet keyboard.
+        if (numericProfile != null && kotlin.math.abs(closest.bounds.centerX() - x) > width / 8f) return null
+        return closest.token
     }
 
     companion object {

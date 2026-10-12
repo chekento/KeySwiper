@@ -333,7 +333,10 @@ object InputRegressionChecks {
             val bounds = checkNotNull(surface.keyBounds(digit.toString()))
             stroke(surface, MotionEvent.TOOL_TYPE_FINGER, listOf(bounds.centerX() to bounds.centerY(), bounds.centerX() to bounds.centerY()))
         }
-        check(inserted.toString() == "1234567890") { "Integer keypad must insert only the tapped digits" }
+        check(inserted.toString() == "1234567890") { "Integer keypad must insert only the tapped digits, got <$inserted>" }
+        val zero = checkNotNull(surface.keyBounds("0"))
+        stroke(surface, MotionEvent.TOOL_TYPE_FINGER, listOf(0f to zero.centerY(), 0f to zero.centerY()))
+        check(inserted.toString() == "1234567890") { "An empty keypad slot must not insert an adjacent digit" }
         val enter = checkNotNull(surface.keyBounds(NumericKeypadProfile.ENTER))
         stroke(surface, MotionEvent.TOOL_TYPE_STYLUS, listOf(enter.centerX() to enter.centerY(), enter.centerX() to enter.centerY()))
         check(enters == 1)
