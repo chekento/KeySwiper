@@ -12,6 +12,7 @@ object Prefs {
     private const val TARGET_HISTORY = "target_language_history"
     private const val HANDWRITING_LANGUAGE = "handwriting_language"
     private const val AUTO_CORRECT = "auto_correct"
+    private const val ADVANCED_HOLD_DELETE = "advanced_hold_delete"
     private const val SEMANTIC_DEPTH = "semantic_prediction_depth"
     private const val KEYBOARD_LAYOUT = "keyboard_layout"
     private const val CLIPBOARD_EXPIRY_MINUTES = "clipboard_expiry_minutes"
@@ -159,6 +160,13 @@ object Prefs {
 
     fun autoCorrectEnabled(context: Context): Boolean =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(AUTO_CORRECT, true)
+
+    fun advancedHoldDeleteEnabled(context: Context): Boolean =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(ADVANCED_HOLD_DELETE, false)
+
+    fun setAdvancedHoldDeleteEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(ADVANCED_HOLD_DELETE, enabled).apply()
+    }
 
     fun setAutoCorrectEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(AUTO_CORRECT, enabled).apply()

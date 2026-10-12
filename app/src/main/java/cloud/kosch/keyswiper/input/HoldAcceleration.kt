@@ -4,8 +4,9 @@ enum class DeleteUnit { CHARACTER, WORD, WORDS, SENTENCE, PARAGRAPH }
 data class HoldStep(val unit: DeleteUnit, val spaces: Int, val intervalMs: Long)
 
 object HoldAcceleration {
-    fun step(elapsedMs: Long): HoldStep = when {
+    fun step(elapsedMs: Long, advanced: Boolean = false): HoldStep = when {
         elapsedMs < 1500 -> HoldStep(DeleteUnit.CHARACTER, 1, 170)
+        !advanced -> HoldStep(DeleteUnit.WORD, 1, 240)
         elapsedMs < 3500 -> HoldStep(DeleteUnit.WORD, 1, 240)
         elapsedMs < 6000 -> HoldStep(DeleteUnit.WORDS, 2, 200)
         elapsedMs < 9500 -> HoldStep(DeleteUnit.SENTENCE, 4, 240)

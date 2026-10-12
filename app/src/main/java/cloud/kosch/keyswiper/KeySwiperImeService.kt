@@ -48,6 +48,8 @@ import cloud.kosch.keyswiper.input.TextBoundaryUtils
 import cloud.kosch.keyswiper.input.WordCommitter
 import cloud.kosch.keyswiper.input.AutomaticSpace
 import cloud.kosch.keyswiper.input.HoldAcceleration
+import cloud.kosch.keyswiper.input.DeleteUnit
+import cloud.kosch.keyswiper.input.CursorMover
 import cloud.kosch.keyswiper.language.CodeSwitchLanguageResolver
 import cloud.kosch.keyswiper.language.TranslationEngine
 import cloud.kosch.keyswiper.language.UserVocabularyStore
@@ -147,6 +149,7 @@ class KeySwiperImeService : InputMethodService() {
     private var predictionInputMode = PredictionInputMode.GENERAL
     private var predictionGeneration = 0L
     private var currentPredictions: List<PredictionSuggestion> = emptyList()
+    private var cursorGestureActive = false
     private var clipboardQuery: String = ""
 
     private val selectionRefreshRunnable =
@@ -567,6 +570,7 @@ class KeySwiperImeService : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         inputSession++
+        cursorGestureActive = false
         if (voiceControllerDelegate.isInitialized()) voiceControllerDelegate.value.cancel()
         speechOutput.stop()
         editorAnchor = null
@@ -593,11 +597,12 @@ class KeySwiperImeService : InputMethodService() {
                 info
             )
 
+        val inputType = info?.inputType ?: 0
         root?.setEditorMode(
             KeyboardEditorModeResolver
                 .fromInputType(
-                    info?.inputType ?: 0
-                )
+                    inputType
+                ), inputType
         )
         root?.showKeyboard()
         clipboardQuery = ""
@@ -648,7 +653,7 @@ class KeySwiperImeService : InputMethodService() {
             selectionRefreshRunnable
         )
 
-        if (!sensitiveField) {
+        if (!sensitiveField && !cursorGestureActive) {
             mainHandler.postDelayed(
                 selectionRefreshRunnable,
                 90L
@@ -658,6 +663,7 @@ class KeySwiperImeService : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         root?.cancelActiveGestures()
+        cursorGestureActive = false
         if (voiceControllerDelegate.isInitialized()) voiceControllerDelegate.value.cancel()
         speechOutput.stop()
         super.onFinishInputView(finishingInput)
@@ -881,7 +887,10 @@ class KeySwiperImeService : InputMethodService() {
             automaticSpace = null
             val selected = connection.getSelectedText(0)?.toString().orEmpty()
             val before = connection.getTextBeforeCursor(8192, 0)?.toString().orEmpty()
-            val count = HoldAcceleration.deleteLength(before, HoldAcceleration.step(elapsedMs).unit)
+            val unit = if (!KeyboardEditorModeResolver.allowsWordPrediction(currentInputEditorInfo?.inputType ?: 0))
+                DeleteUnit.CHARACTER else HoldAcceleration.step(elapsedMs,
+                    Prefs.advancedHoldDeleteEnabled(this@KeySwiperImeService)).unit
+            val count = HoldAcceleration.deleteLength(before, unit)
             val deleted = if (selected.isNotEmpty()) selected else before.takeLast(count)
             if (deleted.isEmpty()) return
             val success = if (selected.isNotEmpty()) connection.commitText("", 1)
@@ -902,12 +911,18 @@ class KeySwiperImeService : InputMethodService() {
             }
         }
 
-        override fun onSpaceRepeat(elapsedMs: Long) {
-            if (elapsedMs < 600) { onSpace(); return }
+        override fun onCursorGesture(active: Boolean) {
+            cursorGestureActive = active
+            mainHandler.removeCallbacks(selectionRefreshRunnable)
+            if (!active && !sensitiveField) mainHandler.post(selectionRefreshRunnable)
+        }
+
+        override fun onCursorMove(steps: Int) {
             val connection = currentInputConnection ?: return
             automaticSpace = null
-            connection.commitText(" ".repeat(HoldAcceleration.step(elapsedMs).spaces), 1)
-            clearSwipeState(); refreshPredictionBar()
+            pendingAutoCorrection = null
+            clearSwipeState()
+            CursorMover.move(connection, steps, readText = !sensitiveField)
         }
 
         override fun onSpace() {

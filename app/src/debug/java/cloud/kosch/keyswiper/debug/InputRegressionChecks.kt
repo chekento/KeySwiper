@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.text.InputType
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.ui.HoldRepeater
 import cloud.kosch.keyswiper.clipboard.ClipboardEntry
@@ -24,6 +25,9 @@ import cloud.kosch.keyswiper.ui.KeyboardLayoutProfiles
 import cloud.kosch.keyswiper.ui.KeyboardRootView
 import cloud.kosch.keyswiper.ui.KeyboardSurface
 import cloud.kosch.keyswiper.ui.StylusUi
+import cloud.kosch.keyswiper.ui.NumericKeypadProfile
+import cloud.kosch.keyswiper.prediction.PredictionKind
+import cloud.kosch.keyswiper.prediction.PredictionSuggestion
 
 /** Debug-only checks against Android's real MotionEvent/View implementation. */
 object InputRegressionChecks {
@@ -33,6 +37,7 @@ object InputRegressionChecks {
     fun run(context: Context) {
         WordCommitRegressionChecks.run(context)
         checkShiftAndClipboard(context)
+        checkNumericKeypad(context)
         val surface = KeyboardSurface(context)
         surface.setLayout(KeyboardLayoutProfiles.byId("en-qwerty"), false)
         layout(surface)
@@ -291,7 +296,7 @@ object InputRegressionChecks {
             check(clicks == 1 && repeats == 0)
             contactEvent(button, MotionEvent.ACTION_DOWN, listOf(finger))
             button.postDelayed({
-                check(repeats > 0) { "Holding Space must start repeat without opening language selection" }
+                check(repeats > 0) { "Holding a repeat-enabled key must start repetition" }
                 contactEvent(button, MotionEvent.ACTION_UP, listOf(finger))
                 val stopped = repeats
                 contactEvent(button, MotionEvent.ACTION_DOWN, listOf(finger))
@@ -301,8 +306,123 @@ object InputRegressionChecks {
                     root.removeView(button)
                     checkClipboardHistory(root.context)
                     Log.i("KeySwiperInputChecks", "PASS: held key release/cancel and clipboard delete/undo/persistence")
-                    onComplete()
+                    runCursorAndSuggestionChecks(root, onComplete)
                 }, 550)
+            }, 700)
+        }
+    }
+
+    private fun checkNumericKeypad(context: Context) {
+        val root = KeyboardRootView(context)
+        val inserted = StringBuilder()
+        var enters = 0
+        root.callbacks = java.lang.reflect.Proxy.newProxyInstance(
+            KeyboardRootView.Callbacks::class.java.classLoader, arrayOf(KeyboardRootView.Callbacks::class.java)
+        ) { _, method, args ->
+            if (method.name == "onCharacter") inserted.append(args!![0])
+            if (method.name == "onEnter") enters++
+            null
+        } as KeyboardRootView.Callbacks
+        val surface = descendants(root).filterIsInstance<KeyboardSurface>().single()
+        root.setEditorMode(cloud.kosch.keyswiper.ui.KeyboardEditorMode.NUMBER, InputType.TYPE_CLASS_NUMBER)
+        root.showKeyboard()
+        layout(root)
+        check(surface.keyBounds("a") == null && surface.keyBounds(".") == null && surface.keyBounds("-") == null)
+        check(descendants(root).filterIsInstance<Button>().none { it.text.toString() in listOf("?123", "ABC", "Leerzeichen", "😀") })
+        for (digit in "1234567890") {
+            val bounds = checkNotNull(surface.keyBounds(digit.toString()))
+            stroke(surface, MotionEvent.TOOL_TYPE_FINGER, listOf(bounds.centerX() to bounds.centerY(), bounds.centerX() to bounds.centerY()))
+        }
+        check(inserted.toString() == "1234567890") { "Integer keypad must insert only the tapped digits" }
+        val enter = checkNotNull(surface.keyBounds(NumericKeypadProfile.ENTER))
+        stroke(surface, MotionEvent.TOOL_TYPE_STYLUS, listOf(enter.centerX() to enter.centerY(), enter.centerX() to enter.centerY()))
+        check(enters == 1)
+        root.setEditorMode(cloud.kosch.keyswiper.ui.KeyboardEditorMode.NUMBER,
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED)
+        layout(root)
+        check(surface.keyBounds(".") != null && surface.keyBounds("-") != null)
+        root.setEditorMode(cloud.kosch.keyswiper.ui.KeyboardEditorMode.NUMBER,
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        layout(root)
+        check(surface.keyBounds(".") == null && surface.keyBounds("-") == null)
+        root.setEditorMode(cloud.kosch.keyswiper.ui.KeyboardEditorMode.TEXT)
+        root.showKeyboard()
+        layout(root)
+        check(surface.keyBounds("a") != null && surface.keyBounds(NumericKeypadProfile.ENTER) == null)
+        Log.i("KeySwiperInputChecks", "PASS: numeric keypad, digits, decimal/sign flags, PIN and text-field restoration")
+    }
+
+    private fun runCursorAndSuggestionChecks(host: FrameLayout, onComplete: () -> Unit) {
+        val root = KeyboardRootView(host.context)
+        var spaces = 0
+        var cursorSteps = 0
+        val accepted = mutableListOf<String>()
+        root.callbacks = java.lang.reflect.Proxy.newProxyInstance(
+            KeyboardRootView.Callbacks::class.java.classLoader, arrayOf(KeyboardRootView.Callbacks::class.java)
+        ) { _, method, args ->
+            when (method.name) {
+                "onSpace" -> spaces++
+                "onCursorMove" -> cursorSteps += args!![0] as Int
+                "onPrediction" -> accepted.add((args!![0] as PredictionSuggestion).commitText)
+            }
+            null
+        } as KeyboardRootView.Callbacks
+        host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+        root.post {
+            val space = descendants(root).filterIsInstance<Button>().single { it.text.toString() == "Leerzeichen" }
+            val finger = Contact(2, MotionEvent.TOOL_TYPE_FINGER, space.width / 2f, space.height / 2f)
+            val travel = minOf(space.width / 3f, 48f * root.resources.displayMetrics.density)
+            contactEvent(space, MotionEvent.ACTION_DOWN, listOf(finger))
+            contactEvent(space, MotionEvent.ACTION_MOVE, listOf(finger.copy(x = finger.x + travel)))
+            contactEvent(space, MotionEvent.ACTION_UP, listOf(finger.copy(x = finger.x + travel)))
+            check(cursorSteps > 0 && spaces == 0) { "Spacebar drag must move the cursor without inserting a space" }
+            val moved = cursorSteps
+            contactEvent(space, MotionEvent.ACTION_DOWN, listOf(finger))
+            contactEvent(space, MotionEvent.ACTION_CANCEL, listOf(finger))
+            check(cursorSteps == moved && spaces == 0)
+            contactEvent(space, MotionEvent.ACTION_DOWN, listOf(finger))
+            root.postDelayed({
+                check(spaces == 0) { "Stationary holding must not repeat spaces" }
+                contactEvent(space, MotionEvent.ACTION_UP, listOf(finger))
+                check(spaces == 1) { "A stationary spacebar gesture inserts exactly one space on release" }
+
+                val old = PredictionSuggestion("Alt", "Alt", PredictionKind.NEXT_WORD)
+                val phrase = PredictionSuggestion("Ein längerer Satzvorschlag", "Ein längerer Satzvorschlag", PredictionKind.SENTENCE)
+                root.setPredictions(listOf(old, phrase))
+                root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                val word = descendants(root).filterIsInstance<Button>().single { it.text.toString() == "Alt" }
+                val originalWidth = word.width
+                val touch = Contact(0, MotionEvent.TOOL_TYPE_FINGER, word.width / 2f, word.height / 2f)
+                contactEvent(word, MotionEvent.ACTION_DOWN, listOf(touch))
+                root.setPredictions(listOf(PredictionSuggestion("Neu", "Neu", PredictionKind.NEXT_WORD), phrase))
+                check(word.text.toString() == "Alt") { "An incoming prediction must not replace a pressed candidate" }
+                contactEvent(word, MotionEvent.ACTION_UP, listOf(touch))
+                root.post {
+                    check(accepted == listOf("Alt")) { "Touch release must accept the originally pressed word" }
+                    check(word.text.toString() == "Neu" && word.width == originalWidth) { "Deferred suggestions reuse fixed slots" }
+                    root.setEditHistoryState(true, true)
+                    root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                    root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                    check(word.width == originalWidth) { "Undo availability must not shift suggestion widths" }
+                    val height = root.height
+                    descendants(root).filterIsInstance<Button>().single {
+                        it.contentDescription == "Satzvorschläge und weitere Wörter anzeigen"
+                    }.performClick()
+                    check(descendants(root).filterIsInstance<Button>().any { it.text.toString() == phrase.commitText })
+                    root.measure(View.MeasureSpec.makeMeasureSpec(host.width, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                    root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+                    check(root.height == height) { "Expanded suggestions must stay within the keyboard height budget" }
+                    host.removeView(root)
+                    Log.i("KeySwiperInputChecks", "PASS: spacebar cursor drag/cancel/hold, stable candidate clicks and bounded sentence panel")
+                    onComplete()
+                }
             }, 700)
         }
     }

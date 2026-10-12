@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.22.0-alpha23 — 2026-10-12
+
+More predictable daily typing and an automatic numeric keypad:
+
+- horizontal spacebar drags move the cursor without inserting spaces; a stationary tap/hold inserts one space on release, and cancellation inserts nothing
+- cursor movement finishes composition, respects emoji/combining-character boundaries and extracted-text offsets, collapses selections toward the drag and falls back to editor navigation events when text is unavailable
+- clipboard search/snippet cursor gestures stay inside the clipboard editor
+- held Backspace stops at single-word deletion by default; optional advanced deletion of groups, sentences and paragraphs is off by default, with the active deletion unit displayed on the spacebar
+- number/PIN fields always repeat deletion one character at a time
+- three fixed word-suggestion slots replace the scrolling mixed word/sentence strip; the original spelling remains directly selectable and further words/sentences open in a separate bounded panel
+- prediction updates wait while a candidate is being touched, so release accepts the word that was originally pressed; Undo/Redo availability no longer changes slot widths
+- integer and numeric-password fields automatically show only 0–9 plus Backspace/Enter, with no alphabet, symbol-page switch, toolbar or word suggestions
+- decimal point and minus appear only for numeric fields requesting those flags; phone/date/time fields receive their required numeric separators
+- numeric long presses do not expose fractions or unrelated symbol alternatives; changing back to a text field restores the ordinary keyboard
+- JVM tests and Android input checks cover safe long deletion, emoji cursor boundaries, numeric field flags, actual digit insertion, spacebar drag/cancel/hold and candidate-update races
+- version 0.22.0-alpha23 / build 23
+
 ## 0.21.0-alpha22 — 2026-10-05
 
 Compact punctuation and stronger local spelling/context suggestions:

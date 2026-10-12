@@ -29,6 +29,7 @@ class KeyboardSurface(
         fun onBackspace()
         fun onBackspaceRepeat(elapsedMs: Long) { onBackspace() }
         fun onBackspaceHoldEnd() {}
+        fun onEnter() {}
         fun onShift() {}
         fun onSwipe(trace: SwipeTrace)
         fun onStylusPrimaryButton()
@@ -60,12 +61,13 @@ class KeyboardSurface(
     private val backspaceRepeat = HoldRepeater(this, { listener?.onBackspaceRepeat(it) }, { listener?.onBackspaceHoldEnd() })
     private var symbolMode = false
     private var symbolPage = 0
+    private var numericProfile: NumericKeypadProfile? = null
     private var alternativeGesture = false
     private val alternatives = KeyAlternativesPopup(context) { listener?.onText(it) }
     internal val isShowingAlternatives: Boolean get() = alternatives.isShowing
     internal val alternativesBoundsOnScreen: RectF? get() = alternatives.boundsOnScreen
     private val longPress = Runnable {
-        if (gestureActive && !gestureCancelled && !dragging) {
+        if (gestureActive && !gestureCancelled && !dragging && numericProfile == null) {
             val cell = cells.firstOrNull { it.token == downToken }
             val character = cell?.token?.singleOrNull()
             if (cell != null && character != null && alternatives.show(this,
@@ -183,6 +185,7 @@ class KeyboardSurface(
         page: Int = 0
     ) {
         resetGestureState()
+        numericProfile = null
         layoutProfile = profile
         symbolMode = symbols
         symbolPage = page
@@ -204,6 +207,17 @@ class KeyboardSurface(
     fun currentLayoutId(): String =
         layoutProfile.id
 
+    fun setNumericLayout(profile: NumericKeypadProfile) {
+        resetGestureState()
+        numericProfile = profile
+        symbolMode = true
+        shifted = false
+        capsLocked = false
+        theme = KeyboardThemes.byId(Prefs.keyboardThemeId(context))
+        rebuildCells(width.toFloat(), height.toFloat())
+        invalidate()
+    }
+
     override fun onSizeChanged(
         w: Int,
         h: Int,
@@ -217,7 +231,7 @@ class KeyboardSurface(
         )
     }
 
-    private fun displayRows() = KeyboardLayoutProfiles.slots(layoutProfile, symbolMode, symbolPage)
+    private fun displayRows() = numericProfile?.rows ?: KeyboardLayoutProfiles.slots(layoutProfile, symbolMode, symbolPage)
 
     private fun rebuildCells(widthPx: Float, heightPx: Float) {
         cells.clear()
@@ -234,7 +248,7 @@ class KeyboardSurface(
             var left = 0f
             row.forEach { slot ->
                 val right = left + widthPx * slot.weight / total
-                cells.add(Cell(slot.token, RectF(left + horizontalInset,
+                if (slot.token != NumericKeypadProfile.EMPTY) cells.add(Cell(slot.token, RectF(left + horizontalInset,
                     rowIndex * rowHeight + verticalInset, right - horizontalInset,
                     (rowIndex + 1) * rowHeight - verticalInset), slot.token.length > 1))
                 left = right
@@ -329,6 +343,8 @@ class KeyboardSurface(
                     BACKSPACE_TOKEN
                 ) {
                     "⌫"
+                } else if (cell.token == NumericKeypadProfile.ENTER) {
+                    "↵"
                 } else {
                     val char =
                         cell.token
@@ -512,6 +528,8 @@ class KeyboardSurface(
                             if (!backspaceRepeat.repeated) listener?.onBackspace()
                         } else if (token == KeyboardLayoutProfiles.SHIFT) {
                             listener?.onShift()
+                        } else if (token == NumericKeypadProfile.ENTER) {
+                            listener?.onEnter()
                         } else {
                             val character = token.first()
                             listener?.onTap(

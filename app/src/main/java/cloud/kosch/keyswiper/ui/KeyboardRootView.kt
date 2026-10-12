@@ -1,12 +1,14 @@
 package cloud.kosch.keyswiper.ui
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
@@ -20,6 +22,8 @@ import cloud.kosch.keyswiper.input.EditTimelineEntry
 import cloud.kosch.keyswiper.input.SwipeTrace
 import cloud.kosch.keyswiper.input.SwipeDecoder
 import cloud.kosch.keyswiper.input.HoldAcceleration
+import cloud.kosch.keyswiper.input.DeleteUnit
+import cloud.kosch.keyswiper.input.CursorMovement
 import cloud.kosch.keyswiper.prediction.PredictionKind
 import cloud.kosch.keyswiper.prediction.PredictionSuggestion
 import cloud.kosch.keyswiper.settings.Prefs
@@ -34,8 +38,9 @@ class KeyboardRootView(
         fun onBackspace()
         fun onBackspaceRepeat(elapsedMs: Long) {}
         fun onBackspaceHoldEnd() {}
-        fun onSpaceRepeat(elapsedMs: Long) {}
         fun onSpace()
+        fun onCursorMove(steps: Int) {}
+        fun onCursorGesture(active: Boolean) {}
         fun onEnter()
         fun onCandidate(value: String)
         fun onPrediction(
@@ -96,7 +101,10 @@ class KeyboardRootView(
                 override fun onBackspaceRepeat(elapsedMs: Long) = deleteClipboard(target, elapsedMs)
                 override fun onBackspaceHoldEnd() = Unit
                 override fun onSpace() = editClipboard(target, " ")
-                override fun onSpaceRepeat(elapsedMs: Long) = editClipboard(target, " ".repeat(HoldAcceleration.step(elapsedMs).spaces))
+                override fun onCursorMove(steps: Int) {
+                    target.setSelection(CursorMovement.offset(target.text.toString(), target.selectionStart, target.selectionEnd, steps))
+                }
+                override fun onCursorGesture(active: Boolean) = Unit
                 override fun onEnter() { if (target !== panel.searchEditor) editClipboard(target, "\n") }
                 override fun onSwipe(trace: SwipeTrace) {
                     val start = minOf(target.selectionStart, target.selectionEnd).coerceAtLeast(0)
@@ -118,7 +126,8 @@ class KeyboardRootView(
     private fun deleteClipboard(target: EditText, elapsedMs: Long) {
         val start = minOf(target.selectionStart, target.selectionEnd).coerceAtLeast(0)
         val end = maxOf(target.selectionStart, target.selectionEnd).coerceAtLeast(start)
-        val amount = if (start == end) HoldAcceleration.deleteLength(target.text.take(start).toString(), HoldAcceleration.step(elapsedMs).unit) else 0
+        val amount = if (start == end) HoldAcceleration.deleteLength(target.text.take(start).toString(),
+            HoldAcceleration.step(elapsedMs, Prefs.advancedHoldDeleteEnabled(context)).unit) else 0
         target.text.delete(start - amount, end)
         target.setSelection(start - amount)
     }
@@ -141,7 +150,17 @@ class KeyboardRootView(
 
     private lateinit var toolbarView: View
     private lateinit var predictionRowView: LinearLayout
-    private lateinit var suggestionScrollView: HorizontalScrollView
+    private val suggestionButtons = mutableListOf<Button>()
+    private val moreSuggestionsButton = Button(context)
+    private var suggestionModel = SuggestionBarModel.from(emptyList())
+    private var suggestionAction: (PredictionSuggestion) -> Unit = {}
+    private var suggestionInteractions = 0
+    private data class SuggestionUpdate(val values: List<PredictionSuggestion>, val action: (PredictionSuggestion) -> Unit)
+    private var pendingSuggestionUpdate: SuggestionUpdate? = null
+    private var keyboardContentHeightPx = 1
+    private var spaceButton: Button? = null
+    private var spaceController: SpacebarCursorController? = null
+    private var numericProfile: NumericKeypadProfile? = null
 
     private val suggestions =
         LinearLayout(context)
@@ -215,28 +234,45 @@ class KeyboardRootView(
             )
         )
 
-        suggestionScrollView =
-            HorizontalScrollView(context).apply {
-                isHorizontalScrollBarEnabled =
-                    false
-                setBackgroundColor(
-                    theme.surface
-                )
-                addView(
-                    suggestions.apply {
-                        orientation =
-                            HORIZONTAL
-                        gravity =
-                            Gravity.CENTER_VERTICAL
-                        setPadding(
-                            dp(4),
-                            dp(2),
-                            dp(4),
-                            dp(2)
-                        )
+        suggestions.apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(theme.surface)
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
+        repeat(3) { index ->
+            val button = StableSuggestionButton(context, ::onSuggestionInteraction).apply {
+                isAllCaps = false
+                textSize = 16f
+                minWidth = 0; minimumWidth = 0; minHeight = 0; minimumHeight = 0
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(4), 0, dp(4), 0)
+                isEnabled = false
+                setOnClickListener { suggestionModel.words.getOrNull(index)?.let(suggestionAction) }
+                setOnLongClickListener {
+                    suggestionModel.words.getOrNull(index)?.let {
+                        Toast.makeText(context, it.commitText, Toast.LENGTH_LONG).show()
                     }
-                )
+                    true
+                }
             }
+            suggestionButtons.add(button)
+            suggestions.addView(button, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
+                marginStart = dp(2); marginEnd = dp(2)
+            })
+        }
+        moreSuggestionsButton.apply {
+            text = "⌄"
+            textSize = 18f
+            isAllCaps = false
+            minWidth = 0; minimumWidth = 0; minHeight = 0; minimumHeight = 0
+            setPadding(0, 0, 0, 0)
+            visibility = INVISIBLE
+            contentDescription = "Satzvorschläge und weitere Wörter anzeigen"
+            setOnClickListener { showSuggestionPanel() }
+        }
+        suggestions.addView(moreSuggestionsButton, LayoutParams(dp(30), LayoutParams.MATCH_PARENT))
 
         undoButton.apply {
             text = "↶"
@@ -309,7 +345,7 @@ class KeyboardRootView(
         )
 
         predictionRowView.addView(
-            suggestionScrollView,
+            suggestions,
             LayoutParams(
                 0,
                 LayoutParams.MATCH_PARENT,
@@ -365,8 +401,14 @@ class KeyboardRootView(
                         ?.onBackspace()
                 }
 
-                override fun onBackspaceRepeat(elapsedMs: Long) { callbacks?.onBackspaceRepeat(elapsedMs) }
-                override fun onBackspaceHoldEnd() { callbacks?.onBackspaceHoldEnd() }
+                override fun onBackspaceRepeat(elapsedMs: Long) {
+                    val unit = if (editorMode == KeyboardEditorMode.NUMBER) DeleteUnit.CHARACTER
+                        else HoldAcceleration.step(elapsedMs, Prefs.advancedHoldDeleteEnabled(context)).unit
+                    showDeletionUnit(unit)
+                    callbacks?.onBackspaceRepeat(elapsedMs)
+                }
+                override fun onBackspaceHoldEnd() { showDeletionUnit(null); callbacks?.onBackspaceHoldEnd() }
+                override fun onEnter() { callbacks?.onEnter() }
                 override fun onShift() { toggleShift() }
 
                 override fun onStylusPrimaryButton() {
@@ -496,6 +538,9 @@ class KeyboardRootView(
     }
 
     private fun rebuildKeyboardPanel() {
+        spaceController?.cancel()
+        spaceController = null
+        spaceButton = null
         dismissAlternatives()
         shiftButton = null
         keyboardPanel.removeAllViews()
@@ -523,6 +568,9 @@ class KeyboardRootView(
             paddingRight,
             sizing.bottomInsetPx
         )
+        val numeric = editorMode == KeyboardEditorMode.NUMBER
+        toolbarView.visibility = if (numeric) GONE else VISIBLE
+        predictionRowView.visibility = if (numeric) GONE else VISIBLE
         toolbarView.layoutParams =
             toolbarView.layoutParams.apply {
                 height = sizing.toolbarHeightPx
@@ -532,24 +580,23 @@ class KeyboardRootView(
                 height = sizing.predictionHeightPx
             }
 
-        keyboardSurface.setLayout(
-            profile = layoutProfile,
-            symbols = symbolMode,
-            page = symbolPage
-        )
+        if (numeric) keyboardSurface.setNumericLayout(numericProfile ?: NumericKeypadProfile())
+        else keyboardSurface.setLayout(profile = layoutProfile, symbols = symbolMode, page = symbolPage)
         keyboardSurface.shifted =
             shifted && !symbolMode
         keyboardSurface.capsLocked = capsLocked
 
+        keyboardContentHeightPx = if (numeric) sizing.toolbarHeightPx + sizing.predictionHeightPx +
+            sizing.surfaceHeightPx + sizing.bottomRowHeightPx else sizing.surfaceHeightPx + sizing.bottomRowHeightPx
         keyboardPanel.addView(
             keyboardSurface,
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                sizing.surfaceHeightPx
+                if (numeric) keyboardContentHeightPx else sizing.surfaceHeightPx
             )
         )
 
-        keyboardPanel.addView(
+        if (!numeric) keyboardPanel.addView(
             buildBottomRow(),
             LayoutParams(
                 LayoutParams.MATCH_PARENT,
@@ -670,9 +717,15 @@ class KeyboardRootView(
             }
             key("😀", 0.85f) { showEmojiPanel() }.contentDescription = "Emojis und Varianten"
             val space = key("Leerzeichen", 4.2f) { callbacks?.onSpace() }
+            spaceButton = space
             space.textSize = 13f
-            space.contentDescription = "Leerzeichen; halten für beschleunigte Wiederholung"
-            HoldRepeater(space, { elapsed -> callbacks?.onSpaceRepeat(elapsed) }).attach()
+            space.contentDescription = "Leerzeichen; horizontal wischen zum Bewegen des Cursors"
+            spaceController = SpacebarCursorController(space,
+                onMove = { callbacks?.onCursorMove(it) },
+                onGesture = { active ->
+                    space.text = if (active) "↔ Cursor" else "Leerzeichen"
+                    callbacks?.onCursorGesture(active)
+                }).also { it.attach() }
             if (symbolMode || editorMode != KeyboardEditorMode.TEXT) character('.')
         }
         key("↵", 1f) { callbacks?.onEnter() }.contentDescription = "Eingabe"
@@ -680,6 +733,7 @@ class KeyboardRootView(
     }
 
     fun cancelActiveGestures() {
+        spaceController?.cancel()
         keyboardSurface.cancelActiveGesture()
         dismissAlternatives()
     }
@@ -696,9 +750,14 @@ class KeyboardRootView(
     }
 
     fun setEditorMode(
-        mode: KeyboardEditorMode
+        mode: KeyboardEditorMode,
+        inputType: Int = if (mode == KeyboardEditorMode.NUMBER) android.text.InputType.TYPE_CLASS_NUMBER
+            else android.text.InputType.TYPE_CLASS_TEXT
     ) {
+        cancelActiveGestures()
+        clearSuggestions()
         editorMode = mode
+        numericProfile = NumericKeypadProfile.fromInputType(inputType)
         capsLocked = false
         symbolPage = 0
         symbolMode =
@@ -810,44 +869,97 @@ class KeyboardRootView(
         renderSuggestions(values) { callbacks?.onPrediction(it) }
     }
 
-    private fun renderSuggestions(values: List<PredictionSuggestion>, onChoose: (PredictionSuggestion) -> Unit) {
-        if (clipboardPanel != null) { clearSuggestions(); return }
-        suggestions.removeAllViews()
-        suggestionScrollView.scrollTo(0, 0)
-        values.take(6).forEachIndexed { index, suggestion ->
-            val correction = suggestion.kind == PredictionKind.CORRECTION
-            suggestions.addView(Button(context).apply {
-                // Words are readable labels; action/status icons do not belong in their text.
-                text = suggestion.commitText
-                isAllCaps = false
-                val phrase = suggestion.kind == PredictionKind.SENTENCE || suggestion.kind == PredictionKind.NEURAL
-                textSize = if (phrase) 13f else 16f
-                includeFontPadding = !phrase
-                setTextColor(if (correction) theme.accent else theme.textPrimary)
-                typeface = android.graphics.Typeface.create("sans-serif", if (index == 0) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-                background = roundedDrawable(theme.surfaceRaised, theme.keyCornerDp,
-                    if (correction) theme.accent else theme.border)
-                minWidth = dp(80); minimumWidth = 0; minHeight = 0; minimumHeight = 0
-                maxWidth = dp(if (phrase) 280 else 240)
-                maxLines = if (phrase) 2 else 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dp(8), 0, dp(8), 0)
-                contentDescription = when (suggestion.kind) {
-                    PredictionKind.CORRECTION -> "Korrektur: ${suggestion.commitText}"
-                    PredictionKind.KEEP_TYPED -> "Schreibweise behalten: ${suggestion.commitText}"
-                    PredictionKind.SENTENCE, PredictionKind.NEURAL -> "Textvorschlag: ${suggestion.commitText}"
-                    else -> "Wortvorschlag: ${suggestion.commitText}"
-                }
-                setOnClickListener { onChoose(suggestion) }
-                setOnLongClickListener {
-                    Toast.makeText(context, suggestion.commitText, Toast.LENGTH_LONG).show()
-                    true
-                }
-            }, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
-                marginStart = dp(2); marginEnd = dp(2)
-            })
+    private fun showDeletionUnit(unit: DeleteUnit?) {
+        spaceButton?.text = when (unit) {
+            DeleteUnit.CHARACTER -> "Löschen · Zeichen"
+            DeleteUnit.WORD -> "Löschen · Wort"
+            DeleteUnit.WORDS -> "Löschen · 3 Wörter"
+            DeleteUnit.SENTENCE -> "Löschen · Satz"
+            DeleteUnit.PARAGRAPH -> "Löschen · Absatz"
+            null -> "Leerzeichen"
         }
+    }
+
+    private fun onSuggestionInteraction(active: Boolean) {
+        suggestionInteractions = (suggestionInteractions + if (active) 1 else -1).coerceAtLeast(0)
+        if (suggestionInteractions == 0) {
+            val pending = pendingSuggestionUpdate
+            pendingSuggestionUpdate = null
+            pending?.let { renderSuggestions(it.values, it.action) }
+        }
+    }
+
+    private fun renderSuggestions(values: List<PredictionSuggestion>, onChoose: (PredictionSuggestion) -> Unit) {
+        if (clipboardPanel != null || editorMode == KeyboardEditorMode.NUMBER) { clearSuggestions(); return }
+        if (suggestionInteractions > 0) {
+            pendingSuggestionUpdate = SuggestionUpdate(values.toList(), onChoose)
+            return
+        }
+        suggestionModel = SuggestionBarModel.from(values)
+        suggestionAction = onChoose
+        suggestionButtons.forEachIndexed { index, button ->
+            val suggestion = suggestionModel.words.getOrNull(index)
+            val correction = suggestion?.kind == PredictionKind.CORRECTION
+            button.text = suggestion?.commitText.orEmpty()
+            button.isEnabled = suggestion != null
+            button.alpha = if (suggestion == null) 0f else 1f
+            button.setTextColor(if (correction) theme.accent else theme.textPrimary)
+            button.typeface = android.graphics.Typeface.create("sans-serif",
+                if (index == 0) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            button.background = roundedDrawable(theme.surfaceRaised, theme.keyCornerDp,
+                if (correction) theme.accent else theme.border)
+            button.contentDescription = when (suggestion?.kind) {
+                PredictionKind.CORRECTION -> "Korrektur: ${suggestion.commitText}"
+                PredictionKind.KEEP_TYPED -> "Schreibweise behalten: ${suggestion.commitText}"
+                null -> ""
+                else -> "Wortvorschlag: ${suggestion.commitText}"
+            }
+        }
+        moreSuggestionsButton.visibility = if (suggestionModel.hasMore) VISIBLE else INVISIBLE
+        moreSuggestionsButton.isEnabled = suggestionModel.hasMore
+        moreSuggestionsButton.setTextColor(theme.accent)
+        moreSuggestionsButton.background = buttonBackground(subtle = true)
         StylusUi.usePointerInput(suggestions)
+    }
+
+    private fun showSuggestionPanel() {
+        val model = suggestionModel
+        val choose = suggestionAction
+        if (!model.hasMore) return
+        val panel = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+        }
+        val list = LinearLayout(context).apply { orientation = VERTICAL }
+        fun section(title: String, values: List<PredictionSuggestion>) {
+            if (values.isEmpty()) return
+            list.addView(TextView(context).apply {
+                text = title; textSize = 14f
+                setPadding(dp(6), dp(6), dp(6), dp(4))
+            })
+            values.forEach { suggestion ->
+                list.addView(compactKey(suggestion.commitText) {
+                    showKeyboard()
+                    choose(suggestion)
+                }.apply {
+                    textSize = 15f
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    maxLines = 3
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    contentDescription = "$title: ${suggestion.commitText}"
+                    setOnLongClickListener {
+                        Toast.makeText(context, suggestion.commitText, Toast.LENGTH_LONG).show(); true
+                    }
+                }, LayoutParams(LayoutParams.MATCH_PARENT, dp(64)).apply { bottomMargin = dp(3) })
+            }
+        }
+        section("Satzvorschläge", model.phrases)
+        section("Weitere Wörter", model.moreWords)
+        val scroll = ScrollView(context).apply { addView(list) }
+        panel.addView(scroll, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        panel.addView(compactKey("ABC · Zur Tastatur") { showKeyboard() },
+            LayoutParams(LayoutParams.MATCH_PARENT, dp(36)))
+        swapContent(panel, keyboardContentHeightPx)
     }
 
     fun setSwipeCandidates(values: List<String>) {
@@ -857,7 +969,12 @@ class KeyboardRootView(
     }
 
     fun clearSuggestions() {
-        suggestions.removeAllViews()
+        pendingSuggestionUpdate = null
+        suggestionModel = SuggestionBarModel.from(emptyList())
+        suggestionAction = {}
+        suggestionButtons.forEach { it.text = ""; it.isEnabled = false; it.alpha = 0f }
+        moreSuggestionsButton.visibility = INVISIBLE
+        moreSuggestionsButton.isEnabled = false
     }
 
     fun showKeyboard() {
@@ -894,8 +1011,8 @@ class KeyboardRootView(
         canUndo: Boolean,
         canRedo: Boolean
     ) {
-        undoButton.visibility = if (canUndo) VISIBLE else GONE
-        redoButton.visibility = if (canRedo) VISIBLE else GONE
+        undoButton.visibility = if (canUndo) VISIBLE else INVISIBLE
+        redoButton.visibility = if (canRedo) VISIBLE else INVISIBLE
         undoButton.isEnabled =
             canUndo
         redoButton.isEnabled =
@@ -1322,7 +1439,7 @@ class KeyboardRootView(
     private fun applyChromeTheme() {
         toolbarView.setBackgroundColor(theme.background)
         predictionRowView.setBackgroundColor(theme.surface)
-        suggestionScrollView.setBackgroundColor(theme.surface)
+        suggestions.setBackgroundColor(theme.surface)
         keyboardPanel.setBackgroundColor(theme.background)
 
         themeAuxiliaryTree(toolbarView)
@@ -1765,7 +1882,8 @@ class KeyboardRootView(
     }
 
     private fun swapContent(
-        view: View
+        view: View,
+        heightPx: Int? = null
     ) {
         clipboardEditor = null
         clipboardPanel = null
@@ -1785,7 +1903,8 @@ class KeyboardRootView(
                 theme.border
             )
 
-        content.addView(view)
+        if (heightPx == null) content.addView(view)
+        else content.addView(view, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, heightPx))
     }
 
     private fun themeAuxiliaryTree(
@@ -1850,6 +1969,37 @@ class KeyboardRootView(
                 ViewGroup
             )
             ?.removeView(view)
+    }
+}
+
+/** Delay refreshed labels until Android has dispatched the original click. */
+@SuppressLint("AppCompatCustomView")
+private class StableSuggestionButton(context: Context, private val onInteraction: (Boolean) -> Unit) : Button(context) {
+    private var interacting = false
+    private var generation = 0
+
+    private fun finishInteraction() {
+        if (interacting) { interacting = false; onInteraction(false) }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            generation++
+            if (!interacting) { interacting = true; onInteraction(true) }
+        }
+        val handled = super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) finishInteraction()
+        else if (event.actionMasked == MotionEvent.ACTION_UP) {
+            val releaseGeneration = generation
+            if (!post { if (generation == releaseGeneration) finishInteraction() }) finishInteraction()
+        }
+        return handled
+    }
+
+    override fun onDetachedFromWindow() {
+        generation++
+        finishInteraction()
+        super.onDetachedFromWindow()
     }
 }
 

@@ -360,6 +360,18 @@ class SettingsActivity : Activity() {
         })
 
         content.addView(TextView(this).apply {
+            text = "Leertaste: tippen für ein Leerzeichen, horizontal wischen zum Bewegen des Cursors. " +
+                "Gedrückt löschen entfernt zuerst Zeichen, danach einzelne Wörter. Die aktuelle Stufe steht auf der Leertaste."
+            textSize = 14f
+            setPadding(0, dp(12), 0, dp(6))
+        })
+        content.addView(android.widget.CheckBox(this).apply {
+            text = "Erweitertes Löschen: auch Wortgruppen, Sätze und Absätze (optional)"
+            isChecked = Prefs.advancedHoldDeleteEnabled(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked -> Prefs.setAdvancedHoldDeleteEnabled(this@SettingsActivity, checked) }
+        })
+
+        content.addView(TextView(this).apply {
             text = "Satzvorschläge: Länge (2–12 Wörter)"
             textSize = 14f
             setPadding(0, dp(18), 0, dp(6))

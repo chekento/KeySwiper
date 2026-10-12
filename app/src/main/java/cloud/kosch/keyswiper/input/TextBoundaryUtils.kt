@@ -4,6 +4,28 @@ import java.text.BreakIterator
 import java.util.Locale
 
 object TextBoundaryUtils {
+    fun firstGraphemeUtf16Length(text: String): Int {
+        if (text.isEmpty()) return 0
+        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+        iterator.setText(text)
+        val standardEnd = iterator.following(0).coerceAtLeast(0)
+        var end = Character.charCount(text.codePointAt(0))
+        fun consumeExtensions() {
+            while (end < text.length && isExtension(text.codePointAt(end))) {
+                end += Character.charCount(text.codePointAt(end))
+            }
+        }
+        consumeExtensions()
+        while (end < text.length && text.codePointAt(end) == 0x200D) {
+            end++
+            if (end < text.length) end += Character.charCount(text.codePointAt(end))
+            consumeExtensions()
+        }
+        if (text.codePointAt(0) in 0x1F1E6..0x1F1FF && end < text.length &&
+            text.codePointAt(end) in 0x1F1E6..0x1F1FF) end += Character.charCount(text.codePointAt(end))
+        return maxOf(end, standardEnd)
+    }
+
     fun lastGraphemeUtf16Length(text: String): Int {
         if (text.isEmpty()) return 0
         val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)

@@ -66,6 +66,13 @@ KeySwiper is an Android Input Method Editor built as an **adaptive multimodal in
 
 ## Current feature set
 
+### Daily typing improvements (0.22)
+
+- **Spacebar cursor control:** swipe horizontally on Space to move the cursor; a stationary tap/hold inserts one space on release. Emoji and combining characters stay intact. Clipboard cursor gestures edit only the clipboard search/snippet field.
+- **Predictable held deletion:** characters, then single words by default. Larger word groups, sentences and paragraphs require the optional advanced deletion setting. The spacebar shows the current deletion unit; number/PIN fields always delete one character per repeat.
+- **Stable suggestions:** three fixed word slots, with original spelling directly selectable. Open `⌄` for sentence suggestions and further words without enlarging the keyboard. Incoming updates wait until an active candidate touch finishes.
+- **Automatic Num-Pad:** integer/PIN fields show only digits plus Backspace/Enter. Decimal point and minus follow the field's Android input flags; phone/date/time fields get the separators they require. No letter keys, symbol pages, toolbar or word predictions appear in numeric mode.
+
 ### 🧪 Runtime smoke coverage
 
 - CI installs the real debug APK on a lean Android 15 AOSP ATD emulator.
@@ -209,8 +216,8 @@ See [Autocorrect Timeline](docs/EDIT_TIMELINE.md).
 
 - punctuation moves an automatic space behind itself, including repeated punctuation
 - manually inserted spacing remains unchanged
-- hold Backspace to accelerate from characters to words, groups, sentences and paragraphs; a held deletion can be undone at its original cursor context
-- hold Space to insert growing groups of spaces; release/cancel stops both keys immediately
+- hold Backspace to delete characters, then single words; groups, sentences and paragraphs are available only through the optional advanced setting; a held deletion can be undone at its original cursor context
+- swipe horizontally on Space to move the cursor; a stationary tap/hold inserts one space, and cancellation inserts nothing
 - suggestions consider the word on both sides of the cursor and the following word; accepting a correction replaces the full token
 - personal words retain their stored spelling, including internal capitals
 
