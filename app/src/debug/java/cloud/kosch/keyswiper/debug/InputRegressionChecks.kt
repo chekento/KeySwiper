@@ -359,11 +359,13 @@ object InputRegressionChecks {
     private fun checkClipboardAndVoiceUi(context: Context) {
         val root = KeyboardRootView(context)
         val inserted = mutableListOf<String>()
+        val saveResults = mutableListOf<(Boolean) -> Unit>()
         var voiceCancels = 0
         root.callbacks = java.lang.reflect.Proxy.newProxyInstance(
             KeyboardRootView.Callbacks::class.java.classLoader, arrayOf(KeyboardRootView.Callbacks::class.java)
         ) { _, method, args ->
             if (method.name == "onClipboardInsert") inserted.add(args!![0] as String)
+            if (method.name == "onClipboardSave") saveResults.add(root.clipboardSaveCompletion())
             if (method.name == "onVoiceCancel") voiceCancels++
             null
         } as KeyboardRootView.Callbacks
@@ -393,6 +395,25 @@ object InputRegressionChecks {
         val cards = descendants(root).filterIsInstance<android.widget.ListView>().single()
         check(cards.performItemClick(cards.getChildAt(0), 0, cards.adapter.getItemId(0)))
         check(inserted == listOf("sample") && !root.isClipboardOpen()) { "A clipboard card tap must paste once and return to the keyboard" }
+        root.showClipboardPanel(emptyList())
+        val panel = descendants(root).filterIsInstance<cloud.kosch.keyswiper.ui.ClipboardPanelView>().single()
+        panel.javaClass.getDeclaredMethod("edit", ClipboardEntry::class.java).apply { isAccessible = true }.invoke(panel, null)
+        val editor = descendants(root).filterIsInstance<EditText>().single { it.hint?.toString() == "Textbaustein" }
+        editor.setText("Mein gespeicherter Satz")
+        val save = descendants(root).filterIsInstance<Button>().single { it.text.toString() == "Speichern" }
+        save.performClick()
+        check(!save.isEnabled && saveResults.size == 1)
+        saveResults.first().invoke(false)
+        check(save.isEnabled && editor.isEnabled && editor.text.toString() == "Mein gespeicherter Satz") {
+            "A failed durable save must preserve the editable text for retry"
+        }
+        save.performClick()
+        check(saveResults.size == 2)
+        saveResults.first().invoke(true)
+        check(!save.isEnabled) { "An old save result must not complete a newer attempt" }
+        saveResults.last().invoke(true)
+        check(save.isEnabled && editor.parent?.let { (it as View).visibility } == View.GONE)
+        root.showKeyboard()
         root.setPrivateInput(true)
         root.setSwipeCandidates(listOf("PrivateProbe"))
         check(descendants(root).filterIsInstance<Button>().none { it.text.toString() == "PrivateProbe" })

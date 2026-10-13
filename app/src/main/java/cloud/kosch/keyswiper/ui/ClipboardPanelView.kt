@@ -2,6 +2,8 @@ package cloud.kosch.keyswiper.ui
 
 import android.content.Context
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
 import android.os.Build
 import android.text.Editable
 import android.text.TextWatcher
@@ -35,6 +37,8 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
     private val copySelection: Button
     private var expiry = 1440L
     private var editing = false
+    private var saving = false
+    private var saveGeneration = 0
     private var touching = false
     private var scrolling = false
     private var pendingRender = false
@@ -43,7 +47,8 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
     private val expiryRefresh = Runnable { render() }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     private fun background(color: Int, accent: Boolean = false) = GradientDrawable().apply {
-        setColor(color); cornerRadius = dp(14).toFloat(); setStroke(dp(1), if (accent) theme.accentSoft else theme.border)
+        setColor(color); cornerRadius = dp(10).toFloat()
+        if (accent) setStroke(dp(1), theme.accentSoft)
     }
     private fun button(label: String, description: String = label, action: () -> Unit) = Button(context).apply {
         text = label; contentDescription = description; isAllCaps = false; textSize = 15f
@@ -52,6 +57,10 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         setPadding(dp(4), 0, dp(4), 0); background = background(theme.surfaceRaised)
         if (Build.VERSION.SDK_INT >= 26) tooltipText = description
         setOnClickListener { action() }
+    }
+    private fun icon(label: String, description: String, action: () -> Unit) = button(label, description, action).apply {
+        textSize = 18f
+        background = RippleDrawable(ColorStateList.valueOf(theme.keyPressed), null, background(android.graphics.Color.WHITE))
     }
     private data class Card(val container: View, val row: LinearLayout, val text: TextView, val detail: TextView,
         val pin: Button, val options: Button, var entry: ClipboardEntry? = null)
@@ -78,15 +87,15 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         filterTouchesWhenObscured = true
         if (Build.VERSION.SDK_INT >= 34) setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
         val header = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-        title.apply { text = "Zwischenablage"; textSize = 16f; setTextColor(theme.textPrimary); typeface = android.graphics.Typeface.DEFAULT_BOLD }
+        title.apply { text = "Zwischenablage"; textSize = 15f; setTextColor(theme.textPrimary); typeface = android.graphics.Typeface.DEFAULT_BOLD }
         header.addView(title, LayoutParams(0, dp(36), 1f))
-        copySelection = button("⧉", "Markierten Text kopieren und hinzufügen") { actions.onClipboardCaptureSelection() }
+        copySelection = icon("⧉", "Markierten Text kopieren und hinzufügen") { actions.onClipboardCaptureSelection() }
         header.addView(copySelection, LayoutParams(dp(34), dp(34)))
-        header.addView(button("⌕", "Zwischenablage durchsuchen") {
+        header.addView(icon("⌕", "Zwischenablage durchsuchen") {
             if (search.visibility == VISIBLE && !editing) { search.visibility = GONE; onEditor(null); render() }
-            else { editing = false; form.visibility = GONE; search.visibility = VISIBLE; search.requestFocus(); onEditor(search); render() }
+            else { finishEditing(); search.visibility = VISIBLE; search.requestFocus(); onEditor(search); render() }
         }, LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) })
-        val more = button("⋮", "Weitere Zwischenablage-Aktionen") {}
+        val more = icon("⋮", "Weitere Zwischenablage-Aktionen") {}
         more.setOnClickListener {
             PopupMenu(context, more).apply {
                 menu.add("Neuer Textbaustein").setOnMenuItemClickListener { edit(null); true }
@@ -100,7 +109,7 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
             }
         }
         header.addView(more, LayoutParams(dp(32), dp(34)).apply { marginStart = dp(3) })
-        header.addView(button("×", "Zwischenablage schließen", onClose), LayoutParams(dp(32), dp(34)).apply { marginStart = dp(3) })
+        header.addView(icon("×", "Zwischenablage schließen", onClose), LayoutParams(dp(32), dp(34)).apply { marginStart = dp(3) })
         addView(header)
         listOf("Verlauf", "Pins", "Gespeichert").forEach { name ->
             filters.addView(button(name) { finishEditing(); filter = name; render() }.apply { textSize = 12f },
@@ -143,17 +152,17 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         StylusUi.usePointerInput(this)
     }
     private fun createCard(): Card {
-        val container = FrameLayout(context).apply { setPadding(0, dp(5), 0, 0) }
+        val container = FrameLayout(context).apply { setPadding(0, dp(4), 0, 0) }
         val row = LinearLayout(context).apply {
-            gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(7), dp(4), dp(7)); minimumHeight = dp(62)
+            gravity = Gravity.CENTER_VERTICAL; setPadding(dp(9), dp(6), dp(3), dp(6)); minimumHeight = dp(52)
         }
         val preview = LinearLayout(context).apply { orientation = VERTICAL }
-        val text = TextView(context).apply { textSize = 15f; maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setTextColor(theme.textPrimary) }
+        val text = TextView(context).apply { textSize = 14f; maxLines = 2; ellipsize = TextUtils.TruncateAt.END; setTextColor(theme.textPrimary) }
         val detail = TextView(context).apply { textSize = 10f; setTextColor(theme.textSecondary); setPadding(0, dp(3), 0, 0) }
         preview.addView(text); preview.addView(detail); row.addView(preview, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        val pin = button("◇", "Eintrag anpinnen") {}.apply { isFocusable = false }
-        val options = button("⋮", "Aktionen für diesen Text") {}.apply { isFocusable = false }
-        row.addView(pin, LayoutParams(dp(30), dp(40))); row.addView(options, LayoutParams(dp(26), dp(40)))
+        val pin = icon("◇", "Eintrag anpinnen") {}.apply { isFocusable = false; textSize = 15f }
+        val options = icon("⋮", "Aktionen für diesen Text") {}.apply { isFocusable = false }
+        row.addView(pin, LayoutParams(dp(32), dp(40))); row.addView(options, LayoutParams(dp(30), dp(40)))
         container.addView(row, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         val holder = Card(container, row, text, detail, pin, options)
         container.tag = holder
@@ -176,10 +185,28 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
     fun update(items: List<ClipboardEntry>, minutes: Long, hasSelection: Boolean = false, message: String? = null) {
         entries = items; expiry = minutes
         copySelection.visibility = if (hasSelection) VISIBLE else GONE
-        status.text = message ?: "Lokal verschlüsselt · antippen zum Einfügen"
+        status.text = message.orEmpty()
+        status.visibility = if (message.isNullOrBlank()) GONE else VISIBLE
         if (!editing) render()
     }
-    fun showStatus(message: String) { status.text = message }
+    fun showStatus(message: String) { status.text = message; status.visibility = VISIBLE }
+    fun saveCompletion(): (Boolean) -> Unit {
+        val generation = saveGeneration
+        return { success -> if (generation == saveGeneration) completeSave(success) }
+    }
+    private fun completeSave(success: Boolean) {
+        if (!saving) return
+        saving = false
+        enableForm(true)
+        if (success) finishEditing()
+    }
+    private fun enableForm(enabled: Boolean) {
+        fun update(view: View) {
+            view.isEnabled = enabled
+            if (view is ViewGroup) for (index in 0 until view.childCount) update(view.getChildAt(index))
+        }
+        update(form)
+    }
     fun setCompactEditorMode(active: Boolean) {
         filters.visibility = if (active) GONE else VISIBLE
         body.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, if (active) dp(92) else 0, if (active) 0f else 1f)
@@ -189,7 +216,7 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         if (entry.pinned) return "Angepinnt · ohne Ablauf"
         val minutes = (((entry.expiresAtMs ?: now) - now + 59_999) / 60_000).coerceAtLeast(1)
         return when {
-            minutes >= 1440 -> "Noch " + ((minutes + 1439) / 1440) + " Tage"
+            minutes >= 1440 -> ((minutes + 1439) / 1440).let { "Noch $it " + if (it == 1L) "Tag" else "Tage" }
             minutes >= 60 -> "Noch " + ((minutes + 59) / 60) + " Std."
             else -> "Noch " + minutes + " Min."
         }
@@ -221,9 +248,10 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         val next = entries.filter { !it.pinned && !it.saved }.mapNotNull { it.expiresAtMs }.filter { it > now }.minOrNull()
         if (isAttachedToWindow && next != null) postDelayed(expiryRefresh, (next - now + 1).coerceAtMost(60_000))
     }
-    private fun finishEditing() { editing = false; form.visibility = GONE; search.visibility = GONE; onEditor(null); render() }
+    private fun finishEditing() { editing = false; saving = false; saveGeneration++; enableForm(true); form.visibility = GONE; search.visibility = GONE; onEditor(null); render() }
     private fun edit(entry: ClipboardEntry?) {
-        editing = true; form.removeAllViews(); form.visibility = VISIBLE; cards.visibility = GONE; empty.visibility = GONE; search.visibility = GONE
+        saveGeneration++; saving = false; editing = true; form.removeAllViews(); form.isEnabled = true
+        form.visibility = VISIBLE; cards.visibility = GONE; empty.visibility = GONE; search.visibility = GONE
         val editor = EditText(context).apply {
             setText(entry?.text.orEmpty()); setTextColor(theme.textPrimary); textSize = 15f
             hint = "Textbaustein"; setHintTextColor(theme.textSecondary); showSoftInputOnFocus = false
@@ -233,7 +261,7 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         row.addView(button("Speichern") {
             val value = editor.text.toString()
             if (value.isBlank()) showStatus("Bitte Text eingeben.")
-            else { actions.onClipboardSave(entry?.id, value); finishEditing() }
+            else { saveGeneration++; saving = true; enableForm(false); actions.onClipboardSave(entry?.id, value) }
         }, LayoutParams(0, dp(32), 1f))
         row.addView(button("Abbrechen") { finishEditing() }, LayoutParams(0, dp(32), 1f))
         form.addView(row); StylusUi.usePointerInput(form); editor.requestFocus(); onEditor(editor)

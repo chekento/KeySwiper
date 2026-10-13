@@ -1454,7 +1454,7 @@ class KeySwiperImeService : InputMethodService() {
 
         override fun onClipboardSave(id: String?, value: String) {
             if (sensitiveField) return
-            clipboardTask({ it.save(id, value) }, "Dauerhaft verschlüsselt gespeichert")
+            clipboardTask({ it.save(id, value) }, "Dauerhaft verschlüsselt gespeichert", completesSave = true)
         }
 
         override fun onClipboardClearUnpinned() {
@@ -2936,10 +2936,12 @@ class KeySwiperImeService : InputMethodService() {
         if (clipboardControllerDelegate.isInitialized()) clipboardControllerDelegate.value.setCaptureAllowed(allowed)
     }
 
-    private fun clipboardTask(operation: (ClipboardController) -> Unit = {}, success: String? = null, open: Boolean = false) {
+    private fun clipboardTask(operation: (ClipboardController) -> Unit = {}, success: String? = null, open: Boolean = false,
+        completesSave: Boolean = false) {
         if (destroyed || sensitiveField) return
         val session = inputSession
         val selection = !currentInputConnection?.getSelectedText(0).isNullOrEmpty()
+        val finishSave = if (completesSave) root?.clipboardSaveCompletion() else null
         if (open && root?.isClipboardOpen() != true) root?.showClipboardPanel(emptyList(),
             expiryMinutes = Prefs.clipboardExpiryMinutes(this), hasSelection = selection, message = "Verlauf wird geladen …")
         else root?.updateClipboardStatus("Wird gespeichert …")
@@ -2953,10 +2955,14 @@ class KeySwiperImeService : InputMethodService() {
             }
             mainHandler.post {
                 if (session != inputSession || sensitiveField || root?.isClipboardOpen() != true) return@post
-                result.onSuccess { items -> root?.showClipboardPanel(items, clipboardQuery,
-                    Prefs.clipboardExpiryMinutes(this), selection, success) }
-                    .onFailure { error -> root?.updateClipboardStatus(error.message?.takeIf { error is IllegalArgumentException }
-                        ?: "Speicher nicht verfügbar. Vorhandene Dateien werden nicht überschrieben.") }
+                result.onSuccess { items ->
+                    root?.showClipboardPanel(items, clipboardQuery, Prefs.clipboardExpiryMinutes(this), selection, success)
+                    finishSave?.invoke(true)
+                }.onFailure { error ->
+                    root?.updateClipboardStatus(error.message?.takeIf { error is IllegalArgumentException }
+                        ?: "Speicher nicht verfügbar. Vorhandene Dateien werden nicht überschrieben.")
+                    finishSave?.invoke(false)
+                }
             }
         }
     }

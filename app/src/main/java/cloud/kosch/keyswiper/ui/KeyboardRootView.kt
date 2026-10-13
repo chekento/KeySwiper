@@ -1792,6 +1792,11 @@ class KeyboardRootView(
 
     fun isClipboardOpen(): Boolean = clipboardPanel != null
     fun updateClipboardStatus(message: String) { clipboardPanel?.showStatus(message) }
+    fun clipboardSaveCompletion(): (Boolean) -> Unit {
+        val panel = clipboardPanel
+        val complete = panel?.saveCompletion()
+        return { success -> if (clipboardPanel === panel) complete?.invoke(success) }
+    }
     private fun setSensitivePanel(active: Boolean) {
         if (sensitivePanelOpen != active) { sensitivePanelOpen = active; callbacks?.onSensitivePanelChanged(active) }
     }
