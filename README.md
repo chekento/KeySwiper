@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Current build: 0.21.0-alpha22 · Build 22 · Run 51</strong><br>
+  <strong>Current build: 0.22.0-alpha23 · Build 23 · Run 59</strong><br>
   Unit Tests ✓ · Android Lint ✓ · APK Build ✓ · Android 15 IME + Input Checks ✓ · Permanent Release ✓
 </p>
 
@@ -22,7 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/chekento/KeySwiper/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.21.0--alpha22-16A085?style=for-the-badge">
+    <img alt="Latest release" src="https://img.shields.io/badge/Release-0.22.0--alpha23-16A085?style=for-the-badge">
   </a>
   <a href="docs/versions/README.md">
     <img alt="APK archive" src="https://img.shields.io/badge/APK-ARCHIVE-111827?style=for-the-badge">
@@ -40,9 +40,9 @@
   <a href="docs/DEVICE_TEST_PLAN.md">Real-device Test Plan</a>
 </p>
 
-> 🚧 **Experimental alpha — current validated release: 0.21.0-alpha22 / Build 22 / Run 51.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
+> 🚧 **Experimental alpha — current validated release: 0.22.0-alpha23 / Build 23 / Run 59.** CI runs unit tests, an Android 15 emulator smoke test that opens the IME, Android Lint and APK compilation. OEM keyboard switching, touch behavior, swipe feel and stylus hardware still need physical-device checks. Do not rely on alpha builds for secrets such as passwords, recovery phrases or payment data.
 
-**Current APK:** [KeySwiper 0.21.0-alpha22 · build 22 · run 51](https://github.com/chekento/KeySwiper/releases/download/v0.21.0-alpha22-b22-run51/KeySwiper-v0.21.0-alpha22-build22-run51.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/37311280940)
+**Current APK:** [KeySwiper 0.22.0-alpha23 · build 23 · run 59](https://github.com/chekento/KeySwiper/releases/download/v0.22.0-alpha23-b23-run59/KeySwiper-v0.22.0-alpha23-build23-run59.apk) · [Validated CI run](https://github.com/chekento/KeySwiper/actions/runs/38327077196)
 
 ## KeySwiper in action
 

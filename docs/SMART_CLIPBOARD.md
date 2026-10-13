@@ -4,7 +4,7 @@ The clipboard opens as compact, recycled text cards inside the normal one-third-
 
 ## Durable retention
 
-All accepted entries are stored as atomic AES-256-GCM snapshots in the application's no-backup directory. The encryption key lives in Android Keystore. Encryption and file operations run on a dedicated worker; a successful save is displayed after the atomic write finishes. Storage failures preserve the prior snapshot rather than falling back to plaintext.
+All accepted entries are stored as atomic AES-256-GCM snapshots in the application's no-backup directory. The encryption key lives in Android Keystore. Encryption and file operations run on a dedicated worker; a successful save is displayed after the atomic write finishes. Storage failures preserve the prior snapshot rather than falling back to plaintext. A failed snippet save keeps the draft editable for retry; late results from an older attempt cannot close a newer editor.
 
 New temporary copies can retain 10 minutes, 1 hour, 1 day, 7 days or 30 days. The default for new installations is one day. Each card shows its own remaining time. Changing the default applies to new copies; it does not silently change existing deadlines.
 
