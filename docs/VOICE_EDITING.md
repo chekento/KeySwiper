@@ -1,5 +1,13 @@
 # Voice Editing
 
+## 0.22 dictation and privacy
+
+The recording panel now includes a measured microphone-level envelope, elapsed recording time, live partial transcript and a separate processing state. Returning to the keyboard cancels microphone ownership. The panel fits the normal keyboard height budget and is screenshot-protected by default.
+
+Dictation uses strict on-device recognition by default. Settings can explicitly allow the Android system recognizer, which may use network services. Regional language tags and quality formatting are requested where supported; explicit personal vocabulary is provided only to a local backend, and device-context biasing is disabled. Recognition accuracy and available languages remain dependent on the installed Android recognizer and its models.
+
+Command mode requests unformatted speech and retains session checks. Unknown commands do not insert their raw text. KeySwiper does not save audio buffers; offline Android voices are used for reading text aloud.
+
 KeySwiper 0.13 separates ordinary dictation from deterministic voice commands.
 
 ## Controls

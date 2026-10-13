@@ -1,57 +1,23 @@
-# Smart Clipboard
+# Smart Clipboard 0.22
 
-KeySwiper 0.12 turns the clipboard panel into a local structured workspace rather than a flat list.
+The clipboard opens as compact, recycled text cards inside the normal one-third-height keyboard budget. Tap a card to paste once. A pin is directly accessible; Copy, Save permanently, Edit and Delete are in its overflow menu. History, Pins and Saved are separate views. Search and editing temporarily expose the letter keys and route typing/cursor gestures to the local clipboard editor.
 
-## Categories
+## Durable retention
 
-Captured text is classified locally as:
+All accepted entries are stored as atomic AES-256-GCM snapshots in the application's no-backup directory. The encryption key lives in Android Keystore. Encryption and file operations run on a dedicated worker; a successful save is displayed after the atomic write finishes. Storage failures preserve the prior snapshot rather than falling back to plaintext.
 
-- Link
-- Email
-- Phone
-- Address
-- Code
-- Text
+New temporary copies can retain 10 minutes, 1 hour, 1 day, 7 days or 30 days. The default for new installations is one day. Each card shows its own remaining time. Changing the default applies to new copies; it does not silently change existing deadlines.
 
-Classification is deterministic and does not call an online service.
+Absolute expiry and the system-copy identity survive process restarts. Opening/searching the panel and Undo do not renew expiry. A system clip that was deleted or expired cannot return merely because Android still holds the same copy. The Android copy timestamp is used when available.
 
-## Search
+Pins have no expiry. Permanently saved snippets have no expiry independently of pinning; unpinning a saved snippet does not remove its saved status. Clear temporary history preserves both categories.
 
-The clipboard panel contains a search field.
+History supports up to 2,000 entries and 12,000 characters per entry, with a 64 MiB encrypted-snapshot limit. At capacity, new content is rejected with a storage message instead of evicting unexpired older content. Legacy pinned entries migrate only after a successful encrypted write.
 
-Search matches:
+## Selected text and privacy
 
-- the clipboard text;
-- the category label.
+When the focused app has selected text, the header's copy-selection action adds it to encrypted history and also copies it to Android. KeySwiper-generated system clips are marked sensitive to suppress system preview. Clips already marked sensitive by their source are excluded from automatic capture.
 
-## Pinning
+Automatic capture is enabled only during ordinary keyboard sessions. Password fields, no-personalized-learning fields and the manual private mode block capture and history access. No cloud clipboard synchronization is implemented.
 
-Temporary clipboard history remains memory-only.
-
-Only entries the user explicitly pins are persisted in KeySwiper private app storage. Pinned text is encoded for storage and remains local to KeySwiper.
-
-Unpinning an item returns it to normal expiry behavior.
-
-## Expiry
-
-Unpinned clipboard items use one of three quick expiry presets:
-
-- 10 minutes
-- 1 hour
-- 1 day
-
-The selected default is stored locally and applies to newly captured unpinned clipboard text.
-
-## Delete and clear
-
-Delete removes one chosen item.
-
-Clear removes all unpinned clipboard items while retaining explicitly pinned entries.
-
-## Privacy
-
-The clipboard panel remains disabled for fields treated as sensitive by KeySwiper.
-
-There is no cloud clipboard sync and no clipboard analytics.
-
-Normal history is not persisted. Only explicit pins survive process restarts.
+Native checks verify restart survival, exact deadlines, independent pins/save, more than eighty retained entries, deleted-copy suppression, authenticated tamper rejection and sensitive/private capture.

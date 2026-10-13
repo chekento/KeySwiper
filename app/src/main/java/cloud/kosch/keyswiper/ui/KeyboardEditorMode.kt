@@ -22,7 +22,8 @@ object KeyboardEditorModeResolver {
             typeClass ==
                 InputType.TYPE_CLASS_NUMBER ||
             typeClass ==
-                InputType.TYPE_CLASS_PHONE
+                InputType.TYPE_CLASS_PHONE ||
+            typeClass == InputType.TYPE_CLASS_DATETIME
         ) {
             return KeyboardEditorMode.NUMBER
         }
@@ -61,6 +62,7 @@ object KeyboardEditorModeResolver {
         return typeClass !=
             InputType.TYPE_CLASS_NUMBER &&
             typeClass !=
-            InputType.TYPE_CLASS_PHONE
+            InputType.TYPE_CLASS_PHONE &&
+            typeClass != InputType.TYPE_CLASS_DATETIME
     }
 }

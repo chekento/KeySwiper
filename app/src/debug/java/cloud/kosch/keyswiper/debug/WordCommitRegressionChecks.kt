@@ -4,10 +4,13 @@ import android.content.Context
 import android.text.Editable
 import android.util.Log
 import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.ExtractedText
+import android.view.inputmethod.ExtractedTextRequest
 import android.widget.EditText
 import cloud.kosch.keyswiper.input.WordCommitter
 import cloud.kosch.keyswiper.input.AutomaticSpace
 import cloud.kosch.keyswiper.input.PunctuationCommitter
+import cloud.kosch.keyswiper.input.CursorMover
 
 /** Exercises the shared IME insertion path with Android's real editable/cursor. */
 object WordCommitRegressionChecks {
@@ -80,6 +83,37 @@ object WordCommitRegressionChecks {
         }
         check(WordCommitter.commit(refusing, "Hallo", true) == null)
         assertText("Hal")
+
+        val cursorConnection = object : BaseInputConnection(field, true) {
+            override fun getEditable(): Editable = field.editableText
+            override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText = ExtractedText().apply {
+                text = field.text.toString(); startOffset = 0
+                partialStartOffset = -1; partialEndOffset = -1
+                selectionStart = field.selectionStart; selectionEnd = field.selectionEnd
+            }
+        }
+        reset("A👨‍👩‍👧‍👦B", 1)
+        cursorConnection.setComposingRegion(0, 1)
+        check(CursorMover.move(cursorConnection, 1))
+        assertText("A👨‍👩‍👧‍👦B", "A👨‍👩‍👧‍👦".length)
+        check(BaseInputConnection.getComposingSpanStart(field.text) == -1)
+        check(CursorMover.move(cursorConnection, -1))
+        assertText("A👨‍👩‍👧‍👦B", 1)
+        reset("abcdef", 2, 5)
+        check(CursorMover.move(cursorConnection, -1))
+        assertText("abcdef", 2)
+        val partialConnection = object : BaseInputConnection(field, true) {
+            override fun getExtractedText(request: ExtractedTextRequest?, flags: Int) = ExtractedText().apply {
+                text = "cdef"; startOffset = 2; partialStartOffset = -1
+                selectionStart = 1; selectionEnd = 1
+            }
+            override fun setSelection(start: Int, end: Int): Boolean {
+                check(start == 4 && end == 4) { "Extracted selection offsets must include startOffset" }
+                return true
+            }
+        }
+        check(CursorMover.move(partialConnection, 1))
+        Log.i("KeySwiperInputChecks", "PASS: cursor movement, selection collapse, extracted offsets and emoji boundaries")
         Log.i("KeySwiperInputChecks", "PASS: word spacing, completion, composition, selection and cursor position")
     }
 }

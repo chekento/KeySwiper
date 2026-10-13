@@ -48,7 +48,7 @@ CI also runs a shell-driven Android 15 AOSP ATD emulator smoke test. It installs
 - Correct deliberately wrong swipe candidates.
 - Verify corrected candidates train the local swipe model.
 - Verify swipe path still follows the visible full-width key geometry.
-- Verify a Backspace tap removes one grapheme (or reverses an immediate autocorrection); holding progresses through words, sentences and paragraphs. Release, slide off the key and cancel separately; deletion must stop. Undo must restore the held deletion at the original cursor context.
+- Verify a Backspace tap removes one grapheme (or reverses an immediate autocorrection); holding progresses to single words and stays there by default. Release, slide off the key and cancel separately; deletion must stop. Undo must restore the held deletion at the original cursor context. Enable advanced deletion separately to test groups/sentences/paragraphs.
 - Swipe two words, then tap a letter without pressing Space: both words must remain separated and the letter must start the next word.
 - Type a word without a final space, then swipe a new word: the two words must not join.
 
@@ -153,7 +153,7 @@ For each failure capture:
 - Add/lift a second finger or palm during a finger/pen swipe; the original pointer must keep control.
 - Hold a/o/u and slide across the popup to choose ä/ö/ü or another accent; repeat with Shift and Caps Lock. No base letter should also appear.
 - Hold digits, punctuation, and symbols on both symbol pages; release outside the popup to cancel.
-- Hold the spacebar to select DE/EN/FR/IT/ES. A normal tap must still insert one space.
+- Select DE/EN/FR/IT/ES with the separate language key. A normal Space tap must insert one space; a horizontal Space drag moves the cursor.
 - Browse all six emoji categories; hold a hand emoji for skin tones, then use Backspace to remove the whole inserted emoji once.
 - Type “udn ” and “tastatru ” in a normal text field; check correction and immediate Backspace restoration. Press space again to retain the original.
 - Check names, personal words, URLs, passwords, code fields, cursor movement and selected text for unwanted replacements.
@@ -164,7 +164,7 @@ For each failure capture:
 
 - After swiping/accepting “Hallo”, type comma: expect “Hallo, ”. Repeat with `. : ; ! ?` and the cluster `!?`. Manually typed spaces must remain unchanged.
 - Put the cursor inside “Tastatru”, accept “Tastatur” and check that no old suffix remains; surrounding words must survive.
-- Hold Space for 1, 4 and 10 seconds, then release: repetition accelerates in groups and stops immediately. Change language with the separate language key.
+- Hold Space for 1, 4 and 10 seconds, then release: exactly one space is inserted and no repetition occurs. Change language with the separate language key.
 - With the keyboard open, use the pen to tap the cursor, app controls and menus. No unwanted dot may appear. Circle existing text in supported editors; unsupported circles must not insert “o”. Write a normal small “o” in the manual handwriting pad.
 - Test voice permission first granted, denied and later re-enabled. Watch partial text, press Stop, and verify one final insertion. Switch fields or hide the keyboard during recognition; no late text may enter another field. Check offline/missing recognizer errors and real audio on a physical phone.
 - Read selected text aloud, stop playback, then switch languages. Check missing TTS language handling.
@@ -180,3 +180,24 @@ For each failure capture:
 - Test “Ich kann nicht ”, “Es geht um einen Termin. Ich möchte ” in email context, and “Ich kann nicht |teilnehmen”. The continuation must fit the phrase, form of address and existing right-hand text.
 - Hold a long suggestion to read it fully. Set the depth to 2, 8 and 12 and check the maximum inserted length.
 - Teach a recurring personal phrase; matching longer context should outrank unrelated frequent bigrams.
+
+## 0.22 cursor, deletion, stable suggestions and numeric keypad
+
+- Swipe Space left/right, reverse direction, start with small jitter and cancel a gesture. Drags move the cursor without changing text; a stationary tap/hold inserts one space on release. Lift the original pointer while another finger remains down and verify no extra space appears.
+- Move across family emoji, skin tones, flags and accented combining characters. Collapse a selected range in either direction, move at both text edges, and repeat in clipboard search/snippet editing without moving the target app's cursor.
+- Hold Backspace for 15 seconds in ordinary text with the default setting. It must remain at one word per repeat; the spacebar displays the active unit. Test the optional advanced setting independently, and verify number/PIN fields still repeat by character.
+- Inspect three fixed word slots and open `⌄` for sentence suggestions/further words. Undo/Redo becoming available must not change slot widths. Hold a word while a newer prediction arrives; releasing must accept the originally pressed word.
+- Switch between ordinary text, an integer, a signed number, a decimal, a signed decimal, a numeric PIN, phone, date and time fields. Integer/PIN fields must show only 0–9 plus Backspace/Enter; decimal/minus and other separators follow each field's requirements.
+- In numeric mode confirm no alphabet/symbol-page switch, toolbar, word suggestions, swipe words or long-press fractions appear. Enter all ten digits and return to a text field; the normal keyboard must return immediately.
+- Compare ordinary, numeric and expanded-suggestion heights in portrait/landscape against the one-third display budget.
+
+## 0.22 durable clipboard, recording and privacy
+
+- Copy text, choose a retention preset, note its deadline, force-stop/restart KeySwiper and verify the same deadline and content. Reopening/searching/Undo must not extend it. Deleted/expired current system clips must stay absent after restart.
+- Retain more than eighty clips; unexpired items must survive. Pin one item and permanently save another. Clear temporary history, unpin a saved item and restart: both protected items must remain.
+- Inspect History/Pins/Saved and tap a card to paste once. Scroll a long list while new clips arrive: the visible item should stay stable, and a touched card must not change underneath the pointer.
+- Mark a sentence in the focused app, open the clipboard and use copy-selection. Confirm it becomes an encrypted history item and its system preview is marked sensitive.
+- Test clipboard search/snippet editing with finger/pen and spacebar cursor control without modifying the focused application's text.
+- Compare the clipboard and recording panels in portrait/landscape. Verify measured-level animation, elapsed time, live partial text, Stop/final insertion and cancel on return to keyboard.
+- With network recognition disabled, remove/disable the local recognizer/model: no silent system fallback may occur. Explicitly enable system recognition separately. Check local language/formatting support using real audio on physical hardware.
+- Verify private mode and password/PIN fields do not learn, display swipe suggestions, capture clipboard, retain held-deletion history or start dictation. Test screenshot protection and obscured-touch rejection; recognized accessibility tools must remain usable.

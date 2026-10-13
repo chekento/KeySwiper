@@ -12,11 +12,15 @@ object Prefs {
     private const val TARGET_HISTORY = "target_language_history"
     private const val HANDWRITING_LANGUAGE = "handwriting_language"
     private const val AUTO_CORRECT = "auto_correct"
+    private const val ADVANCED_HOLD_DELETE = "advanced_hold_delete"
     private const val SEMANTIC_DEPTH = "semantic_prediction_depth"
     private const val KEYBOARD_LAYOUT = "keyboard_layout"
     private const val CLIPBOARD_EXPIRY_MINUTES = "clipboard_expiry_minutes"
     private const val ONE_HAND_MODE = "one_hand_mode"
     private const val KEYBOARD_THEME = "keyboard_theme"
+    private const val PRIVATE_MODE = "private_mode"
+    private const val NETWORK_SPEECH = "network_speech"
+    private const val SECURE_PANELS = "secure_panels"
 
     fun targetLanguage(context: Context): String =
         context.getSharedPreferences(
@@ -160,6 +164,20 @@ object Prefs {
     fun autoCorrectEnabled(context: Context): Boolean =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(AUTO_CORRECT, true)
 
+    fun advancedHoldDeleteEnabled(context: Context): Boolean =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(ADVANCED_HOLD_DELETE, false)
+
+    fun setAdvancedHoldDeleteEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(ADVANCED_HOLD_DELETE, enabled).apply()
+    }
+
+    fun privateMode(context: Context): Boolean = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(PRIVATE_MODE, false)
+    fun setPrivateMode(context: Context, enabled: Boolean) { context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(PRIVATE_MODE, enabled).apply() }
+    fun networkSpeechAllowed(context: Context): Boolean = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(NETWORK_SPEECH, false)
+    fun setNetworkSpeechAllowed(context: Context, enabled: Boolean) { context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(NETWORK_SPEECH, enabled).apply() }
+    fun securePanels(context: Context): Boolean = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(SECURE_PANELS, true)
+    fun setSecurePanels(context: Context, enabled: Boolean) { context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(SECURE_PANELS, enabled).apply() }
+
     fun setAutoCorrectEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(AUTO_CORRECT, enabled).apply()
     }
@@ -261,12 +279,9 @@ object Prefs {
             )
             .getLong(
                 CLIPBOARD_EXPIRY_MINUTES,
-                60L
-            )
-            .coerceIn(
-                10L,
                 1440L
             )
+            .coerceIn(10L, cloud.kosch.keyswiper.clipboard.ClipboardRetention.MAX_MINUTES)
 
     fun setClipboardExpiryMinutes(
         context: Context,
@@ -280,10 +295,7 @@ object Prefs {
             .edit()
             .putLong(
                 CLIPBOARD_EXPIRY_MINUTES,
-                minutes.coerceIn(
-                    10L,
-                    1440L
-                )
+                minutes.coerceIn(10L, cloud.kosch.keyswiper.clipboard.ClipboardRetention.MAX_MINUTES)
             )
             .apply()
     }

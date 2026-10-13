@@ -4,13 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HoldAccelerationTest {
-    @Test fun holdingProgressesFromCharacterToParagraphAndMoreSpaces() {
+    @Test fun defaultHoldRemovesSingleWordsEvenAfterALongHold() {
         assertEquals(DeleteUnit.CHARACTER, HoldAcceleration.step(420).unit)
-        assertEquals(DeleteUnit.WORD, HoldAcceleration.step(1500).unit)
-        assertEquals(DeleteUnit.WORDS, HoldAcceleration.step(3500).unit)
-        assertEquals(DeleteUnit.SENTENCE, HoldAcceleration.step(6000).unit)
-        assertEquals(DeleteUnit.PARAGRAPH, HoldAcceleration.step(9500).unit)
-        assertEquals(listOf(1, 1, 2, 4, 8), listOf(420L, 1500L, 3500L, 6000L, 9500L).map { HoldAcceleration.step(it).spaces })
+        for (elapsed in listOf(1500L, 3500L, 6000L, 9500L, 30000L)) {
+            assertEquals(DeleteUnit.WORD, HoldAcceleration.step(elapsed).unit)
+            assertEquals("Erster Satz. Zweiter ", rest("Erster Satz. Zweiter Satz. ", HoldAcceleration.step(elapsed).unit))
+        }
+    }
+    @Test fun largerDeletionUnitsRequireAnExplicitOptIn() {
+        assertEquals(DeleteUnit.WORDS, HoldAcceleration.step(3500, advanced = true).unit)
+        assertEquals(DeleteUnit.SENTENCE, HoldAcceleration.step(6000, advanced = true).unit)
+        assertEquals(DeleteUnit.PARAGRAPH, HoldAcceleration.step(9500, advanced = true).unit)
     }
     private fun rest(text: String, unit: DeleteUnit) = text.dropLast(HoldAcceleration.deleteLength(text, unit))
     @Test fun characterDoesNotSplitEmoji() { assertEquals("Hallo ", rest("Hallo 👨‍👩‍👧‍👦", DeleteUnit.CHARACTER)) }

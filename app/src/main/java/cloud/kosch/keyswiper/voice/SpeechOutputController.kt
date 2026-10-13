@@ -21,6 +21,13 @@ class SpeechOutputController(private val context: Context) {
             if (support < TextToSpeech.LANG_AVAILABLE) {
                 status("Für diese Sprache fehlt eine Android-Sprachausgabe. Bitte in Android installieren.")
             } else {
+                val voice = speech.voices?.filter { !it.isNetworkConnectionRequired &&
+                    it.locale.language == Locale.forLanguageTag(language).language }?.maxByOrNull { it.quality }
+                if (voice == null) {
+                    status("Keine lokale Vorlesestimme verfügbar. Bitte ein Offline-Sprachpaket installieren.")
+                    return@action
+                }
+                speech.voice = voice
                 val result = speech.speak(text.take(TextToSpeech.getMaxSpeechInputLength()), TextToSpeech.QUEUE_FLUSH, null, "keyswiper-$request")
                 status(if (result == TextToSpeech.SUCCESS) "Text wird vorgelesen …" else "Sprachausgabe konnte nicht gestartet werden.")
             }
