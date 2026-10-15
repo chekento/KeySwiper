@@ -816,6 +816,7 @@ class KeySwiperImeService : InputMethodService() {
             val committed = WordCommitter.commit(connection, casedValues.first()) ?: return
             val word = committed.plan.word
             rememberAutomaticSpace()
+            root?.consumeShiftForCommittedText(word)
             updateAutoShift()
 
             lastSwipeWord = word
@@ -1082,6 +1083,7 @@ class KeySwiperImeService : InputMethodService() {
                 )
             }
 
+            root?.consumeShiftForCommittedText(plan.word)
             clearSwipeState()
 
             val updated = textBeforeCursor()
@@ -1418,6 +1420,15 @@ class KeySwiperImeService : InputMethodService() {
         override fun onClipboardToggleSaved(id: String) {
             if (!sensitiveField) clipboardTask({ it.toggleSaved(id) })
         }
+        override fun onClipboardImportSystem() {
+            if (sensitiveField) return
+            clipboardTask({
+                require(it.importSystemClipboard()) {
+                    "Kein unterstützter Text in der Android-Zwischenablage gefunden."
+                }
+            }, "Aus der Android-Zwischenablage übernommen")
+        }
+
         override fun onClipboardCaptureSelection() {
             if (sensitiveField) return
             val selected = currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
@@ -2934,6 +2945,16 @@ class KeySwiperImeService : InputMethodService() {
     private fun setClipboardCaptureAllowed(allowed: Boolean) {
         clipboardCaptureAllowed = allowed
         if (clipboardControllerDelegate.isInitialized()) clipboardControllerDelegate.value.setCaptureAllowed(allowed)
+        // Register the system listener as soon as the keyboard becomes active,
+        // not only when the clipboard panel happens to be opened for the first time.
+        if (allowed && !destroyed && !clipboardControllerDelegate.isInitialized()) {
+            clipboardExecutor.execute {
+                if (clipboardCaptureAllowed && !destroyed) runCatching { clipboardController }
+                    .onFailure { mainHandler.post {
+                        if (!destroyed) root?.setStatus("Zwischenablage konnte nicht gestartet werden.")
+                    } }
+            }
+        }
     }
 
     private fun clipboardTask(operation: (ClipboardController) -> Unit = {}, success: String? = null, open: Boolean = false,
