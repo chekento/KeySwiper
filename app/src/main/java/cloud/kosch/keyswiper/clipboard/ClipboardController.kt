@@ -154,7 +154,8 @@ class ClipboardController(private val context: Context,
         val timestamp = if (Build.VERSION.SDK_INT >= 26) clip.description.timestamp else 0L
         // Persisted copy identity prevents deleted/expired content returning on restart.
         if (!newCopy && id == lastCapturedId && timestamp <= lastClipTimestamp) return false
-        val copiedAt = if (timestamp > 0 && timestamp <= clock()) timestamp else clock()
+        // Explicit import is a new retention event even if the system clip was copied earlier.
+        val copiedAt = if (explicit) clock() else if (timestamp > 0 && timestamp <= clock()) timestamp else clock()
         val permanent = history.firstOrNull { it.id == id }?.let { it.pinned || it.saved } == true
         if (!permanent && ClipboardRetention.expiresAt(copiedAt, defaultExpiryMinutes) <= clock()) {
             lastCapturedId = id; lastClipTimestamp = timestamp; persist()
