@@ -1057,7 +1057,8 @@ class KeySwiperImeService : InputMethodService() {
             if (sensitiveField) return
 
             val connection = currentInputConnection ?: return
-            val committed = WordCommitter.commit(connection, suggestion.commitText,
+            val casedSuggestion = root?.applyInputCase(suggestion.commitText) ?: suggestion.commitText
+            val committed = WordCommitter.commit(connection, casedSuggestion,
                 suggestion.replacesCurrentToken) ?: return
             val plan = committed.plan
             rememberAutomaticSpace()
