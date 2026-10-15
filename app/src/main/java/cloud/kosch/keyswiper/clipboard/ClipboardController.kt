@@ -143,7 +143,8 @@ class ClipboardController(private val context: Context,
         // Android's coerceToText handles these formats using the standard clipboard API.
         val text = when {
             item.text != null -> item.text.toString()
-            item.htmlText != null -> item.htmlText
+            item.htmlText != null -> android.text.Html.fromHtml(item.htmlText,
+                android.text.Html.FROM_HTML_MODE_LEGACY).toString()
             item.uri?.scheme in setOf("http", "https") -> item.uri.toString()
             clip.description.hasMimeType("text/*") -> item.coerceToText(context)?.toString()
             else -> null
