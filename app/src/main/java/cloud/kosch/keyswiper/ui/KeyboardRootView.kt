@@ -168,6 +168,7 @@ class KeyboardRootView(
     private var numericProfile: NumericKeypadProfile? = null
     private var sensitivePanelOpen = false
     private var voicePanelOpen = false
+    private var voiceCommandMode = false
     private var privateInput = false
 
     private val suggestions =
@@ -1704,6 +1705,7 @@ class KeyboardRootView(
     private var voiceRecordButton: Button? = null
 
     fun showVoicePanel(commandMode: Boolean = false) {
+        voiceCommandMode = commandMode
         val panelBudget = clipboardHeight()
         val budgetDp = panelBudget / density
         fun portion(cap: Int, ratio: Float) = minOf(dp(cap), (panelBudget * ratio).toInt()).coerceAtLeast(1)
@@ -1728,7 +1730,7 @@ class KeyboardRootView(
             panel.addView(it, LayoutParams(LayoutParams.MATCH_PARENT, portion(46, 0.23f)))
         }
         voiceTranscript = TextView(context).apply {
-            text = "Sprich deinen Text …"
+            text = if (commandMode) "Sprich deinen Befehl …" else "Sprich mehrere Sätze …"
             textSize = 17f; setTextColor(theme.textPrimary); setPadding(0, dp(4), 0, dp(4))
         }.also { transcript ->
             panel.addView(ScrollView(context).apply { addView(transcript); isFillViewport = true },
@@ -1765,11 +1767,11 @@ class KeyboardRootView(
             voiceLevel?.setPhase(it)
             voiceRecordButton?.text = when (it) {
                 VoicePhase.IDLE -> "Aufnehmen"
-                VoicePhase.STARTING -> "Startet …"
-                VoicePhase.LISTENING -> "Stopp"
-                VoicePhase.PROCESSING -> "Umwandeln …"
+                VoicePhase.STARTING -> if (voiceCommandMode) "Startet …" else "Beenden"
+                VoicePhase.LISTENING -> "Beenden"
+                VoicePhase.PROCESSING -> if (voiceCommandMode) "Umwandeln …" else "Beenden"
             }
-            voiceRecordButton?.isEnabled = it != VoicePhase.PROCESSING
+            voiceRecordButton?.isEnabled = !voiceCommandMode || it != VoicePhase.PROCESSING
         }
     }
 

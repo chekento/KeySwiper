@@ -18,13 +18,19 @@ object VoiceRecognitionOptions {
             else -> requested.toLanguageTag()
         }
     }
-    fun intent(tag: String, local: Boolean, biasing: List<String>, format: Boolean): Intent =
+    fun intent(tag: String, local: Boolean, biasing: List<String>, format: Boolean,
+        continuous: Boolean = false): Intent =
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag(tag))
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, local)
+            if (continuous) {
+                // OEM recognizers may ignore these hints. The controller re-arms on each result.
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4_000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2_000L)
+            }
             if (Build.VERSION.SDK_INT >= 33) {
                 putExtra(RecognizerIntent.EXTRA_ENABLE_BIASING_DEVICE_CONTEXT, false)
                 if (format) {

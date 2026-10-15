@@ -1,5 +1,17 @@
 # Voice Editing
 
+## 0.24 continuous dictation
+
+Ordinary dictation now aggregates successive Android SpeechRecognizer results in one session. The recognizer may stop after a short sentence on some devices; KeySwiper re-arms it to capture subsequent sentences. The panel previews the entire accumulated text and commits it once at the end of the session, not after each short recognition.
+
+- Tap 🎙 to dictate multiple sentences. Continue after natural short breaks.
+- Tap **Beenden** to finalize manually; if the recognizer is still processing the last phrase, KeySwiper waits briefly for that result.
+- With collected text, an approximately 9-second pause finishes automatically. Recognition is limited to 5 minutes / 12,000 characters; Android system backends can impose their own limitations.
+- Leaving the keyboard or changing input fields cancels the current audio session; this deliberately avoids inserting speech into the wrong editor.
+- Command mode remains one-shot, so instructions execute only after a single recognized command.
+- The microphone is accessed using Android SpeechRecognizer. KeySwiper does not store audio recordings. On-device speech remains the default; system/network recognizers require explicit permission in Settings.
+
+
 ## 0.22 dictation and privacy
 
 The recording panel now includes a measured microphone-level envelope, elapsed recording time, live partial transcript and a separate processing state. Returning to the keyboard cancels microphone ownership. The panel fits the normal keyboard height budget and is screenshot-protected by default.

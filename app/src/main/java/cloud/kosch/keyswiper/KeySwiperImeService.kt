@@ -1197,6 +1197,7 @@ class KeySwiperImeService : InputMethodService() {
             val language = KeyboardLayoutProfiles.byId(Prefs.keyboardLayoutId(this@KeySwiperImeService)).languageTag
             voiceController.toggle(languageTag = language,
                 localOnly = !Prefs.networkSpeechAllowed(this@KeySwiperImeService),
+                continuous = true,
                 biasing = userVocabularyStore.frequentWords(emptyList(), 128).map { it.first }.filter { userVocabularyStore.isExplicit(it) },
                 onPhase = { if (session == inputSession) root?.updateVoicePanel(phase = it) },
                 onLevel = { if (session == inputSession) root?.updateVoicePanel(level = it) },

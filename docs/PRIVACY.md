@@ -1,5 +1,10 @@
 # Privacy and security model
 
+## 0.24 exposure indicator
+
+The small Settings indicator looks only at **enabled Android accessibility services** visible to the app. Neutral means none were observed; amber indicates enabled third-party services; red means an enabled service declares window-content retrieval or key-event filtering. This is a *configuration-risk indicator*, NOT detection that a keylogger is operating. Legitimate accessibility services may be flagged. Malware, overlays, remote monitoring, root compromise and other input methods can remain invisible. Tapping the indicator shows observed services and links to the official accessibility settings. No extra Android permissions were added for this check.
+
+
 KeySwiper implements concrete protections inside its own Android IME. It does not claim complete protection against third-party keyloggers, malicious accessibility tools, rooted devices or a compromised operating system.
 
 ## Clipboard and local data
