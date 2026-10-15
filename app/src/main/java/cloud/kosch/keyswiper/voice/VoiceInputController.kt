@@ -197,7 +197,7 @@ class VoiceInputController(private val context: Context) {
                             error == SpeechRecognizer.ERROR_NO_MATCH
                         if (continuousSession && !manualStop && idleError &&
                             SystemClock.elapsedRealtime() - startedAt < MAX_SESSION_MS &&
-                            (transcript.isNotEmpty() ||
+                            (!transcript.isEmpty ||
                                 SystemClock.elapsedRealtime() - startedAt < INITIAL_WAIT_MS)) {
                             if (!transcript.isEmpty &&
                                 SystemClock.elapsedRealtime() - latestSpeechAt >= PAUSE_MS) {
