@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.24.0-alpha25 — 2026-10-15
+
+Security visibility and continuous voice dictation:
+
+- new tappable upper-right security indicator in Settings, reflecting the visibility of enabled third-party accessibility services and their self-declared window-reading/key-filtering capabilities
+- neutral/amber/red are levels of **review needed**, NOT positive or negative keylogger detection; detail dialog lists relevant enabled services and links to Android accessibility settings
+- no added surveillance permissions or logging of keystrokes; detection of hidden malware or OS compromise remains out of scope
+- normal dictation accumulates multiple recognized sentences across recognizer rounds, showing the full partial transcript before a single final insertion
+- preserve dictation for approximately 9 seconds of no further speech, or finalize explicitly using Beenden; handle Android recognizers that auto-stop after a phrase by rearming them
+- keep the command recognizer single-shot; cancel on editor switches; cap dictation at 5 minutes / 12,000 characters to avoid runaway microphone use
+- added unit tests for transcript buffering and access classification
+- version 0.24.0-alpha25 / build 25
+
 ## 0.23.0-alpha24 — 2026-10-15
 
 Android clipboard and Shift behavior:
