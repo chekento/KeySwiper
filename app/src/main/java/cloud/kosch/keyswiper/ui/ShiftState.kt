@@ -37,6 +37,13 @@ internal class ShiftState {
         suppressAutomatic = false
     }
 
+    /** Entering another field should not silently release an explicit Caps Lock. */
+    fun beginEditorSession() {
+        if (mode == ShiftMode.UPPER) mode = ShiftMode.LOWER
+        automatic = false
+        suppressAutomatic = false
+    }
+
     fun reset() {
         mode = ShiftMode.LOWER
         automatic = false
