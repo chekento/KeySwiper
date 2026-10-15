@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -91,7 +92,78 @@ jobs:
             artifacts/ime-smoke/
           if-no-files-found: ignore
 
+
+      # Android requires the SAME private signing key across every update. The
+      # GitHub-hosted debug.keystore is freshly generated on each runner and
+      # must never be used for a downloadable release.
+      - name: Load durable production signing key
+        id: release_signing
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSWIPER_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSWIPER_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEYSWIPER_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEYSWIPER_RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Release APK withheld: stable signing secrets not configured. Read docs/INSTALLATION_SIGNING.md."
+            echo "### APK publication is blocked" >> "$GITHUB_STEP_SUMMARY"
+            echo "Add four private signing secrets before generating a user-installable update. Debug APKs are not upgradable between ephemeral runners." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/keyswiper-release.jks"
+          chmod 600 "$RUNNER_TEMP/keyswiper-release.jks"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build permanently signed release APK
+        if: steps.release_signing.outputs.configured == 'true'
+        env:
+          KEYSWIPER_RELEASE_STORE_PATH: ${{ runner.temp }}/keyswiper-release.jks
+          KEYSWIPER_RELEASE_STORE_PASSWORD: ${{ secrets.KEYSWIPER_RELEASE_STORE_PASSWORD }}
+          KEYSWIPER_RELEASE_KEY_ALIAS: ${{ secrets.KEYSWIPER_RELEASE_KEY_ALIAS }}
+          KEYSWIPER_RELEASE_KEY_PASSWORD: ${{ secrets.KEYSWIPER_RELEASE_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify APK certificate matches pinned public identity
+        if: steps.release_signing.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          SIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$SIGNER" verify --verbose --print-certs "$APK"
+          ACTUAL="$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          EXPECTED="$(tr -d '[:space:]' < docs/RELEASE_SIGNER_SHA256.txt)"
+          if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::APK signing certificate differs from protected publisher identity. Refusing public release."
+            exit 1
+          fi
+          echo "Signing certificate verified: $ACTUAL" >> "$GITHUB_STEP_SUMMARY"
+
+      # PRs also compile release with a disposable TEST key; it is never published.
+      - name: Create disposable PR-only signing certificate
+        if: github.event_name == 'pull_request'
+        run: |
+          keytool -genkeypair -alias ci-test -keyalg RSA -keysize 2048 -validity 2 \
+            -storetype PKCS12 -keystore "$RUNNER_TEMP/pr-only.jks" \
+            -storepass ci-test-password -keypass ci-test-password \
+            -dname "CN=KeySwiper CI Test" -noprompt
+
+      - name: Check release build compilation (PR only)
+        if: github.event_name == 'pull_request'
+        env:
+          KEYSWIPER_RELEASE_STORE_PATH: ${{ runner.temp }}/pr-only.jks
+          KEYSWIPER_RELEASE_STORE_PASSWORD: ci-test-password
+          KEYSWIPER_RELEASE_KEY_ALIAS: ci-test
+          KEYSWIPER_RELEASE_KEY_PASSWORD: ci-test-password
+        run: |
+          gradle :app:assembleRelease --stacktrace
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+
       - name: Read build identity
+        if: steps.release_signing.outputs.configured == 'true'
         id: build_meta
         shell: bash
         run: |
@@ -101,8 +173,8 @@ jobs:
           APK_NAME="KeySwiper-v$VERSION_NAME-build$VERSION_CODE-run$GITHUB_RUN_NUMBER.apk"
           TAG="v$VERSION_NAME-b$VERSION_CODE-run$GITHUB_RUN_NUMBER"
           PAGE="docs/versions/$VERSION_NAME-build$VERSION_CODE-run$GITHUB_RUN_NUMBER.md"
-          cp app/build/outputs/apk/debug/app-debug.apk "$APK_NAME"
-          cp app/build/outputs/apk/debug/app-debug.apk "KeySwiper-latest.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK_NAME"
+          cp app/build/outputs/apk/release/app-release.apk "KeySwiper-latest.apk"
           SHA256=$(sha256sum "$APK_NAME" | awk '{print $1}')
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
@@ -112,7 +184,8 @@ jobs:
           echo "page=$PAGE" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
 
-      - name: Upload CI artifact
+      - name: Upload signed release artifact
+        if: steps.release_signing.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: KeySwiper-${{ steps.build_meta.outputs.version_name }}-build-${{ steps.build_meta.outputs.version_code }}-run-${{ github.run_number }}
@@ -122,7 +195,7 @@ jobs:
           if-no-files-found: error
 
       - name: Create permanent GitHub Release
-        if: github.event_name == 'push'
+        if: steps.release_signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.build_meta.outputs.tag }}
@@ -147,13 +220,13 @@ jobs:
           $CHANGELOG_SECTION
           EOF
 
-          gh release create "$TAG" "$APK_NAME" "KeySwiper-latest.apk" \
+          gh release create "$TAG" "$APK_NAME" "KeySwiper-latest.apk" --prerelease \
             --title "KeySwiper $VERSION_NAME · build $VERSION_CODE · run $GITHUB_RUN_NUMBER" \
             --notes-file release-notes.md \
             --target "$GITHUB_SHA"
 
       - name: Generate permanent version page
-        if: github.event_name == 'push'
+        if: steps.release_signing.outputs.configured == 'true'
         env:
           PAGE: ${{ steps.build_meta.outputs.page }}
           TAG: ${{ steps.build_meta.outputs.tag }}
