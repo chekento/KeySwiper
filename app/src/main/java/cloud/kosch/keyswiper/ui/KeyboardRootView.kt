@@ -71,6 +71,7 @@ class KeyboardRootView(
         fun onClipboardTogglePin(id: String)
         fun onClipboardToggleSaved(id: String) {}
         fun onClipboardCaptureSelection() {}
+        fun onClipboardImportSystem() {}
         fun onSensitivePanelChanged(active: Boolean) {}
         fun onClipboardDelete(id: String)
         fun onClipboardDeleteMany(ids: Set<String>) {}
@@ -192,9 +193,7 @@ class KeyboardRootView(
     private val keyboardSurface =
         KeyboardSurface(context)
 
-    private var shifted = false
-    private var capsLocked = false
-    private var lastShiftTap = 0L
+    private val shiftState = ShiftState()
     private var shiftButton: Button? = null
     private var symbolMode = false
     private var symbolPage = 0
@@ -207,8 +206,7 @@ class KeyboardRootView(
         KeyboardLayoutProfiles.all.firstOrNull { it.languageTag.equals(tag, true) }?.let { next ->
             Prefs.setKeyboardLayoutId(context, next.id)
             layoutProfile = next
-            shifted = false
-            capsLocked = false
+            shiftState.reset()
             symbolMode = false
             rebuildKeyboardPanel()
             setStatus("Layout: ${next.label}")
@@ -590,9 +588,8 @@ class KeyboardRootView(
 
         if (numeric) keyboardSurface.setNumericLayout(numericProfile ?: NumericKeypadProfile())
         else keyboardSurface.setLayout(profile = layoutProfile, symbols = symbolMode, page = symbolPage)
-        keyboardSurface.shifted =
-            shifted && !symbolMode
-        keyboardSurface.capsLocked = capsLocked
+        keyboardSurface.shifted = shiftState.shifted && !symbolMode
+        keyboardSurface.capsLocked = shiftState.locked && !symbolMode
 
         keyboardContentHeightPx = if (numeric) sizing.toolbarHeightPx + sizing.predictionHeightPx +
             sizing.surfaceHeightPx + sizing.bottomRowHeightPx else sizing.surfaceHeightPx + sizing.bottomRowHeightPx
@@ -636,43 +633,36 @@ class KeyboardRootView(
     }
 
     fun applyInputCase(word: String): String = when {
-        capsLocked -> word.uppercase()
-        shifted -> word.replaceFirstChar { it.uppercase() }
+        shiftState.locked -> word.uppercase()
+        shiftState.shifted -> word.replaceFirstChar { it.uppercase() }
         else -> word
     }
 
-    private fun consumeShift(value: String) {
-        if (value.any { it.isLetter() }) lastShiftTap = 0L
-        if (shifted && !capsLocked && value.any { it.isLetter() }) {
-            shifted = false
-            updateShiftAppearance()
-        }
+    /** Must also run after swipe commits and accepting predictions. */
+    fun consumeShiftForCommittedText(value: String) {
+        shiftState.consume(value)
+        updateShiftAppearance()
     }
 
+    private fun consumeShift(value: String) = consumeShiftForCommittedText(value)
+
     private fun toggleShift() {
-        val now = android.os.SystemClock.uptimeMillis()
-        if (capsLocked) {
-            capsLocked = false
-            shifted = false
-            lastShiftTap = 0L
-            updateShiftAppearance()
-            return
-        } else if (lastShiftTap != 0L && now - lastShiftTap < 350L) {
-            capsLocked = true
-            shifted = true
-        } else {
-            shifted = !shifted
-        }
-        lastShiftTap = now
+        shiftState.tap()
         updateShiftAppearance()
     }
 
     private fun updateShiftAppearance() {
+        val shifted = shiftState.shifted
+        val locked = shiftState.locked
         keyboardSurface.shifted = shifted && !symbolMode
-        keyboardSurface.capsLocked = capsLocked
+        keyboardSurface.capsLocked = locked && !symbolMode
         shiftButton?.apply {
-            text = if (capsLocked) "⇪" else "⇧"
-            contentDescription = if (capsLocked) "Feststelltaste aktiv" else if (shifted) "Großschreibung aktiv" else "Umschalten; zweimal tippen für Feststelltaste"
+            text = if (locked) "⇪" else "⇧"
+            contentDescription = when {
+                locked -> "Dauerhafte Großschreibung aktiv; tippen für Kleinbuchstaben"
+                shifted -> "Großschreibung aktiv; tippen für Feststelltaste"
+                else -> "Kleinbuchstaben aktiv; tippen für Großschreibung"
+            }
             setTextColor(if (shifted) theme.accent else theme.textPrimary)
             background = buttonBackground(special = shifted)
             isSelected = shifted
@@ -766,24 +756,17 @@ class KeyboardRootView(
         clearSuggestions()
         editorMode = mode
         numericProfile = NumericKeypadProfile.fromInputType(inputType)
-        capsLocked = false
+        shiftState.reset()
         symbolPage = 0
         symbolMode =
             mode ==
                 KeyboardEditorMode.NUMBER
 
-        if (
-            mode !=
-            KeyboardEditorMode.TEXT
-        ) {
-            shifted = false
-        }
-
         rebuildKeyboardPanel()
     }
 
     fun setAutoShift(enabled: Boolean) {
-        shifted = capsLocked || (enabled && editorMode == KeyboardEditorMode.TEXT)
+        shiftState.setAutomatic(enabled && editorMode == KeyboardEditorMode.TEXT)
         updateShiftAppearance()
     }
 
@@ -1016,7 +999,7 @@ class KeyboardRootView(
         symbolMode =
             editorMode ==
                 KeyboardEditorMode.NUMBER
-        shifted = capsLocked
+        shiftState.setAutomatic(false)
         rebuildKeyboardPanel()
         attachMainPanel(
             keyboardPanel
