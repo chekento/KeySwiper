@@ -2,6 +2,7 @@ package cloud.kosch.keyswiper.settings
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -17,6 +18,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
@@ -26,6 +28,7 @@ import cloud.kosch.keyswiper.language.UserVocabularyStore
 import cloud.kosch.keyswiper.prediction.NeuralModelManager
 import cloud.kosch.keyswiper.prediction.NeuralModelStatus
 import cloud.kosch.keyswiper.prediction.PredictionLearningStore
+import cloud.kosch.keyswiper.security.SecurityExposureInspector
 import cloud.kosch.keyswiper.stylus.StylusAction
 import cloud.kosch.keyswiper.stylus.StylusActionStore
 import cloud.kosch.keyswiper.stylus.StylusTrigger
@@ -42,6 +45,7 @@ class SettingsActivity : Activity() {
     private lateinit var enableKeyboardButton: Button
     private lateinit var chooseKeyboardButton: Button
     private lateinit var dailyDriverStatusText: TextView
+    private lateinit var securityLamp: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,11 +60,26 @@ class SettingsActivity : Activity() {
             setPadding(dp(24), dp(28), dp(24), dp(32))
         }
 
-        content.addView(TextView(this).apply {
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        heading.addView(TextView(this).apply {
             text = "KeySwiper"
             textSize = 30f
             setTextColor(Color.rgb(22, 24, 30))
-        })
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        securityLamp = TextView(this).apply {
+            text = "●"
+            textSize = 23f
+            gravity = android.view.Gravity.CENTER
+            contentDescription = "Sicherheitsindikator, antippen für mögliche Zugriffsrisiken"
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setOnClickListener { showSecurityDetail() }
+        }
+        heading.addView(securityLamp, LinearLayout.LayoutParams(dp(42), dp(42)))
+        content.addView(heading)
+        refreshSecurityLamp()
 
         content.addView(TextView(this).apply {
             text = "Adaptive multimodal Android keyboard — swipe, context-aware hybrid prediction, local neural models, stylus, voice, clipboard and multilingual input."
@@ -869,6 +888,7 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (::securityLamp.isInitialized) refreshSecurityLamp()
         if (Prefs.securePanels(this)) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         if (
@@ -1038,6 +1058,44 @@ class SettingsActivity : Activity() {
                         .label
                 )
             }
+    }
+
+    private fun refreshSecurityLamp() {
+        val inspection = SecurityExposureInspector.inspect(this)
+        securityLamp.setTextColor(when (inspection.level) {
+            SecurityExposureInspector.Level.NONE_OBSERVED -> Color.rgb(100, 116, 139)
+            SecurityExposureInspector.Level.REVIEW -> Color.rgb(194, 128, 16)
+            SecurityExposureInspector.Level.ELEVATED -> Color.rgb(195, 47, 47)
+            SecurityExposureInspector.Level.UNKNOWN -> Color.rgb(100, 116, 139)
+        })
+        securityLamp.contentDescription = "Sicherheitsindikator: " + when (inspection.level) {
+            SecurityExposureInspector.Level.NONE_OBSERVED -> "Kein erkennbarer Zugriffsweg"
+            SecurityExposureInspector.Level.REVIEW -> "Aktive Bedienungshilfen prüfen"
+            SecurityExposureInspector.Level.ELEVATED -> "Erhöhtes Zugriffspotenzial prüfen"
+            SecurityExposureInspector.Level.UNKNOWN -> "Prüfung nicht verfügbar"
+        } + ". Kein Keylogger-Nachweis."
+    }
+
+    private fun showSecurityDetail() {
+        val inspection = SecurityExposureInspector.inspect(this)
+        refreshSecurityLamp()
+        val detail = inspection.services.joinToString("\n") {
+            "• " + it.name + when {
+                it.filtersKeys -> " · kann Tastenereignisse filtern"
+                it.readsWindows -> " · kann Fensterinhalte lesen"
+                else -> " · aktiviert"
+            }
+        }.ifBlank { "Keine fremden aktiven Bedienungshilfen sichtbar." }
+        AlertDialog.Builder(this)
+            .setTitle("Zugriffsprüfung · kein Keylogger-Scanner")
+            .setMessage(inspection.explanation + "\n\n" + detail +
+                "\n\nAndere Eingabemethoden, Bildschirmaufzeichnung, Root-Zugriffe, Overlays " +
+                "und versteckte Malware können damit nicht ausgeschlossen werden.")
+            .setPositiveButton("Schließen", null)
+            .setNeutralButton("Android-Bedienungshilfen") { _, _ ->
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .show()
     }
 
     private fun styleSystemBars() {
