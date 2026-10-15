@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.23.0-alpha24 — 2026-10-15
+
+Android clipboard and Shift behavior:
+
+- register Android's primary-clipboard listener as soon as the non-sensitive keyboard is active, not only after opening the clipboard panel
+- import copied text from ChatGPT and other Android apps via plain/styled/HTML clipboard formats into KeySwiper's encrypted history
+- add a dedicated manual system clipboard import action (⇩); sensitive-flagged clips remain excluded from automatic history and require explicit user action
+- keep Android's secure-field/private-mode clipboard capture restrictions
+- use a deterministic three-phase Shift cycle: lowercase → uppercase once → Caps Lock → lowercase, without a double-tap timing requirement
+- keep Caps Lock until manually disabled, even after a word, prediction, swipe, sentence or edit-field switch
+- prevent sentence-start automatic capitalization from overriding a manual lowercase choice or Caps Lock
+- include three-phase Shift JVM unit tests and sensitive/system clipboard regression checks
+- version 0.23.0-alpha24 / build 24
+
 ## 0.22.0-alpha23 — 2026-10-12
 
 More predictable daily typing and an automatic numeric keypad:
