@@ -61,6 +61,16 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
+      - name: Build isolated installation-check APK
+        run: gradle :app:assembleInstallCheck --stacktrace
+
+      - name: Upload parallel-installation test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeySwiper-INSTALL-CHECK-${{ github.run_number }}
+          path: app/build/outputs/apk/installCheck/app-installCheck.apk
+          if-no-files-found: error
+
       - name: Enable KVM for Android emulator
         run: |
           test -e /dev/kvm
@@ -78,7 +88,11 @@ jobs:
           disable-spellchecker: true
           profile: pixel_2
           disable-animations: true
-          script: bash scripts/ime-smoke-test.sh app/build/outputs/apk/debug/app-debug.apk
+          script: |
+            bash scripts/ime-smoke-test.sh app/build/outputs/apk/debug/app-debug.apk
+            echo "Verifying parallel installation with a separate package ID (no existing data removed)"
+            adb install -r app/build/outputs/apk/installCheck/app-installCheck.apk
+            adb shell pm path cloud.kosch.keyswiper.installcheck | grep -q 'package:'
 
       - name: Upload test and smoke diagnostics
         if: always()
