@@ -75,7 +75,13 @@ object ClipboardRegressionChecks {
         val sensitive = ClipData.newPlainText("private", "Sensitive clipboard probe")
         sensitive.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         manager.setPrimaryClip(sensitive)
-        check(afterDelete.items().none { it.text == "Sensitive clipboard probe" })
+        check(afterDelete.items().none { it.text == "Sensitive clipboard probe" }) {
+            "Sensitive clips must not be captured automatically"
+        }
+        check(afterDelete.importSystemClipboard()) { "Explicit system import must accept the selected clip" }
+        check(afterDelete.items().any { it.text == "Sensitive clipboard probe" }) {
+            "Imported sensitive text should be available in encrypted history"
+        }
         afterDelete.setCaptureAllowed(false)
         check(!afterDelete.copySelection("Blocked private selection"))
         if (android.os.Build.VERSION.SDK_INT >= 28) manager.clearPrimaryClip()

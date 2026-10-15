@@ -91,6 +91,9 @@ class ClipboardPanelView(context: Context, private val theme: KeyboardThemeProfi
         header.addView(title, LayoutParams(0, dp(36), 1f))
         copySelection = icon("⧉", "Markierten Text kopieren und hinzufügen") { actions.onClipboardCaptureSelection() }
         header.addView(copySelection, LayoutParams(dp(34), dp(34)))
+        header.addView(icon("⇩", "Aktuellen Text aus der Android-Zwischenablage übernehmen") {
+            actions.onClipboardImportSystem()
+        }, LayoutParams(dp(34), dp(34)).apply { marginStart = dp(3) })
         header.addView(icon("⌕", "Zwischenablage durchsuchen") {
             if (search.visibility == VISIBLE && !editing) { search.visibility = GONE; onEditor(null); render() }
             else { finishEditing(); search.visibility = VISIBLE; search.requestFocus(); onEditor(search); render() }
