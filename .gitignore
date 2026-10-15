@@ -10,3 +10,8 @@ captures/
 .cxx/
 *.jks
 *.keystore
+
+# Never commit signing keys or credentials
+*.jks
+*.keystore
+*signing-secrets*
