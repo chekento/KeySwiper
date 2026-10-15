@@ -55,11 +55,18 @@ class ShiftStateTest {
         assertFalse(state.shifted)
     }
 
-    @Test fun newEditorResetsExplicitState() {
+    @Test fun newEditorClearsSingleShiftButPreservesCapsLock() {
         val state = ShiftState()
+        state.tap()
+        state.beginEditorSession()
+        assertEquals(ShiftMode.LOWER, state.mode)
         state.tap(); state.tap()
-        state.reset()
+        state.beginEditorSession()
+        assertEquals(ShiftMode.LOCKED, state.mode)
+        assertTrue(state.shifted)
+        state.tap()
         assertFalse(state.shifted)
+        state.reset()
         assertEquals(ShiftMode.LOWER, state.mode)
     }
 }
