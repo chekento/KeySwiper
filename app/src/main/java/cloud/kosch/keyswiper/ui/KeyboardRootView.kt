@@ -756,7 +756,7 @@ class KeyboardRootView(
         clearSuggestions()
         editorMode = mode
         numericProfile = NumericKeypadProfile.fromInputType(inputType)
-        shiftState.reset()
+        shiftState.beginEditorSession()
         symbolPage = 0
         symbolMode =
             mode ==
