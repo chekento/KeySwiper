@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.24.1-alpha26 — 2026-10-15
+
+Installability and publisher signing:
+
+- stop publishing per-runner debug-signed APKs that fail Android signature verification on updates
+- ship production APKs only when a persistent signing key is provided through protected GitHub Actions repository secrets
+- pin the accepted publisher certificate SHA-256 in source and verify the signed release before publication
+- add an independent installation-test APK (different application ID) that can coexist with the existing keyboard for debugging without first deleting its encrypted app data
+- test the side-by-side installability of that APK on the Android emulator in CI
+- document safe migration, limitations of Android Keystore encrypted clipboard data and Samsung unknown-source restrictions
+- version 0.24.1-alpha26 / build 26
+
 ## 0.24.0-alpha25 — 2026-10-15
 
 Security visibility and continuous voice dictation:
