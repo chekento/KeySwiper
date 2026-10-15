@@ -104,6 +104,8 @@ class ClipboardController(private val context: Context,
         removed = emptyList(); persist(); return true
     }
     @Synchronized fun copy(id: String) { textFor(id)?.let(::systemCopy) }
+    /** Explicitly selected by the user; may import a source flagged sensitive by Android. */
+    @Synchronized fun importSystemClipboard(): Boolean = capturePrimary(newCopy = true, explicit = true)
     @Synchronized fun copySelection(value: String): Boolean {
         if (!captureAllowed || value.isBlank()) return false
         if (!add(value)) return false
@@ -129,13 +131,23 @@ class ClipboardController(private val context: Context,
         clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         clipboard.setPrimaryClip(clip)
     }
-    @Synchronized private fun capturePrimary(newCopy: Boolean = false): Boolean {
+    @Synchronized private fun capturePrimary(newCopy: Boolean = false, explicit: Boolean = false): Boolean {
         purge()
         if (!captureAllowed) return false
         val clip = try { clipboard.primaryClip } catch (_: SecurityException) { null } ?: return false
-        if (clip.itemCount == 0 || clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE", false) == true) return false
+        if (clip.itemCount == 0) return false
+        // Never silently persist sensitive data. A deliberate manual import is allowed.
+        if (!explicit && clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE", false) == true) return false
         val item = clip.getItemAt(0)
-        val text = (item.text?.toString() ?: item.uri?.takeIf { it.scheme in setOf("http", "https") }?.toString()).orEmpty()
+        // ChatGPT and other apps may supply HTML, styled text or text via an Intent-backed clip.
+        // Android's coerceToText handles these formats using the standard clipboard API.
+        val text = when {
+            item.text != null -> item.text.toString()
+            item.htmlText != null -> item.htmlText
+            item.uri?.scheme in setOf("http", "https") -> item.uri.toString()
+            clip.description.hasMimeType("text/*") -> item.coerceToText(context)?.toString()
+            else -> null
+        }.orEmpty()
         if (text.isBlank() || text.length > MAX_ENTRY_CHARS) return false
         val id = stableId(text)
         val timestamp = if (Build.VERSION.SDK_INT >= 26) clip.description.timestamp else 0L
