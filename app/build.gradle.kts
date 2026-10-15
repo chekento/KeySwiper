@@ -48,6 +48,14 @@ android {
                 "proguard-rules.pro"
             )
         }
+        // A separately installable, NON-PRODUCTION diagnostic variant. It does not
+        // replace or erase the user's existing encrypted clipboard history.
+        create("installCheck") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".installcheck"
+            versionNameSuffix = "-installcheck"
+            isDebuggable = false
+        }
     }
 }
 
